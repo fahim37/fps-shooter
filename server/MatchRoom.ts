@@ -12,7 +12,7 @@ import { rayVsPose, type HitPart } from "../game/shared/hitboxes";
 import { raycastWorld, lineOfSight, GROUP_GRENADE, type World } from "../game/shared/physics";
 import {
   F_CROUCH, type JoinOptions, type PoseMsg, type FireMsg, type GrenadeMsg, type LoadoutMsg, type ShotEvent,
-  type HitConfirm, type DamagedEvent, type KillEvent, type SpawnEvent, type RoomMeta,
+  type HitConfirm, type DamagedEvent, type KillEvent, type SpawnEvent, type RoomMeta, type AmmoEvent,
 } from "../game/shared/messages";
 import { createRoomWorld, RAPIER, map } from "./world";
 import { Bot, BOT_NAMES } from "./bot";
@@ -26,6 +26,7 @@ export interface ServerPlayer {
   ammo: Record<WeaponId, { mag: number; reserve: number }>;
   reloadingUntil: number;
   lastFireAt: number;
+  shotSeq: number;
   grenades: number;
   lastDamageAt: number;
   lastAttacker: string;
@@ -69,7 +70,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   private lastMetaHumans = -1;
 
   onCreate(options: JoinOptions) {
-    const c = options.create ?? { mode: "tdm" as GameMode, maxPlayers: MAX_PLAYERS, bots: 8, botSkill: 1 as const, private: false, roomName: "" };
+    const c = options.create ?? { mode: options.mode ?? "tdm", maxPlayers: MAX_PLAYERS, bots: 8, botSkill: 1 as const, private: false, roomName: "" };
     const mode: GameMode = c.mode === "ffa" ? "ffa" : "tdm";
     this.roomId = makeCode();
     this.maxClients = Math.max(2, Math.min(MAX_PLAYERS, c.maxPlayers | 0 || MAX_PLAYERS));
@@ -89,7 +90,11 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     this.onMessage("pose", (client, m: PoseMsg) => this.onPose(client, m));
     this.onMessage("fire", (client, m: FireMsg) => {
       const p = this.players.get(client.sessionId);
-      if (p) this.fire(p, m);
+      if (p && m && Object.hasOwn(WEAPONS, m.weapon)) {
+        this.fire(p, m);
+        if (Number.isSafeInteger(m.shot) && m.shot! > 0) p.shotSeq = m.shot!;
+        this.sendAmmo(p, m.weapon);
+      }
     });
     this.onMessage("reload", (client) => {
       const p = this.players.get(client.sessionId);
@@ -166,6 +171,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       ammo: fullAmmo(),
       reloadingUntil: 0,
       lastFireAt: 0,
+      shotSeq: 0,
       grenades: GRENADES_PER_LIFE,
       lastDamageAt: 0,
       lastAttacker: "",
@@ -466,6 +472,12 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     const take = Math.min(WEAPONS[w].mag - a.mag, a.reserve);
     a.mag += take;
     a.reserve -= take;
+    this.sendAmmo(p, w);
+  }
+
+  private sendAmmo(p: ServerPlayer, weapon: WeaponId) {
+    const a = p.ammo[weapon];
+    p.client?.send("ammo", { weapon, mag: a.mag, reserve: a.reserve, shot: p.shotSeq } satisfies AmmoEvent);
   }
 
   private spawn(p: ServerPlayer) {

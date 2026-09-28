@@ -4,7 +4,7 @@ import { raycastWorld, type Rapier, type World } from "../../shared/physics";
 import { aimDir, spreadDir } from "../../shared/aim";
 import { WEAPONS, GRENADE, currentSpread, fireIntervalMs, type WeaponId } from "../../shared/weapons";
 import { EYE_HEIGHT, CROUCH_EYE_HEIGHT, GRENADES_PER_LIFE, INTERP_DELAY_MS } from "../../shared/constants";
-import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_SPRINT, type PoseMsg, type SpawnEvent } from "../../shared/messages";
+import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_SPRINT, type AmmoEvent, type PoseMsg, type SpawnEvent } from "../../shared/messages";
 import type { Input } from "./input";
 import type { Game } from "./game";
 import { useSettings } from "../settings";
@@ -37,6 +37,8 @@ export class LocalPlayer {
   reloadEnd = 0;
   switchEnd = 0;
   private lastShot = 0;
+  private shotSeq = 0;
+  private pendingShots: { shot: number; weapon: WeaponId }[] = [];
   private triggerReleased = true;
   private sprintBlockUntil = 0;
   private burst = 0;
@@ -99,6 +101,7 @@ export class LocalPlayer {
     this.weapon = ev.primary;
     this.resetAmmo();
     this.grenades = GRENADES_PER_LIFE;
+    this.pendingShots = [];
     this.reloadEnd = 0;
     this.switchEnd = performance.now() + 300;
     this.cookStart = 0;
@@ -125,6 +128,12 @@ export class LocalPlayer {
   onKillScavenge() {
     const a = this.ammo[this.weapon];
     a.reserve = Math.min(this.def.reserve * 2, a.reserve + this.def.mag);
+  }
+
+  reconcileAmmo(ev: AmmoEvent) {
+    this.pendingShots = this.pendingShots.filter((p) => p.shot > ev.shot);
+    const pending = this.pendingShots.filter((p) => p.weapon === ev.weapon).length;
+    this.ammo[ev.weapon] = { mag: Math.max(0, ev.mag - pending), reserve: ev.reserve };
   }
 
   update(dt: number, input: Input, now: number) {
@@ -353,7 +362,9 @@ export class LocalPlayer {
     const cone = currentSpread(def, this.ads, moving, !this.ms.grounded, this.crouchT > 0.5) * (1 + Math.min(this.burst, 6) * 0.06);
     const dirs = Array.from({ length: def.pellets }, () => spreadDir(aim, cone));
     this.sendPose();
-    this.game.send("fire", { weapon: this.weapon, viewTime: this.game.clock.now() - INTERP_DELAY_MS, origin: eye, dirs });
+    const shot = ++this.shotSeq;
+    this.pendingShots.push({ shot, weapon: this.weapon });
+    this.game.send("fire", { weapon: this.weapon, shot, viewTime: this.game.clock.now() - INTERP_DELAY_MS, origin: eye, dirs });
     this.game.onLocalShot(this.weapon, eye, dirs);
 
     // Recoil: part of the kick stays (the gun climbs), the rest recovers.

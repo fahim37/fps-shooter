@@ -5,6 +5,7 @@ import type { HitPart } from "./hitboxes";
 /** Options passed when creating or joining a room. */
 export interface JoinOptions {
   name: string;
+  mode?: GameMode;
   /** 0 = male, 1 = female character. */
   char: number;
   create?: {
@@ -47,11 +48,20 @@ export interface PoseMsg {
 
 export interface FireMsg {
   weapon: WeaponId;
+  /** Sequence used to reconcile predicted ammunition with server acknowledgments. */
+  shot?: number;
   /** Server-clock time of what the shooter was looking at (render time). */
   viewTime: number;
   origin: [number, number, number];
   /** One unit direction per pellet. */
   dirs: [number, number, number][];
+}
+
+export interface AmmoEvent {
+  weapon: WeaponId;
+  mag: number;
+  reserve: number;
+  shot: number;
 }
 
 export interface GrenadeMsg {

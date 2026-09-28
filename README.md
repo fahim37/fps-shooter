@@ -2,6 +2,8 @@
 
 A browser multiplayer shooter built with Next.js, Three.js, Rapier and Colyseus. The village supports first- and third-person play, team deathmatch and free-for-all, bot-filled matches, room codes, five weapons, grenades, respawns and scoreboards.
 
+Play at https://fahimstack.tech/fps. Create a room, then use **Copy invite link** in the match menu. Friends can open that link and press **Join this room**, or paste the link/code into the lobby. Quick play matches the selected game mode. Press Esc during a match to find the invite controls again.
+
 ## Run locally
 
 Use Node.js 22 or newer.
@@ -27,9 +29,10 @@ npm run build
 # With both servers running and Chrome installed:
 npx tsx scripts/dev/play-test.ts http://localhost:3000
 npx tsx scripts/dev/network-test.ts ws://localhost:2567
+npx tsx scripts/dev/rig-test.ts http://localhost:3000
 ```
 
-Unit tests cover snapshot interpolation, angle wrapping, stale packets, extrapolation limits and respawn discontinuities. The browser smoke test checks two-player room joining, gun handling, camera switching, grenades, scoreboard, leaving and bot-filled quick play. The network test checks authoritative damage, kills and respawns in a private room.
+Unit tests cover snapshot interpolation, angle wrapping, stale packets, extrapolation limits, respawn discontinuities, invites and head/body/leg hit detection. The browser smoke test checks invite-link joining, gun handling, camera switching, grenades, scoreboard, leaving and bot-filled quick play. The network test checks authoritative headshots, ammunition acknowledgments, fire-rate limits, kills and respawns in a private room. The rig test exercises 40 body/weapon/pose combinations and checks skinned vertices for invalid or detached geometry.
 
 ## Production at /fps
 

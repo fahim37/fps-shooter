@@ -15,6 +15,7 @@ import { Ground } from "./world/Ground";
 import { StaticWorld } from "./world/StaticWorld";
 import { PostFX } from "./world/PostFX";
 import { SettingsPanel } from "./Shooter";
+import { inviteUrl } from "./net/invite";
 
 class SceneBoundary extends Component<{ children: ReactNode; onLeave: () => void }, { error: string }> {
   state = { error: "" };
@@ -68,7 +69,8 @@ function MatchHud({ game, onLeave }: { game: Game | null; onLeave: () => void })
       <div className="killfeed">{h.killfeed.filter((k) => now - k.at < 7000).map((k) => <div key={k.key} className={k.mine ? "mine" : ""}><b>{k.killer}</b><span>{k.headshot ? "⌖ " : ""}{k.weapon.toUpperCase()}</span>{k.victim}</div>)}</div>
       {h.ready && h.alive && !paused && !scoreboard && <>
         {h.scoped ? <div className="scope"><i /><b /></div> : <div className="crosshair" style={{ width: 8 + h.spreadDeg * 5, height: 8 + h.spreadDeg * 5 }}><i /><b /><em /><span /></div>}
-        {h.hitmarker.at > 0 && now - h.hitmarker.at < 200 && <div className={`hitmarker ${h.hitmarker.kill ? "kill" : ""}`}>×</div>}
+        {h.hitmarker.at > 0 && now - h.hitmarker.at < 200 && <div className={`hitmarker ${h.hitmarker.kill ? "kill" : ""} ${h.hitmarker.confirmed ? "confirmed" : "predicted"}`}>×</div>}
+        {h.hitmarker.confirmed && now - h.hitmarker.at < 650 && <div className="hit-confirm">{h.hitmarker.kill ? "ELIMINATED" : `${h.hitmarker.damage} DAMAGE`}{h.hitmarker.head && " · HEADSHOT"}</div>}
         {h.hurtAt > 0 && now - h.hurtAt < 550 && <div className="hurt-vignette" />}
         {h.protectedUntil > now + h.serverOffset && <div className="protected">SPAWN PROTECTION</div>}
       </>}
@@ -83,13 +85,30 @@ function MatchHud({ game, onLeave }: { game: Game | null; onLeave: () => void })
       <h2>{failed ? "Connection interrupted" : h.conn === "reconnecting" ? "Reconnecting…" : !h.ready ? "Loading the village…" : "Ready to deploy?"}</h2>
       {failed ? <p role="alert">{h.error}</p> : !h.ready ? <p>Preparing terrain, collision and character rigs.</p> : h.conn === "reconnecting" ? <p>Waiting for the game server.</p> : <>
         <p>{h.roomName} · {MODE_INFO[h.mode].name} · Room <b>{h.code}</b></p>
+        <RoomInvite code={h.code} />
         <button className="primary-button" onClick={() => game?.resume()}>ENTER MATCH <span>↗</span></button>
         <label>NEXT SPAWN LOADOUT<select value={loadout} onChange={(e) => { const w = e.target.value as WeaponId; setLoadout(w); game?.send("loadout", { primary: w }); }}>{PRIMARIES.map((w) => <option key={w} value={w}>{WEAPONS[w].name}</option>)}</select></label>
-        <SettingsPanel /><p className="controls-help">WASD move · Mouse aim · Click fire · Right-click ADS · Shift sprint · Space jump · C crouch · R reload · Q switch · Hold G grenade · V camera · Tab scores</p>
+        <details className="settings-details"><summary>GAME SETTINGS & CONTROLS</summary><SettingsPanel /><p className="controls-help">WASD move · Mouse aim · Click fire · Right-click ADS · Shift sprint · Space jump · C crouch · R reload · Q switch · Hold G grenade · V camera · Tab scores</p></details>
+        <p className="controls-help">WASD to move, mouse to aim, click to shoot. Press Esc to pause and invite friends.</p>
       </>}
       <button className="outline-button" onClick={onLeave}>RETURN TO LOBBY</button>
     </div></div>}
   </>;
+}
+
+function RoomInvite({ code }: { code: string }) {
+  const [message, setMessage] = useState("");
+  const url = inviteUrl(code, window.location.href);
+  async function copy(value: string, label: string) {
+    try { await navigator.clipboard.writeText(value); setMessage(`${label} copied. Send it to your friends.`); }
+    catch { setMessage("Select and copy the invite link below."); }
+  }
+  return <div className="room-invite">
+    <div><span>INVITE FRIENDS</span><strong>{code}</strong></div>
+    <div className="invite-actions"><button aria-label="Copy invite link" onClick={() => void copy(url, "Invite link")}>COPY INVITE LINK ↗</button><button aria-label="Copy room code" onClick={() => void copy(code, "Room code")}>COPY CODE</button></div>
+    <input aria-label="Invite link" value={url} readOnly onFocus={(e) => e.target.select()} />
+    {message && <small role="status">{message}</small>}
+  </div>;
 }
 
 function TouchControls({ game }: { game: Game }) {

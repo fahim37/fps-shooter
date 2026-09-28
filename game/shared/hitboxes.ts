@@ -23,7 +23,8 @@ export function hitboxes(p: Pose) {
   const c = p.crouch;
   return {
     head: { c: [p.x, p.y + (c ? 1.15 : 1.64), p.z] as V3, r: 0.16 },
-    body: { a: [p.x, p.y + (c ? 0.62 : 1.0), p.z] as V3, b: [p.x, p.y + (c ? 0.98 : 1.42), p.z] as V3, r: 0.29 },
+    // End the torso below the head center so its rounded cap cannot swallow headshots.
+    body: { a: [p.x, p.y + (c ? 0.62 : 1.0), p.z] as V3, b: [p.x, p.y + (c ? 0.82 : 1.32), p.z] as V3, r: 0.29 },
     legs: { a: [p.x, p.y + 0.12, p.z] as V3, b: [p.x, p.y + (c ? 0.6 : 0.98), p.z] as V3, r: 0.22 },
   };
 }
@@ -62,6 +63,10 @@ export function rayCapsule(o: V3, d: V3, a: V3, b: V3, r: number): number | null
   const ba: V3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
   const oa: V3 = [o[0] - a[0], o[1] - a[1], o[2] - a[2]];
   const baba = dot(ba, ba), bard = dot(ba, d), baoa = dot(ba, oa), rdoa = dot(d, oa), oaoa = dot(oa, oa);
+  if (baba < 1e-12) return raySphere(o, d, a, r);
+  const closest = Math.max(0, Math.min(1, baoa / baba));
+  const inside = oaoa - 2 * closest * baoa + closest * closest * baba;
+  if (inside <= r * r) return 0;
   const aa = baba - bard * bard;
   let bb = baba * rdoa - baoa * bard;
   let cc = baba * oaoa - baoa * baoa - r * r * baba;

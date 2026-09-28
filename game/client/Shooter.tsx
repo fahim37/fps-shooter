@@ -7,13 +7,14 @@ import { MODE_INFO, type GameMode } from "../shared/constants";
 import type { JoinOptions } from "../shared/messages";
 import GameView from "./GameView";
 import { audio } from "./core/audio";
+import { parseRoomCode } from "./net/invite";
 
 export default function Shooter() {
   const [room, setRoom] = useState<GameRoom | null>(null);
   const [rooms, setRooms] = useState<PublicRoom[]>([]);
   const [online, setOnline] = useState(false);
   const [name, setName] = useState(useSettings.getState().name || "Ranger");
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(() => parseRoomCode(window.location.href));
   const [mode, setMode] = useState<GameMode>("tdm");
   const [character, setCharacter] = useState(0);
   const [privateRoom, setPrivateRoom] = useState(false);
@@ -38,9 +39,9 @@ export default function Shooter() {
     setBusy(true); setError(""); audio.unlock();
     const playerName = name.trim().slice(0, 20) || "Ranger";
     useSettings.getState().set({ name: playerName });
-    const opts: JoinOptions = { name: playerName, char: character };
+    const opts: JoinOptions = { name: playerName, char: character, mode };
     try {
-      const joined = await (kind === "code" ? joinByCode(selectedCode, opts) : kind === "quick" ? quickPlay(opts) : createRoom({
+      const joined = await (kind === "code" ? joinByCode(parseRoomCode(selectedCode), opts) : kind === "quick" ? quickPlay(opts) : createRoom({
         ...opts, create: { mode, maxPlayers: 12, bots, botSkill: 1, private: privateRoom, roomName: `${playerName}'s match` },
       }));
       setRoom(joined);
@@ -58,12 +59,13 @@ export default function Shooter() {
     <section className="lobby-panel" aria-label="Play Hollowmere">
       <div className="panel-heading"><span className="eyebrow">DEPLOYMENT</span><span>01 — READY UP</span></div>
       <fieldset disabled={busy}>
+        {parseRoomCode(code) && <div className="invite-banner">YOU HAVE AN INVITE <b>{parseRoomCode(code)}</b><button onClick={() => void join("code")}>JOIN THIS ROOM →</button></div>}
         <label>CALLSIGN<input value={name} onChange={(e) => setName(e.target.value)} maxLength={20} autoComplete="nickname" /></label>
-        <div className="field-row"><label>CHARACTER<select value={character} onChange={(e) => setCharacter(Number(e.target.value))}><option value={0}>Ranger / Male</option><option value={1}>Ranger / Female</option></select></label><label>MODE<select value={mode} onChange={(e) => setMode(e.target.value as GameMode)}><option value="tdm">Team Deathmatch</option><option value="ffa">Free for All</option></select></label></div>
+        <div className="field-row"><label>CHARACTER<select value={character} onChange={(e) => setCharacter(Number(e.target.value))}><option value={0}>Ranger / Male</option><option value={1}>Ranger / Female</option></select></label><label>MODE<select aria-label="Game mode" value={mode} onChange={(e) => setMode(e.target.value as GameMode)}><option value="tdm">Team Deathmatch</option><option value="ffa">Free for All</option></select></label></div>
         <button className="primary-button" onClick={() => void join("quick")}>{busy ? "CONNECTING…" : "QUICK PLAY"}<span>↗</span></button>
         <div className="field-row"><label>FILL MATCH TO<select value={bots} onChange={(e) => setBots(Number(e.target.value))}><option value={0}>No bots</option><option value={4}>4 players</option><option value={8}>8 players</option><option value={12}>12 players</option></select></label><label className="check-label"><input type="checkbox" checked={privateRoom} onChange={(e) => setPrivateRoom(e.target.checked)} /> Private room</label></div>
         <button className="outline-button" onClick={() => void join("create")}>CREATE {MODE_INFO[mode].name.toUpperCase()}</button>
-        <div className="join-code"><input aria-label="Room code" placeholder="ROOM CODE" maxLength={5} value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} /><button disabled={code.trim().length !== 5} onClick={() => void join("code")}>JOIN →</button></div>
+        <div className="join-code"><input aria-label="Room code" placeholder="ROOM CODE OR INVITE LINK" value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && parseRoomCode(code)) void join("code"); }} /><button disabled={!parseRoomCode(code)} onClick={() => void join("code")}>JOIN →</button></div>
       </fieldset>
       {error && <p role="alert" className="error-text">{error}</p>}
       <details className="settings-details"><summary>SETTINGS & CONTROLS</summary><SettingsPanel /><p className="controls-help">WASD move · Mouse aim · Click fire · Right-click ADS · Shift sprint · Space jump · C crouch · R reload · 1 / 2 / Q switch · Hold G to cook, release to throw · V camera · Tab scores · Esc pause</p></details>
