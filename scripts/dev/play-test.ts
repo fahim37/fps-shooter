@@ -1,0 +1,74 @@
+import { chromium } from "playwright-core";
+import assert from "node:assert/strict";
+
+async function main() {
+  const url = process.argv[2] || "http://localhost:3100";
+  const browser = await chromium.launch({ channel: "chrome", headless: true, args: ["--enable-gpu", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader"] });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+  try {
+    await page.goto(url);
+    await page.getByText("SERVER ONLINE", { exact: true }).waitFor({ timeout: 60000 });
+    await page.getByLabel("FILL MATCH TO").selectOption("0");
+    await page.getByLabel("Private room").check();
+    await page.getByRole("button", { name: "CREATE TEAM DEATHMATCH" }).click();
+    await page.getByRole("button", { name: "ENTER MATCH" }).waitFor({ timeout: 90000 });
+    const roomCode = (await page.locator(".match-mode small").innerText()).split(" · ")[0];
+    const peer = await browser.newPage({ viewport: { width: 960, height: 640 } });
+    peer.on("pageerror", (e) => errors.push(e.message));
+    await peer.goto(url);
+    await peer.getByLabel("CALLSIGN").fill("Second Ranger");
+    await peer.getByLabel("Room code", { exact: true }).fill(roomCode);
+    await peer.getByRole("button", { name: "JOIN →", exact: true }).click();
+    await peer.getByRole("button", { name: "ENTER MATCH" }).waitFor({ timeout: 90000 });
+    await page.bringToFront();
+    await page.getByRole("button", { name: "ENTER MATCH" }).click();
+    await page.waitForFunction(() => !!document.pointerLockElement, { timeout: 10000 });
+    await page.waitForTimeout(9000); // Let warmup respawn finish.
+    const ammo = page.locator(".ammo strong");
+    assert.match(await ammo.innerText(), /30/);
+    await page.mouse.down(); await page.waitForTimeout(550); await page.mouse.up();
+    const after = parseInt(await ammo.innerText());
+    assert.ok(after < 30 && after > 0, `Firing must consume rounds: ${after}`);
+    await page.keyboard.press("KeyR");
+    await page.waitForTimeout(2600);
+    assert.equal(parseInt(await ammo.innerText()), 30, "Reload should refill magazine");
+    await page.keyboard.press("Digit2"); await page.waitForTimeout(650);
+    assert.match(await page.locator(".ammo").innerText(), /Sidearm/i);
+    await page.mouse.down(); await page.waitForTimeout(700); await page.mouse.up();
+    const pistolAmmo = parseInt(await ammo.innerText());
+    assert.equal(pistolAmmo, 11, "Holding a semi-automatic trigger should fire once");
+    await page.keyboard.press("KeyV"); await page.waitForTimeout(300);
+    assert.match(await page.locator(".ammo").innerText(), /TPP/);
+    await page.keyboard.down("KeyW"); await page.waitForTimeout(1200); await page.keyboard.up("KeyW");
+    await page.keyboard.down("KeyG"); await page.waitForTimeout(400); await page.keyboard.up("KeyG");
+    await page.waitForTimeout(350);
+    assert.match(await page.locator(".ammo").innerText(), /1 GRENADES/);
+    await page.keyboard.down("Tab"); await page.waitForTimeout(250);
+    assert.equal(await page.locator(".scoreboard tbody tr").count(), 2);
+    assert.match(await page.locator(".scoreboard").innerText(), /Second Ranger/);
+    await page.keyboard.up("Tab");
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: ".next/match.png" });
+    await page.evaluate(() => document.exitPointerLock());
+    await page.getByRole("button", { name: "RETURN TO LOBBY" }).click();
+    await page.getByRole("button", { name: "QUICK PLAY" }).waitFor();
+    await peer.getByRole("button", { name: "RETURN TO LOBBY" }).click();
+    await peer.close();
+    await page.getByRole("button", { name: "QUICK PLAY" }).click();
+    await page.getByRole("button", { name: "ENTER MATCH" }).waitFor({ timeout: 90000 });
+    await page.getByRole("button", { name: "ENTER MATCH" }).click();
+    await page.waitForTimeout(500);
+    await page.keyboard.down("Tab"); await page.waitForTimeout(250);
+    assert.equal(await page.locator(".scoreboard tbody tr").count(), 8, "Quick play should fill the match with bots");
+    await page.keyboard.up("Tab");
+    await page.waitForTimeout(1000);
+    await page.evaluate(() => document.exitPointerLock());
+    await page.getByRole("button", { name: "RETURN TO LOBBY" }).click();
+    assert.deepEqual(errors, []);
+    console.log(JSON.stringify({ passed: true, automaticRounds: 30 - after, pistolAmmo, checks: ["load", "pointer lock", "fire", "reload", "switch", "third person", "move", "grenade", "scoreboard", "leave"], errors }));
+  } finally { await browser.close(); }
+}
+main().catch((e) => { console.error(e); process.exitCode = 1; });
