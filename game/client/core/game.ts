@@ -10,7 +10,7 @@ import { rayVsPose, type HitPart } from "../../shared/hitboxes";
 import { INTERP_DELAY_MS, RESPAWN_MS, type GameMode } from "../../shared/constants";
 import { WEAPONS, currentSpread, type WeaponId } from "../../shared/weapons";
 import type { MatchState } from "../../shared/schema";
-import type { DamagedEvent, ExplosionEvent, HitConfirm, KillEvent, Pong, ShotEvent, SpawnEvent } from "../../shared/messages";
+import type { AmmoEvent, DamagedEvent, ExplosionEvent, HitConfirm, KillEvent, Pong, ShotEvent, SpawnEvent } from "../../shared/messages";
 import { loadClientWorld } from "./physics";
 import { LocalPlayer } from "./local";
 import { RemotePlayer } from "./remotes";
@@ -101,9 +101,10 @@ export class Game {
       room.onMessage<SpawnEvent>("spawn", (ev) => this.spawn(ev)),
       room.onMessage<{ x: number; y: number; z: number }>("correct", (ev) => this.local?.correct(ev.x, ev.y, ev.z)),
       room.onMessage<Pong>("pong", (ev) => this.clock.onPong(ev.c, ev.s)),
+      room.onMessage<AmmoEvent>("ammo", (ev) => this.local?.reconcileAmmo(ev)),
       room.onMessage<ShotEvent>("shot", (ev) => this.remoteShot(ev)),
       room.onMessage<HitConfirm>("hit", (ev) => {
-        hud().set({ hitmarker: { at: performance.now(), head: ev.part === "head", kill: ev.killed } });
+        hud().set({ hitmarker: { at: performance.now(), head: ev.part === "head", kill: ev.killed, confirmed: true, damage: ev.damage } });
         audio.hitmarker(ev.part === "head", ev.killed);
       }),
       room.onMessage<DamagedEvent>("damaged", (ev) => {
@@ -154,6 +155,7 @@ export class Game {
         let remote = this.remotes.get(id);
         if (!remote) { remote = new RemotePlayer(id); this.remotes.set(id, remote); }
         remote.name = p.name;
+        remote.protectedUntil = p.protectedUntil;
         remote.ensureRig(this.templates, this.weapons, p.team, p.char, this.scene);
         remote.setWeapon(p.weapon as WeaponId);
         remote.push(state.serverTime, p);
@@ -180,7 +182,7 @@ export class Game {
     let target: RemotePlayer | null = null;
     let part: HitPart = "body";
     if (players) for (const remote of this.remotes.values()) {
-      if (!remote.alive || (hud().mode === "tdm" && remote.team === hud().myTeam)) continue;
+      if (!remote.alive || remote.protectedUntil > this.clock.now() || (hud().mode === "tdm" && remote.team === hud().myTeam)) continue;
       const hit = rayVsPose(origin, dir, distance, remote.pose());
       if (hit && hit.distance < distance) { distance = hit.distance; target = remote; part = hit.part; }
     }
@@ -200,7 +202,9 @@ export class Game {
       if (hit.target) {
         this.effects.blood(point, new THREE.Vector3(...dir), hit.part === "head");
         // Prediction is visual only. Damage, scores and kill confirmation stay server-owned.
-        hud().set({ hitmarker: { at: performance.now(), head: hit.part === "head", kill: false } });
+        if (performance.now() - hud().hitmarker.at > 150 || !hud().hitmarker.confirmed) {
+          hud().set({ hitmarker: { at: performance.now(), head: hit.part === "head", kill: false, confirmed: false, damage: 0 } });
+        }
       } else if (hit.wall) this.effects.impact(point, new THREE.Vector3(...hit.wall.normal), point.y < 0.1);
     }
   }

@@ -16,13 +16,15 @@ async function main() {
     await page.getByRole("button", { name: "CREATE TEAM DEATHMATCH" }).click();
     await page.getByRole("button", { name: "ENTER MATCH" }).waitFor({ timeout: 90000 });
     const roomCode = (await page.locator(".match-mode small").innerText()).split(" · ")[0];
+    const invite = await page.getByLabel("Invite link", { exact: true }).inputValue();
+    assert.ok(invite.includes(`room=${roomCode}`));
     const peer = await browser.newPage({ viewport: { width: 960, height: 640 } });
     peer.on("pageerror", (e) => errors.push(e.message));
-    await peer.goto(url);
+    await peer.goto(invite);
     await peer.getByLabel("CALLSIGN").fill("Second Ranger");
-    await peer.getByLabel("Room code", { exact: true }).fill(roomCode);
-    await peer.getByRole("button", { name: "JOIN →", exact: true }).click();
+    await peer.getByRole("button", { name: "JOIN THIS ROOM →", exact: true }).click();
     await peer.getByRole("button", { name: "ENTER MATCH" }).waitFor({ timeout: 90000 });
+    console.log("Invite link joined by second player");
     await page.bringToFront();
     await page.getByRole("button", { name: "ENTER MATCH" }).click();
     await page.waitForFunction(() => !!document.pointerLockElement, { timeout: 10000 });
@@ -57,10 +59,13 @@ async function main() {
     await page.getByRole("button", { name: "QUICK PLAY" }).waitFor();
     await peer.getByRole("button", { name: "RETURN TO LOBBY" }).click();
     await peer.close();
+    console.log("Weapon, camera, grenade and scoreboard checks passed");
+    await page.getByLabel("Game mode", { exact: true }).selectOption("ffa");
     await page.getByRole("button", { name: "QUICK PLAY" }).click();
     await page.getByRole("button", { name: "ENTER MATCH" }).waitFor({ timeout: 90000 });
     await page.getByRole("button", { name: "ENTER MATCH" }).click();
     await page.waitForTimeout(500);
+    assert.match(await page.locator(".match-mode").innerText(), /Free for All/);
     await page.keyboard.down("Tab"); await page.waitForTimeout(250);
     assert.equal(await page.locator(".scoreboard tbody tr").count(), 8, "Quick play should fill the match with bots");
     await page.keyboard.up("Tab");
@@ -69,6 +74,11 @@ async function main() {
     await page.getByRole("button", { name: "RETURN TO LOBBY" }).click();
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ passed: true, automaticRounds: 30 - after, pistolAmmo, checks: ["load", "pointer lock", "fire", "reload", "switch", "third person", "move", "grenade", "scoreboard", "leave"], errors }));
+  } catch (error) {
+    console.error("Browser errors:", errors);
+    console.error("Visible UI:", await page.locator("body").innerText().catch(() => "unavailable"));
+    await page.screenshot({ path: ".next/play-test-failure.png" }).catch(() => {});
+    throw error;
   } finally { await browser.close(); }
 }
 main().catch((e) => { console.error(e); process.exitCode = 1; });

@@ -25,6 +25,7 @@ export class RemotePlayer {
   weapon: WeaponId = "ar";
   name = "";
   alive = false;
+  protectedUntil = 0;
   /** Interpolated render pose (feet). */
   readonly pos = new THREE.Vector3();
   yaw = 0;
@@ -150,7 +151,9 @@ export class RemotePlayer {
       reload: this.reloadT >= 0 ? Math.min(this.reloadT, 1) : -1,
       recoil: this.recoil,
     });
-    this.head.set(this.pos.x, this.pos.y + ((this.flags & F_CROUCH) ? 1.35 : 1.95), this.pos.z);
+    const headBone = this.rig.inst?.bones.get("Head");
+    if (headBone) headBone.getWorldPosition(this.head).y += 0.1;
+    else this.head.set(this.pos.x, this.pos.y + ((this.flags & F_CROUCH) ? 1.15 : 1.64), this.pos.z);
 
     // Footsteps for nearby players.
     if (this.alive && speed > 0.6 && (this.flags & F_GROUNDED)) {

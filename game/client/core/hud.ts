@@ -54,7 +54,7 @@ export interface HudState {
   killedBy: { name: string; weapon: string } | null;
   protectedUntil: number;
 
-  hitmarker: { at: number; head: boolean; kill: boolean };
+  hitmarker: { at: number; head: boolean; kill: boolean; confirmed: boolean; damage: number };
   damage: { angle: number; at: number }[];
   hurtAt: number;
   killfeed: KillFeedEntry[];
@@ -103,7 +103,7 @@ export const useHud = create<HudState>((set) => ({
   respawnAt: 0,
   killedBy: null,
   protectedUntil: 0,
-  hitmarker: { at: 0, head: false, kill: false },
+  hitmarker: { at: 0, head: false, kill: false, confirmed: false, damage: 0 },
   damage: [],
   hurtAt: 0,
   killfeed: [],
