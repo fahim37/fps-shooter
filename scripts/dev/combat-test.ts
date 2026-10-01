@@ -34,6 +34,22 @@ async function main() {
     await page.getByRole("button", { name: "ENTER MATCH" }).click();
     await page.waitForFunction(() => !!document.pointerLockElement);
     await sleep(3000);
+    // A remote asset load can finish after the initial spawn. Loadout selection
+    // applies on the next spawn, so use a real elimination when necessary.
+    {
+      const victim = [...room.state.players.entries()].find(([id]) => id !== room!.sessionId)!;
+      if (victim[1].weapon !== "sniper") {
+        const { x, y, z } = victim[1];
+        room.send("pose", { x, y, z: z - 2, yaw: Math.PI, pitch: 0, vx: 0, vy: 0, vz: 0, flags: 0, weapon: "ar" });
+        await sleep(500);
+        for (let shot = 1; shot <= 6 && room.state.players.get(victim[0])?.alive; shot++) {
+          room.send("fire", { weapon: "ar", shot, origin: [x, y + 1.64, z - 2], dirs: [[0, 0, 1]], viewTime: room.state.serverTime });
+          await sleep(180);
+        }
+        await until(() => room!.state.players.get(victim[0])?.weapon === "sniper" && room!.state.players.get(victim[0])?.alive === true);
+        await sleep(3000);
+      }
+    }
     const player = [...room.state.players.entries()].find(([id]) => id !== room!.sessionId)![1];
     const forwardX = -Math.sin(player.yaw), forwardZ = -Math.cos(player.yaw);
     const position = { x: player.x + forwardX * 2, y: player.y, z: player.z + forwardZ * 2 };

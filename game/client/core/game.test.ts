@@ -7,6 +7,17 @@ vi.mock("./audio", () => ({ audio: { shot: vi.fn() } }));
 
 beforeEach(() => useHud.setState({ hitmarker: { at: 0, head: false, kill: false, confirmed: false, damage: 0 } }));
 
+it("ignores the previous dead snapshot after respawn but accepts later deaths", () => {
+  const state = { awaitingSpawnState: true, local: { alive: true, die: vi.fn() } };
+  const sync = (Game.prototype as unknown as { syncLife(alive: boolean): void }).syncLife;
+  sync.call(state, false);
+  expect(state.local.die).not.toHaveBeenCalled();
+  sync.call(state, true);
+  expect(state.awaitingSpawnState).toBe(false);
+  sync.call(state, false);
+  expect(state.local.die).toHaveBeenCalledOnce();
+});
+
 describe("local shot presentation", () => {
   it("uses the current eye for scoped tracers after the hidden viewmodel is left behind", () => {
     const tracer = vi.fn();

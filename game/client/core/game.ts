@@ -39,6 +39,7 @@ export class Game {
   private rigKey = "";
   private pendingSpawn: SpawnEvent | null = null;
   private initializedPlayer = false;
+  private awaitingSpawnState = false;
   private disposed = false;
   private cleanup: (() => void)[] = [];
   private pingAt = 0;
@@ -130,10 +131,18 @@ export class Game {
     if (!this.local) { this.pendingSpawn = ev; return; }
     this.pendingSpawn = null;
     this.initializedPlayer = true;
+    this.awaitingSpawnState = true;
     this.killer = "";
     this.local.spawn(ev);
     this.local.updateView();
     hud().set({ alive: true, hp: 100, killedBy: null, respawnAt: 0 });
+  }
+
+  private syncLife(alive: boolean) {
+    // Spawn messages arrive before the state patch. Ignore the previous life's
+    // dead snapshot until replication acknowledges the new live player.
+    if (alive) this.awaitingSpawnState = false;
+    else if (!this.awaitingSpawnState && this.local?.alive) this.local.die();
   }
 
   private syncState(state: MatchState) {
@@ -142,7 +151,7 @@ export class Game {
     const me = state.players.get(this.room.sessionId);
     if (me && this.local) {
       if (!this.initializedPlayer && me.alive) this.spawn({ x: me.x, y: me.y, z: me.z, yaw: me.yaw, primary: me.primary as WeaponId });
-      if (!me.alive && this.local.alive) this.local.die();
+      this.syncLife(me.alive);
       const key = `${me.team}:${me.char}`;
       if (key !== this.rigKey) {
         this.fpp?.dispose(); this.tpp?.dispose();
