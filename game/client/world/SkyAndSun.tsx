@@ -2,7 +2,7 @@
 
 /* eslint-disable react-hooks/immutability -- Scene, lights and vectors are imperative Three objects. */
 
-import { useEffect, useMemo, useRef } from "react";
+import { Suspense, useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Environment } from "@react-three/drei";
 import * as THREE from "three";
@@ -30,6 +30,15 @@ export function SkyAndSun() {
   }, [scene, p.drawDistance]);
 
   useEffect(() => {
+    if (camera instanceof THREE.PerspectiveCamera) {
+      camera.far = p.drawDistance * 1.3;
+      camera.updateProjectionMatrix();
+    }
+  }, [camera, p.drawDistance]);
+
+  useEffect(() => { windUniforms.uWindEnabled.value = p.wind ? 1 : 0; }, [p.wind]);
+
+  useEffect(() => {
     scene.add(target);
     return () => { scene.remove(target); };
   }, [scene, target]);
@@ -45,14 +54,18 @@ export function SkyAndSun() {
     cam.far = 220;
     cam.updateProjectionMatrix();
     light.shadow.map?.dispose();
+    light.shadow.mapPass?.dispose();
     light.shadow.map = null;
-  }, [p.shadowMapSize, p.shadowExtent]);
+    light.shadow.mapPass = null;
+    light.shadow.needsUpdate = true;
+  }, [p.shadowMapSize, p.shadowExtent, p.shadows]);
 
   const snap = useMemo(() => new THREE.Vector3(), []);
   useFrame((_, dt) => {
-    windUniforms.uWindTime.value += dt;
+    if (p.wind) windUniforms.uWindTime.value += dt;
     const light = sun.current;
     if (!light) return;
+    if (!p.shadows) return;
     // Keep the shadow frustum centered slightly ahead of the camera, snapped to shadow
     // texels so edges don't shimmer as the player moves.
     camera.getWorldDirection(snap);
@@ -69,16 +82,19 @@ export function SkyAndSun() {
 
   return (
     <>
-      <Environment
+      {/* A different HDR resolution may load mid-match; isolate its suspension from gameplay. */}
+      <Suspense fallback={null}><Environment
         files={assetUrl(`/env/sky_${p.hdri}.hdr`)}
         background
         environmentIntensity={0.85}
         backgroundIntensity={1}
         backgroundRotation={[0, Math.PI * 0.2, 0]}
         environmentRotation={[0, Math.PI * 0.2, 0]}
-      />
+      /></Suspense>
       <directionalLight
         ref={sun}
+        position={[SUN_DIR.x * 120, SUN_DIR.y * 120, SUN_DIR.z * 120]}
+        target={target}
         color="#ffe9cf"
         intensity={3.1}
         castShadow={p.shadows}

@@ -1,9 +1,12 @@
 "use client";
 
-import { use, useEffect, useMemo } from "react";
+/* eslint-disable react-hooks/immutability -- Instanced meshes and cached kit textures are imperative Three objects. */
+
+import { use, useEffect, useMemo, useRef } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { loadKit } from "../assets/kits";
-import { buildInstancedMeshes } from "./instances";
+import { buildInstancedMeshes, DECORATIVE } from "./instances";
 import { applyWind } from "./wind";
 import type { MapData } from "../../shared/map/types";
 import { useSettings, PRESETS } from "../settings";
@@ -16,12 +19,14 @@ const kitsPromise = () =>
 let cached: ReturnType<typeof kitsPromise> | null = null;
 export const loadAllKits = () => (cached ??= kitsPromise());
 
-const DECORATIVE = /^(Grass_|Flower_|Clover|Fern|Plant_|Pebble_|Mushroom)/;
-
 /** Renders every static map piece with GPU instancing. */
 export function StaticWorld({ map }: { map: MapData }) {
   const kits = use(loadAllKits());
-  const foliage = useSettings((s) => PRESETS[s.quality].foliage);
+  const quality = useSettings((s) => s.quality);
+  const p = PRESETS[quality];
+  const { foliage } = p;
+  const gl = useThree((s) => s.gl);
+  const cullTimer = useRef(0);
 
   const meshes = useMemo(() => {
     // Thin out decorative foliage on lower quality settings (deterministically).
@@ -32,10 +37,37 @@ export function StaticWorld({ map }: { map: MapData }) {
 
   useEffect(() => () => meshes.forEach((m) => m.dispose()), [meshes]);
 
+  useEffect(() => {
+    const anisotropy = Math.min(p.textureAnisotropy, gl.capabilities.getMaxAnisotropy());
+    const seen = new Set<THREE.Texture>();
+    for (const kit of Object.values(kits)) for (const piece of kit.values()) for (const part of piece.parts) {
+      const material = part.material as THREE.MeshStandardMaterial;
+      for (const texture of [material.map, material.normalMap, material.aoMap, material.roughnessMap, material.metalnessMap]) {
+        if (!texture || seen.has(texture)) continue;
+        seen.add(texture);
+        if (texture.anisotropy !== anisotropy) { texture.anisotropy = anisotropy; texture.needsUpdate = true; }
+      }
+    }
+  }, [kits, gl, p.textureAnisotropy]);
+
+  // Cull only non-colliding decoration. Walls, cover and enemy visibility stay identical.
+  useFrame(({ camera }, dt) => {
+    cullTimer.current -= dt;
+    if (cullTimer.current > 0) return;
+    cullTimer.current = 0.2;
+    for (const mesh of meshes) {
+      if (!mesh.userData.decorative || !mesh.boundingSphere) continue;
+      const sphere = mesh.boundingSphere;
+      const distance = p.decorationDistance + sphere.radius;
+      const dx = sphere.center.x - camera.position.x, dz = sphere.center.z - camera.position.z;
+      mesh.visible = dx * dx + dz * dz <= distance * distance;
+    }
+  });
+
   return (
     <group>
       {meshes.map((m) => (
-        <primitive key={m.uuid} object={m} />
+        <primitive key={m.uuid} object={m} dispose={null} />
       ))}
     </group>
   );

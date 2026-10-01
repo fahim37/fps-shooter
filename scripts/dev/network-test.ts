@@ -42,6 +42,7 @@ async function main() {
     await until(() => a.state.players.get(a.sessionId)?.kills === 1);
     assert.ok(hits.some((h) => h.killed), "Server should confirm lethal damage");
     assert.ok(hits.every((h) => h.part === "head"), "Head-center shots must not be intercepted by the torso capsule");
+    assert.ok(hits.every((h) => h.point?.every(Number.isFinite) && h.dir?.[2] === -1), "Confirmed blood must have an authoritative impact point and direction");
     assert.ok(ammunition.length > 0 && ammunition.at(-1)!.mag < 30, "Server must acknowledge actual ammunition");
     assert.equal(a.state.players.get(b.sessionId)?.alive, false);
     const magazine = ammunition.at(-1)!.mag;

@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { Mover, newMoveState, type MoveState } from "../../shared/movement";
 import { raycastWorld, type Rapier, type World } from "../../shared/physics";
-import { aimDir, spreadDir } from "../../shared/aim";
+import { aimDir, spreadDir, zoomSensitivity } from "../../shared/aim";
 import { WEAPONS, GRENADE, currentSpread, fireIntervalMs, type WeaponId } from "../../shared/weapons";
 import { EYE_HEIGHT, CROUCH_EYE_HEIGHT, GRENADES_PER_LIFE, INTERP_DELAY_MS } from "../../shared/constants";
 import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_SPRINT, type AmmoEvent, type PoseMsg, type SpawnEvent } from "../../shared/messages";
@@ -9,6 +9,7 @@ import type { Input } from "./input";
 import type { Game } from "./game";
 import { useSettings } from "../settings";
 import { audio } from "./audio";
+import { ShotCadence } from "./cadence";
 
 type V3 = [number, number, number];
 
@@ -36,13 +37,14 @@ export class LocalPlayer {
   reloadStart = 0;
   reloadEnd = 0;
   switchEnd = 0;
-  private lastShot = 0;
+  private cadence = new ShotCadence();
   private shotSeq = 0;
   private pendingShots: { shot: number; weapon: WeaponId }[] = [];
   private triggerReleased = true;
   private sprintBlockUntil = 0;
   private burst = 0;
   ads = 0;
+  private adsProgress = 0;
   crouchT = 0;
   grenades = GRENADES_PER_LIFE;
   private cookStart = 0;
@@ -106,10 +108,11 @@ export class LocalPlayer {
     this.switchEnd = performance.now() + 300;
     this.cookStart = 0;
     this.alive = true;
-    this.ads = 0;
+    this.ads = this.adsProgress = 0;
     this.sendAt = 0;
     this.acc = this.pendingLand = this.landDip = this.crouchT = this.recoil = this.burst = 0;
-    this.lastShot = this.sprintBlockUntil = this.stepDist = 0;
+    this.cadence.reset();
+    this.sprintBlockUntil = this.stepDist = 0;
     this.triggerReleased = true;
     this.updateView();
   }
@@ -123,6 +126,12 @@ export class LocalPlayer {
     this.alive = false;
     this.reloadEnd = 0;
     this.cookStart = 0;
+  }
+
+  cancelActions() {
+    // Opening a menu or editing the HUD must not turn a held grenade into a throw.
+    this.cookStart = 0;
+    this.triggerReleased = true;
   }
 
   onKillScavenge() {
@@ -141,8 +150,7 @@ export class LocalPlayer {
 
     // ---- look
     const [lx, ly] = input.consumeLook();
-    const fovScale = this.currentFov() / s.fov;
-    const sens = 0.0022 * s.sensitivity * (this.ads > 0.5 ? s.adsSensitivity * fovScale : 1);
+    const sens = 0.0022 * s.sensitivity * zoomSensitivity(s.fov, this.currentFov(), this.ads, s.adsSensitivity);
     const touchScale = input.touch ? 2.2 : 1;
     this.yaw -= lx * sens * touchScale;
     this.pitch -= ly * sens * touchScale * (s.invertY ? -1 : 1);
@@ -189,7 +197,7 @@ export class LocalPlayer {
     const [fwd, right] = input.axes();
     const wasSprinting = this.ms.sprinting;
     const wantsSprint = input.sprint && now > this.sprintBlockUntil && !input.fire && !input.ads;
-    const adsHeld = input.ads && !this.ms.sprinting;
+    const adsHeld = input.ads;
     this.acc += Math.min(dt, 0.1);
     const wasGrounded = this.ms.grounded;
     while (this.acc >= STEP) {
@@ -214,7 +222,8 @@ export class LocalPlayer {
     // ---- ADS
     const adsTarget = adsHeld && !this.reloading && now > this.switchEnd ? 1 : 0;
     const adsRate = 1000 / def.adsMs;
-    this.ads = THREE.MathUtils.clamp(this.ads + Math.sign(adsTarget - this.ads) * adsRate * dt, 0, 1);
+    this.adsProgress = THREE.MathUtils.clamp(this.adsProgress + Math.sign(adsTarget - this.adsProgress) * adsRate * dt, 0, 1);
+    this.ads = THREE.MathUtils.smoothstep(this.adsProgress, 0, 1);
 
     // ---- fire
     if (!input.fire) {
@@ -275,11 +284,11 @@ export class LocalPlayer {
     const base = useSettings.getState().fov;
     const def = this.def;
     const target = def.scope ? def.adsFov : Math.min(base, def.adsFov + (base - 78));
-    return base + (target - base) * (def.scope ? Math.max(0, this.ads - 0.6) / 0.4 : this.ads);
+    return base + (target - base) * this.ads;
   }
 
   get scoped() {
-    return this.def.scope === true && this.ads > 0.92 && this.alive && !this.thirdPerson;
+    return this.def.scope === true && this.ads > 0.7 && this.alive && !this.thirdPerson;
   }
 
   /** Where the camera sits and looks (FPP eye, or over-the-shoulder in TPP). */
@@ -313,7 +322,8 @@ export class LocalPlayer {
     this.weapon = w;
     this.reloadEnd = 0;
     this.switchEnd = now + WEAPONS[w].equipMs;
-    this.ads = Math.min(this.ads, 0.3);
+    this.adsProgress = this.ads = 0;
+    this.cadence.reset();
     this.sendPose();
     audio.switchWeapon();
   }
@@ -332,7 +342,8 @@ export class LocalPlayer {
     const def = this.def;
     if (now < this.switchEnd || this.reloading || this.cookStart) return;
     if (!def.auto && !this.triggerReleased) return;
-    if (now - this.lastShot < fireIntervalMs(def)) return;
+    const interval = fireIntervalMs(def);
+    if (!this.cadence.ready(now, interval)) return;
     if (this.game.matchEnded) return;
     const a = this.ammo[this.weapon];
     if (a.mag <= 0) {
@@ -342,7 +353,7 @@ export class LocalPlayer {
       return;
     }
     this.triggerReleased = false;
-    this.lastShot = now;
+    this.cadence.record(now, interval, def.auto);
     this.sprintBlockUntil = now + 250;
     a.mag--;
 
@@ -358,8 +369,7 @@ export class LocalPlayer {
       const l = Math.hypot(d[0], d[1], d[2]) || 1;
       aim = [d[0] / l, d[1] / l, d[2] / l];
     }
-    const moving = Math.min(1, Math.hypot(this.ms.vx, this.ms.vz) / 5);
-    const cone = currentSpread(def, this.ads, moving, !this.ms.grounded, this.crouchT > 0.5) * (1 + Math.min(this.burst, 6) * 0.06);
+    const cone = this.spread;
     const dirs = Array.from({ length: def.pellets }, () => spreadDir(aim, cone));
     this.sendPose();
     const shot = ++this.shotSeq;
@@ -368,13 +378,13 @@ export class LocalPlayer {
     this.game.onLocalShot(this.weapon, eye, dirs);
 
     // Recoil: part of the kick stays (the gun climbs), the rest recovers.
-    const damp = (1 - this.ads * 0.3) * (this.crouchT > 0.5 ? 0.85 : 1);
+    const damp = (1 - this.ads * 0.45) * (this.crouchT > 0.5 ? 0.85 : 1);
     const up = ((def.recoilUp * Math.PI) / 180) * damp * (0.9 + Math.random() * 0.2);
-    const side = ((def.recoilSide * Math.PI) / 180) * damp * (Math.random() * 2 - 1 + (this.burst > 4 ? 0.3 : 0));
-    this.pitch += up * 0.35;
-    this.yaw += side * 0.35;
-    this.kickPitch += up * 0.65;
-    this.kickYaw += side * 0.65;
+    const side = ((def.recoilSide * Math.PI) / 180) * damp * (Math.random() * 2 - 1) * 0.7;
+    this.pitch = THREE.MathUtils.clamp(this.pitch + up * 0.25, -1.5, 1.5);
+    this.yaw += side * 0.25;
+    this.kickPitch += up * 0.75;
+    this.kickYaw += side * 0.75;
     this.recoil = 1;
     this.burst++;
   }
@@ -392,6 +402,13 @@ export class LocalPlayer {
 
   get cooking() {
     return this.cookStart > 0;
+  }
+
+  /** Shared by firing and the HUD so the displayed cone includes burst bloom. */
+  get spread() {
+    const moving = Math.min(1, Math.hypot(this.ms.vx, this.ms.vz) / 5);
+    return currentSpread(this.def, this.ads, moving, !this.ms.grounded, this.crouchT > 0.5)
+      * (1 + Math.min(this.burst, 6) * 0.06);
   }
 
   private sendPose() {

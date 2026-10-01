@@ -44,6 +44,7 @@ interface HandRefs {
 const refCache = new WeakMap<CharacterTemplate, HandRefs>();
 const LOCO: ClipName[] = ["idle", "walk", "jog", "sprint", "crouchIdle", "crouchWalk", "jumpLoop"];
 const FPP_VISIBLE = /Arms/;
+const PROCEDURAL_BONES = ["spine_01", "spine_03", "upperarm_r", "lowerarm_r", "hand_r", "upperarm_l", "lowerarm_l", "hand_l"];
 
 const _m = new THREE.Matrix4();
 const _m2 = new THREE.Matrix4();
@@ -54,6 +55,12 @@ const _q2 = new THREE.Quaternion();
 const _e = new THREE.Euler();
 const _s = new THREE.Vector3(1, 1, 1);
 const UP = new THREE.Vector3(0, 1, 0);
+const DOWN = new THREE.Vector3(0, -1, 0);
+const _bodyLeft = new THREE.Vector3();
+const _target = new THREE.Vector3();
+const _pole = new THREE.Vector3();
+const _handQuat = new THREE.Quaternion();
+const _leftLocal = new THREE.Matrix4();
 
 /**
  * Hand offsets relative to a gun held in the pistol aim pose: the pose already has the
@@ -101,6 +108,7 @@ export class CharacterRig {
   private legYaw = 0;
   private dead = false;
   private deadTime = 0;
+  private animationPose: { bone: THREE.Bone; quaternion: THREE.Quaternion }[];
   /** World-space muzzle position of the current weapon (for effects). */
   readonly muzzle = new THREE.Vector3();
   readonly muzzleDir = new THREE.Vector3();
@@ -113,6 +121,10 @@ export class CharacterRig {
     readonly mode: RigMode,
   ) {
     this.inst = instantiateCharacter(template, team, beard);
+    this.animationPose = PROCEDURAL_BONES.map((name) => {
+      const bone = this.inst.bones.get(name)!;
+      return { bone, quaternion: bone.quaternion.clone() };
+    });
     this.refs = handRefs(template);
     this.body.add(this.inst.root);
     this.object.add(this.body);
@@ -168,6 +180,9 @@ export class CharacterRig {
   }
 
   update(dt: number, s: RigState) {
+    // AnimationMixer only writes a property when its sampled value changes. Restore the
+    // animation-only pose first, or our IK / torso edits accumulate on held keyframes.
+    for (const pose of this.animationPose) pose.bone.quaternion.copy(pose.quaternion);
     if (!s.alive) {
       if (!this.dead) {
         this.dead = true;
@@ -180,6 +195,7 @@ export class CharacterRig {
       this.gunPivot.visible = this.deadTime < 0.25;
       this.placeRoot(s, 0);
       this.mixer.update(dt);
+      this.captureAnimationPose();
       return;
     }
     if (this.dead) {
@@ -193,6 +209,7 @@ export class CharacterRig {
     if (this.mode === "tpp") this.updateLocomotion(dt, s);
     this.updateAimLayer(s);
     this.mixer.update(dt);
+    this.captureAnimationPose();
 
     this.placeRoot(s, this.mode === "tpp" ? this.legYaw : 0);
     this.object.updateMatrixWorld(true);
@@ -203,6 +220,10 @@ export class CharacterRig {
     }
     this.placeGun(s);
     this.solveArms(s);
+  }
+
+  private captureAnimationPose() {
+    for (const pose of this.animationPose) pose.quaternion.copy(pose.bone.quaternion);
   }
 
   private placeRoot(s: RigState, legYaw: number) {
@@ -292,11 +313,11 @@ export class CharacterRig {
     } else {
       // Stock in the right shoulder, pointing along the aim.
       const shoulder = this.inst.bones.get(pistol ? "neck_01" : "upperarm_r")!.getWorldPosition(_v);
-      _e.set(s.pitch - reload * 0.35 - sprint * 0.6, s.yaw + sprint * 0.6, reload * 0.45, "YXZ");
+      _e.set(s.pitch + s.recoil * (pistol ? 0.075 : 0.035) - reload * 0.35 - sprint * 0.6, s.yaw + sprint * 0.6, reload * 0.45, "YXZ");
       _q.setFromEuler(_e);
       const fwd = _v2.set(0, 0, -1).applyQuaternion(_q);
       const reach = pistol ? 0.5 : meta.max[2] + 0.02;
-      shoulder.addScaledVector(fwd, reach);
+      shoulder.addScaledVector(fwd, reach - s.recoil * 0.015);
       shoulder.y += (pistol ? -0.06 : -0.035) + s.ads * 0.03 - reload * 0.1 - sprint * 0.12;
       if (pistol) shoulder.add(_v2.set(0.02, 0, 0).applyQuaternion(_q));
       this.gunPivot.position.copy(shoulder);
@@ -313,35 +334,34 @@ export class CharacterRig {
     const b = (n: string) => this.inst.bones.get(n)!;
     const gun = this.gunPivot.matrixWorld;
     const reload = s.reload >= 0 ? Math.sin(Math.min(1, s.reload) * Math.PI) : 0;
-    const bodyLeft = _v2.set(1, 0, 0).applyQuaternion(this.body.quaternion); // model +X is the character's left
-    const down = new THREE.Vector3(0, -1, 0);
+    const bodyLeft = _bodyLeft.set(1, 0, 0).applyQuaternion(this.body.quaternion); // model +X is the character's left
 
     // Right hand on the grip.
     _m.multiplyMatrices(gun, this.refs.right);
-    const rTarget = new THREE.Vector3().setFromMatrixPosition(_m);
-    const rQuat = new THREE.Quaternion().setFromRotationMatrix(_m2.extractRotation(_m));
-    const rPole = b("upperarm_r").getWorldPosition(new THREE.Vector3()).addScaledVector(bodyLeft, -0.45).addScaledVector(down, 0.6);
-    solveTwoBone(b("upperarm_r"), b("lowerarm_r"), b("hand_r"), rTarget, rPole);
-    setBoneWorldQuaternion(b("hand_r"), rQuat);
+    _target.setFromMatrixPosition(_m);
+    _handQuat.setFromRotationMatrix(_m2.extractRotation(_m));
+    b("upperarm_r").getWorldPosition(_pole).addScaledVector(bodyLeft, -0.35).addScaledVector(DOWN, 0.65);
+    solveTwoBone(b("upperarm_r"), b("lowerarm_r"), b("hand_r"), _target, _pole);
+    setBoneWorldQuaternion(b("hand_r"), _handQuat);
 
     // Support hand on the foregrip (moves to the magazine while reloading).
     const fg = FOREGRIP[w];
-    const leftLocal = new THREE.Matrix4().copy(this.refs.left);
+    const leftLocal = _leftLocal.copy(this.refs.left);
     if (w !== "pistol") {
-      const pos = new THREE.Vector3().setFromMatrixPosition(leftLocal);
+      const pos = _v.setFromMatrixPosition(leftLocal);
       pos.set(pos.x * 0.3 + fg[0], fg[1] - 0.045 - reload * 0.1, fg[2] + reload * 0.2);
       leftLocal.setPosition(pos);
     } else if (reload > 0) {
-      const pos = new THREE.Vector3().setFromMatrixPosition(leftLocal);
+      const pos = _v.setFromMatrixPosition(leftLocal);
       pos.y -= reload * 0.12;
       leftLocal.setPosition(pos);
     }
     _m.multiplyMatrices(gun, leftLocal);
-    const lTarget = new THREE.Vector3().setFromMatrixPosition(_m);
-    const lQuat = new THREE.Quaternion().setFromRotationMatrix(_m2.extractRotation(_m));
-    const lPole = b("upperarm_l").getWorldPosition(new THREE.Vector3()).addScaledVector(bodyLeft, 0.45).addScaledVector(down, 0.6);
-    solveTwoBone(b("upperarm_l"), b("lowerarm_l"), b("hand_l"), lTarget, lPole);
-    setBoneWorldQuaternion(b("hand_l"), lQuat);
+    _target.setFromMatrixPosition(_m);
+    _handQuat.setFromRotationMatrix(_m2.extractRotation(_m));
+    b("upperarm_l").getWorldPosition(_pole).addScaledVector(bodyLeft, 0.35).addScaledVector(DOWN, 0.65);
+    solveTwoBone(b("upperarm_l"), b("lowerarm_l"), b("hand_l"), _target, _pole);
+    setBoneWorldQuaternion(b("hand_l"), _handQuat);
   }
 }
 

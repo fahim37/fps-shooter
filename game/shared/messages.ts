@@ -85,6 +85,8 @@ export interface ShotEvent {
   ends: [number, number, number][];
   /** Which ends hit map geometry (for impact effects). */
   impacts: boolean[];
+  /** Server-confirmed character impact for each pellet (null for map/miss). */
+  hits?: (HitPart | null)[];
 }
 
 export interface HitConfirm {
@@ -92,6 +94,9 @@ export interface HitConfirm {
   damage: number;
   part: HitPart;
   killed: boolean;
+  /** Authoritative bullet impact; absent for explosion damage. */
+  point?: [number, number, number];
+  dir?: [number, number, number];
 }
 
 export interface DamagedEvent {

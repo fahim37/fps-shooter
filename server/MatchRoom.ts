@@ -371,9 +371,10 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     p.st.protectedUntil = 0;
 
     const viewTime = clamp(finite(m.viewTime) ? m.viewTime : t, t - MAX_REWIND_MS, t);
-    const damages = new Map<string, { dmg: number; part: HitPart }>();
+    const damages = new Map<string, { dmg: number; part: HitPart; point: V3; dir: V3 }>();
     const ends: V3[] = [];
     const impacts: boolean[] = [];
+    const hits: (HitPart | null)[] = [];
 
     for (const raw of m.dirs) {
       const len = Math.hypot(raw[0], raw[1], raw[2]);
@@ -391,24 +392,26 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
           bestT = hit.distance; bestTarget = o; bestPart = hit.part;
         }
       }
-      ends.push([m.origin[0] + dir[0] * bestT, m.origin[1] + dir[1] * bestT, m.origin[2] + dir[2] * bestT]);
+      const point: V3 = [m.origin[0] + dir[0] * bestT, m.origin[1] + dir[1] * bestT, m.origin[2] + dir[2] * bestT];
+      ends.push(point);
       impacts.push(!bestTarget && !!wall);
+      hits.push(bestTarget ? bestPart : null);
       if (bestTarget) {
         const mult = bestPart === "head" ? def.headMult : bestPart === "legs" ? def.limbMult : 1;
         const d = damageAt(def, bestT) * mult;
-        const acc = damages.get(bestTarget.id) ?? { dmg: 0, part: bestPart };
+        const acc = damages.get(bestTarget.id) ?? { dmg: 0, part: bestPart, point, dir };
         acc.dmg += d;
-        if (bestPart === "head") acc.part = "head";
+        if (bestPart === "head") { acc.part = "head"; acc.point = point; acc.dir = dir; }
         damages.set(bestTarget.id, acc);
       }
     }
 
-    this.broadcast("shot", { id: p.id, weapon: m.weapon, origin: m.origin, ends, impacts } satisfies ShotEvent, { except: p.client });
+    this.broadcast("shot", { id: p.id, weapon: m.weapon, origin: m.origin, ends, impacts, hits } satisfies ShotEvent, { except: p.client });
 
-    for (const [id, { dmg, part }] of damages) {
+    for (const [id, { dmg, part, point, dir }] of damages) {
       const target = this.players.get(id)!;
       const killed = this.damage(target, dmg, p, m.weapon, part, m.origin);
-      p.client?.send("hit", { target: id, damage: Math.round(dmg), part, killed } satisfies HitConfirm);
+      p.client?.send("hit", { target: id, damage: Math.round(dmg), part, killed, point, dir } satisfies HitConfirm);
     }
   }
 

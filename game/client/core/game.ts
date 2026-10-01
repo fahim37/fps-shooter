@@ -6,9 +6,9 @@ import { loadWeapons } from "../assets/weapons";
 import { CharacterRig, type RigState } from "../player/CharacterRig";
 import { getVillage } from "../../shared/map/village";
 import { raycastWorld, type Rapier, type World } from "../../shared/physics";
-import { rayVsPose, type HitPart } from "../../shared/hitboxes";
 import { INTERP_DELAY_MS, RESPAWN_MS, type GameMode } from "../../shared/constants";
-import { WEAPONS, currentSpread, type WeaponId } from "../../shared/weapons";
+import { WEAPONS, type WeaponId } from "../../shared/weapons";
+import { spreadRadius } from "../../shared/aim";
 import type { MatchState } from "../../shared/schema";
 import type { AmmoEvent, DamagedEvent, ExplosionEvent, HitConfirm, KillEvent, Pong, ShotEvent, SpawnEvent } from "../../shared/messages";
 import { loadClientWorld } from "./physics";
@@ -19,6 +19,7 @@ import { Effects } from "./effects";
 import { audio } from "./audio";
 import { hud, useHud } from "./hud";
 import { useSettings } from "../settings";
+import { enemyAlongRay } from "./targeting";
 
 type V3 = [number, number, number];
 
@@ -42,6 +43,7 @@ export class Game {
   private cleanup: (() => void)[] = [];
   private pingAt = 0;
   private hudAt = 0;
+  private averageFrameTime = 1 / 60;
   private killSeq = 0;
   private killer = "";
   private grenadeMeshes = new Map<string, THREE.Mesh>();
@@ -81,7 +83,7 @@ export class Game {
 
   resume() {
     audio.unlock();
-    hud().set({ menu: false });
+    hud().set({ menu: false, customizingControls: false });
     this.input.requestLock();
   }
 
@@ -106,6 +108,7 @@ export class Game {
       room.onMessage<HitConfirm>("hit", (ev) => {
         hud().set({ hitmarker: { at: performance.now(), head: ev.part === "head", kill: ev.killed, confirmed: true, damage: ev.damage } });
         audio.hitmarker(ev.part === "head", ev.killed);
+        if (ev.point && ev.dir) this.confirmedBlood(ev.point, ev.dir, ev.part === "head");
       }),
       room.onMessage<DamagedEvent>("damaged", (ev) => {
         const now = performance.now();
@@ -178,35 +181,39 @@ export class Game {
 
   traceFrom(origin: V3, dir: V3, range: number, players = true) {
     const wall = this.world ? raycastWorld(this.R, this.world, origin, dir, range) : null;
-    let distance = wall?.distance ?? range;
-    let target: RemotePlayer | null = null;
-    let part: HitPart = "body";
-    if (players) for (const remote of this.remotes.values()) {
-      if (!remote.alive || remote.protectedUntil > this.clock.now() || (hud().mode === "tdm" && remote.team === hud().myTeam)) continue;
-      const hit = rayVsPose(origin, dir, distance, remote.pose());
-      if (hit && hit.distance < distance) { distance = hit.distance; target = remote; part = hit.part; }
-    }
+    const { distance, target, part } = enemyAlongRay(origin, dir, wall?.distance ?? range,
+      players ? this.remotes.values() : [], hud().mode === "tdm", hud().myTeam, this.clock.now());
     const point: V3 = [origin[0] + dir[0] * distance, origin[1] + dir[1] * distance, origin[2] + dir[2] * distance];
     return { point, target, part, wall: target ? null : wall };
   }
 
   onLocalShot(weapon: WeaponId, origin: V3, dirs: V3[]) {
     const rig = this.local?.thirdPerson ? this.tpp : this.fpp;
-    const muzzle = rig?.muzzle ?? new THREE.Vector3(...origin);
-    this.effects.muzzleFlash(muzzle, new THREE.Vector3(...dirs[0]));
+    // The scoped viewmodel is hidden and not animated; its old muzzle is stale.
+    const muzzle = this.local?.scoped ? new THREE.Vector3(...origin) : rig?.muzzle ?? new THREE.Vector3(...origin);
+    if (!this.local?.scoped) this.effects.muzzleFlash(muzzle, new THREE.Vector3(...dirs[0]));
     audio.shot(weapon, undefined, true);
     for (const dir of dirs) {
       const hit = this.traceFrom(origin, dir, WEAPONS[weapon].range);
       const point = new THREE.Vector3(...hit.point);
       this.effects.tracer(muzzle, point);
       if (hit.target) {
-        this.effects.blood(point, new THREE.Vector3(...dir), hit.part === "head");
         // Prediction is visual only. Damage, scores and kill confirmation stay server-owned.
         if (performance.now() - hud().hitmarker.at > 150 || !hud().hitmarker.confirmed) {
           hud().set({ hitmarker: { at: performance.now(), head: hit.part === "head", kill: false, confirmed: false, damage: 0 } });
         }
       } else if (hit.wall) this.effects.impact(point, new THREE.Vector3(...hit.wall.normal), point.y < 0.1);
     }
+  }
+
+  private confirmedBlood(point: V3, dir: V3, head: boolean) {
+    const impact = new THREE.Vector3(...point);
+    this.effects.blood(impact, new THREE.Vector3(...dir), head);
+    if (!this.world) return;
+    // Only stain real nearby geometry, offset beyond the hitbox to avoid self-intersection.
+    const start: V3 = [point[0] + dir[0] * 0.08, point[1] + dir[1] * 0.08, point[2] + dir[2] * 0.08];
+    const surface = raycastWorld(this.R, this.world, start, dir, 3);
+    if (surface) this.effects.bloodSplatter(new THREE.Vector3(...surface.point), new THREE.Vector3(...surface.normal), head);
   }
 
   private remoteShot(ev: ShotEvent) {
@@ -219,6 +226,10 @@ export class Game {
     ev.ends.forEach((end, i) => {
       const to = new THREE.Vector3(...end);
       this.effects.tracer(from, to);
+      if (ev.hits?.[i]) {
+        const delta = to.clone().sub(new THREE.Vector3(...ev.origin)).normalize();
+        this.confirmedBlood(end, delta.toArray() as V3, ev.hits[i] === "head");
+      }
       if (ev.impacts[i] && this.world) {
         const delta = to.clone().sub(new THREE.Vector3(...ev.origin));
         const distance = delta.length(); delta.normalize();
@@ -243,13 +254,14 @@ export class Game {
     } else if (ev.killer === this.room.sessionId) this.local?.onKillScavenge();
   }
 
-  update(dt: number, viewportHeight: number) {
+  update(dt: number, viewportHeight: number, pixelRatio = 1) {
     if (this.disposed || !this.local) return;
+    this.averageFrameTime += (Math.min(dt, 0.25) - this.averageFrameTime) * (1 - Math.exp(-dt * 2));
     dt = Math.min(dt, 0.1);
     const now = performance.now(), local = this.local;
-    const active = hud().conn === "connected" && !hud().menu && !this.matchEnded && (this.input.locked || this.input.touch);
+    const active = hud().conn === "connected" && !hud().menu && !hud().customizingControls && !this.matchEnded && (this.input.locked || this.input.touch);
     this.input.enabled = active;
-    if (!active) this.input.releaseAll();
+    if (!active) { this.input.releaseAll(); local.cancelActions(); }
     const scoreboard = this.input.held("Tab");
     local.thirdPerson = useSettings.getState().thirdPerson;
     for (const remote of this.remotes.values()) remote.update(dt, this.clock.now() - INTERP_DELAY_MS, this.camera.position);
@@ -267,8 +279,8 @@ export class Game {
       const look = new THREE.Matrix4().lookAt(this.camera.position, target, this.camera.up);
       this.camera.quaternion.slerp(new THREE.Quaternion().setFromRotationMatrix(look), Math.min(1, dt * 3));
     }
-    this.camera.fov = local.alive ? local.currentFov() : useSettings.getState().fov;
-    this.camera.updateProjectionMatrix();
+    const fov = local.alive ? local.currentFov() : useSettings.getState().fov;
+    if (this.camera.fov !== fov) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
     const s: RigState = {
       x: local.ms.x, y: local.ms.y, z: local.ms.z, yaw: local.yaw, pitch: local.pitch,
       eye: local.eye, view: local.viewQuat, speed: Math.hypot(local.ms.vx, local.ms.vz),
@@ -289,7 +301,8 @@ export class Game {
       mesh.rotation.x += dt * 5;
     });
     for (const [id, mesh] of this.grenadeMeshes) if (!this.room.state.grenades.has(id)) { mesh.removeFromParent(); this.grenadeMeshes.delete(id); }
-    this.effects.setViewportHeight(viewportHeight);
+    this.effects.setQuality(useSettings.getState().quality);
+    this.effects.setViewportHeight(viewportHeight * pixelRatio);
     this.effects.update(dt);
     audio.setVolume(useSettings.getState().volume);
     audio.setListener(this.camera.position, this.camera.getWorldDirection(new THREE.Vector3()));
@@ -297,11 +310,24 @@ export class Game {
     if (now >= this.hudAt) {
       this.hudAt = now + 50;
       const ammo = local.ammo[local.weapon];
+      let enemyInSight = false;
+      if (active && local.alive) {
+        const origin = this.camera.position.toArray() as V3;
+        const direction = this.camera.getWorldDirection(new THREE.Vector3()).toArray() as V3;
+        const sight = this.traceFrom(origin, direction, local.def.range);
+        enemyInSight = !!sight.target;
+        if (enemyInSight && local.thirdPerson) {
+          // A shoulder camera can see around cover that still blocks the actual shot.
+          const shotDir = new THREE.Vector3(...sight.point).sub(local.eye).normalize().toArray() as V3;
+          enemyInSight = this.traceFrom(local.eye.toArray() as V3, shotDir, local.def.range).target === sight.target;
+        }
+      }
       hud().set({
         alive: local.alive, weapon: local.weapon, primary: local.primary, mag: ammo.mag, reserve: ammo.reserve,
         grenades: local.grenades, reloading: local.reloadProgress, ads: local.ads, scoped: local.scoped,
-        thirdPerson: local.thirdPerson, spreadDeg: currentSpread(local.def, local.ads, s.speed / 5, !s.grounded, s.crouch),
-        locked: this.input.locked, scoreboard, fps: Math.round(1 / Math.max(dt, 0.001)),
+        thirdPerson: local.thirdPerson, spreadDeg: local.spread, enemyInSight,
+        crosshairRadius: Math.min(120, Math.max(3, spreadRadius(local.spread, fov, viewportHeight))),
+        cameraFov: fov, locked: this.input.locked, scoreboard, fps: Math.round(1 / Math.max(this.averageFrameTime, 0.001)),
         ping: Math.round(this.clock.rtt), serverOffset: this.clock.offset,
       });
     }

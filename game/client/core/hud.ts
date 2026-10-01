@@ -48,6 +48,9 @@ export interface HudState {
   reloading: number; // -1 or 0..1
   ads: number;
   spreadDeg: number;
+  crosshairRadius: number;
+  enemyInSight: boolean;
+  cameraFov: number;
   scoped: boolean;
   thirdPerson: boolean;
   respawnAt: number;
@@ -74,6 +77,7 @@ export interface HudState {
 
   locked: boolean;
   menu: boolean;
+  customizingControls: boolean;
   scoreboard: boolean;
   touch: boolean;
   fps: number;
@@ -98,6 +102,9 @@ export const useHud = create<HudState>((set) => ({
   reloading: -1,
   ads: 0,
   spreadDeg: 2,
+  crosshairRadius: 12,
+  enemyInSight: false,
+  cameraFov: 78,
   scoped: false,
   thirdPerson: false,
   respawnAt: 0,
@@ -121,6 +128,7 @@ export const useHud = create<HudState>((set) => ({
   players: [],
   locked: false,
   menu: false,
+  customizingControls: false,
   scoreboard: false,
   touch: false,
   fps: 0,

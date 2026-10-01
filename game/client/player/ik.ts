@@ -11,6 +11,8 @@ const _d2 = new THREE.Vector3();
 const _pole = new THREE.Vector3();
 const _elbow = new THREE.Vector3();
 const _q = new THREE.Quaternion();
+const _swing = new THREE.Vector3();
+const EPSILON = 1e-6;
 
 /** Applies a world-space rotation `delta` on top of the bone's current world rotation. */
 export function rotateBoneWorld(bone: THREE.Object3D, delta: THREE.Quaternion) {
@@ -36,16 +38,26 @@ export function solveTwoBone(
   upper: THREE.Object3D, lower: THREE.Object3D, end: THREE.Object3D,
   target: THREE.Vector3, pole: THREE.Vector3, weight = 1,
 ) {
+  weight = THREE.MathUtils.clamp(weight, 0, 1);
   if (weight <= 0) return;
   upper.getWorldPosition(_a);
   lower.getWorldPosition(_b);
   end.getWorldPosition(_c);
   const la = _a.distanceTo(_b), lb = _b.distanceTo(_c);
-  _t.copy(end.getWorldPosition(_t)).lerp(target, weight);
+  if (la < EPSILON || lb < EPSILON) return;
+  _t.copy(_c).lerp(target, weight);
 
   const toT = _d1.subVectors(_t, _a);
   let dist = toT.length();
-  const maxReach = la + lb - 1e-3, minReach = Math.abs(la - lb) + 1e-3;
+  // A wrist target exactly on the shoulder still needs a well-defined bend plane.
+  if (dist < EPSILON) {
+    toT.subVectors(_c, _a);
+    if (toT.lengthSq() < EPSILON * EPSILON) toT.subVectors(_b, _a);
+    toT.normalize();
+    dist = EPSILON;
+  }
+  const margin = Math.min(1e-3, Math.min(la, lb) * 0.01);
+  const maxReach = la + lb - margin, minReach = Math.abs(la - lb) + margin;
   if (dist > maxReach || dist < minReach) {
     dist = THREE.MathUtils.clamp(dist, minReach, maxReach);
     _t.copy(_a).addScaledVector(toT.normalize(), dist);
@@ -55,13 +67,20 @@ export function solveTwoBone(
   const sinA = Math.sqrt(1 - cosA * cosA);
   _pole.subVectors(pole, _a);
   _pole.addScaledVector(dirAT, -_pole.dot(dirAT));
-  if (_pole.lengthSq() < 1e-8) _pole.set(0, -1, 0);
+  if (_pole.lengthSq() < 1e-8) {
+    // Prefer the existing elbow plane; fall back to an axis perpendicular to reach.
+    _pole.subVectors(_b, _a).addScaledVector(dirAT, -_pole.dot(dirAT));
+    if (_pole.lengthSq() < 1e-8) {
+      _pole.set(Math.abs(dirAT.y) < 0.9 ? 0 : 1, Math.abs(dirAT.y) < 0.9 ? -1 : 0, 0);
+      _pole.addScaledVector(dirAT, -_pole.dot(dirAT));
+    }
+  }
   _pole.normalize();
   _elbow.copy(_a).addScaledVector(dirAT, cosA * la).addScaledVector(_pole, sinA * la);
 
   // Upper bone: swing its current direction onto the elbow.
   _d2.subVectors(_b, _a).normalize();
-  _q.setFromUnitVectors(_d2, _elbow.clone().sub(_a).normalize());
+  _q.setFromUnitVectors(_d2, _swing.subVectors(_elbow, _a).normalize());
   rotateBoneWorld(upper, _q);
 
   // Lower bone: swing onto the target.

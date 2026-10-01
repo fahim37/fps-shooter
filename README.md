@@ -17,7 +17,13 @@ Open the web URL printed by Next.js (normally http://localhost:3000). The game s
 
 ## Controls
 
-WASD move, mouse look, left-click fire, right-click aim, Shift sprint, Space jump, C/Ctrl crouch, R reload, 1/2 or Q switch weapons, hold G to cook a grenade and release to throw, V toggle camera, Tab scoreboard, Esc release the mouse. Touch devices have movement, look and action controls. Loadout changes apply on the next spawn.
+WASD move, mouse look, left-click fire, right-click aim, Shift sprint, Space jump, C/Ctrl crouch, R reload, 1/2 or Q switch weapons, hold G to cook a grenade and release to throw, V toggle camera, Tab scoreboard, Esc release the mouse. Loadout changes apply on the next spawn.
+
+The crosshair turns red over a visible, vulnerable enemy. ADS smoothly zooms and reduces mouse sensitivity; sniper aim uses a circular optic. Blood spray and nearby surface splatter follow server-confirmed bullet hits, while a faint hitmarker gives instant local feedback. Automatic-fire timing keeps its cadence across common rendering rates without firing catch-up bursts after a stall.
+
+On mobile, use the left thumbstick and drag the right side to look. Both fire buttons can be held independently; the right fire and ADS buttons also support dragging to aim. Jump is held, crouch and sprint toggle, and grenade is held to cook then released to throw. Camera, scores and pause have separate buttons. Tap **Layout**, or **Customize touch controls** in the pause menu, to drag controls, resize them and adjust transparency. **Save & play** remembers the layout in this browser on this device, with separate positions for landscape and portrait. Reset restores the default arrangement.
+
+Graphics can change during a match: press **F6**, use the pause-menu selector, or tap the mobile graphics button. Low removes shadows and postprocessing, simplifies terrain and reduces nearby foliage and combat effects. **Auto-adjust resolution** lowers render resolution under sustained frame drops, then recovers it when performance improves. Preferences persist locally; changing quality keeps the room and weapon state.
 
 ## Validation
 
@@ -30,9 +36,12 @@ npm run build
 npx tsx scripts/dev/play-test.ts http://localhost:3000
 npx tsx scripts/dev/network-test.ts ws://localhost:2567
 npx tsx scripts/dev/rig-test.ts http://localhost:3000
+npx tsx scripts/dev/combat-test.ts http://localhost:3000
+npx tsx scripts/dev/graphics-test.ts http://localhost:3000
+npx tsx scripts/dev/mobile-test.ts http://localhost:3000
 ```
 
-Unit tests cover snapshot interpolation, angle wrapping, stale packets, extrapolation limits, respawn discontinuities, invites and head/body/leg hit detection. The browser smoke test checks invite-link joining, gun handling, camera switching, grenades, scoreboard, leaving and bot-filled quick play. The network test checks authoritative headshots, ammunition acknowledgments, fire-rate limits, kills and respawns in a private room. The rig test exercises 40 body/weapon/pose combinations and checks skinned vertices for invalid or detached geometry.
+Unit tests cover networking interpolation, invites, hit detection, ADS sensitivity, targeting through cover, automatic cadence, character pose drift, IK, bounded combat effects, touch input and graphics adaptation. Browser checks exercise combat confirmation, scope release, live graphics changes, simultaneous mobile gestures and layout persistence. The network test checks authoritative headshots, ammunition acknowledgments, fire-rate limits, kills and respawns in a private room. The rig test exercises 90 body/weapon/pose combinations, checks skinned vertices, and verifies that held poses cannot accumulate torso or arm rotations.
 
 ## Production at /fps
 

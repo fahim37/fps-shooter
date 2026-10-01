@@ -1,6 +1,6 @@
 "use client";
 
-import { Component, Suspense, useEffect, useRef, useState, type ReactNode, type PointerEvent } from "react";
+import { Component, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { getVillage } from "../shared/map/village";
@@ -16,6 +16,9 @@ import { StaticWorld } from "./world/StaticWorld";
 import { PostFX } from "./world/PostFX";
 import { SettingsPanel } from "./Shooter";
 import { inviteUrl } from "./net/invite";
+import { GraphicsControl } from "./GraphicsControl";
+import { PerformanceTuner } from "./world/PerformanceTuner";
+import { MobileControls } from "./MobileControls";
 
 class SceneBoundary extends Component<{ children: ReactNode; onLeave: () => void }, { error: string }> {
   state = { error: "" };
@@ -33,7 +36,7 @@ function Runtime({ room, onGame }: { room: GameRoom; onGame: (game: Game | null)
     void game.init().catch((e: unknown) => { if (live) hud().set({ conn: "error", error: e instanceof Error ? e.message : String(e) }); });
     return () => { live = false; ref.current = null; onGame(null); game.dispose(); };
   }, [room, scene, camera, gl, onGame]);
-  useFrame((state, dt) => ref.current?.update(dt, state.size.height * state.gl.getPixelRatio()), -1);
+  useFrame((state, dt) => ref.current?.update(dt, state.size.height, state.gl.getPixelRatio()), -1);
   return null;
 }
 
@@ -43,10 +46,12 @@ export default function GameView({ room, onLeave }: { room: GameRoom; onLeave: (
   const [game, setGame] = useState<Game | null>(null);
   return <div className="game-view">
     <SceneBoundary onLeave={onLeave}>
-      <Canvas shadows={p.shadows ? { type: THREE.PCFShadowMap } : false} dpr={p.dpr} camera={{ fov: 78, near: 0.04, far: 600 }} gl={{ antialias: false, powerPreference: "high-performance" }}>
+      <Canvas shadows={p.shadows ? { type: THREE.PCFShadowMap } : false} dpr={p.dpr} camera={{ fov: 78, near: 0.04, far: p.drawDistance }} gl={{ antialias: false, powerPreference: "high-performance" }}>
+        <PerformanceTuner />
         <Suspense fallback={null}><SkyAndSun /><Ground /><StaticWorld map={getVillage()} /><PostFX /><Runtime room={room} onGame={setGame} /></Suspense>
       </Canvas>
       <MatchHud game={game} onLeave={onLeave} />
+      <GraphicsControl />
     </SceneBoundary>
   </div>;
 }
@@ -68,7 +73,8 @@ function MatchHud({ game, onLeave }: { game: Game | null; onLeave: () => void })
       <div className="match-top"><span className="match-mode">{MODE_INFO[h.mode].name}<small>{h.code} · {h.phase.toUpperCase()}</small></span><div className="match-score">{h.mode === "tdm" && <b className="blue">{h.team1}</b>}<span>{time}<small>FIRST TO {h.scoreLimit}</small></span>{h.mode === "tdm" && <b className="red">{h.team2}</b>}</div><span className="match-stats">{h.ping} MS{showFps && <small>{h.fps} FPS</small>}</span></div>
       <div className="killfeed">{h.killfeed.filter((k) => now - k.at < 7000).map((k) => <div key={k.key} className={k.mine ? "mine" : ""}><b>{k.killer}</b><span>{k.headshot ? "⌖ " : ""}{k.weapon.toUpperCase()}</span>{k.victim}</div>)}</div>
       {h.ready && h.alive && !paused && !scoreboard && <>
-        {h.scoped ? <div className="scope"><i /><b /></div> : <div className="crosshair" style={{ width: 8 + h.spreadDeg * 5, height: 8 + h.spreadDeg * 5 }}><i /><b /><em /><span /></div>}
+        {h.ads > 0.1 && !h.scoped && <div className="ads-vignette" style={{ opacity: h.ads * 0.45 }} />}
+        {h.scoped ? <Scope enemy={h.enemyInSight} ads={h.ads} fov={h.cameraFov} /> : <div aria-label={h.enemyInSight ? "Enemy in sights" : "Crosshair"} className={`crosshair ${h.enemyInSight ? "enemy-sighted" : ""} ${h.ads > 0.5 ? "aiming" : ""}`} style={{ width: h.crosshairRadius * 2, height: h.crosshairRadius * 2 }}><i /><b /><em /><span /></div>}
         {h.hitmarker.at > 0 && now - h.hitmarker.at < 200 && <div className={`hitmarker ${h.hitmarker.kill ? "kill" : ""} ${h.hitmarker.confirmed ? "confirmed" : "predicted"}`}>×</div>}
         {h.hitmarker.confirmed && now - h.hitmarker.at < 650 && <div className="hit-confirm">{h.hitmarker.kill ? "ELIMINATED" : `${h.hitmarker.damage} DAMAGE`}{h.hitmarker.head && " · HEADSHOT"}</div>}
         {h.hurtAt > 0 && now - h.hurtAt < 550 && <div className="hurt-vignette" />}
@@ -78,7 +84,7 @@ function MatchHud({ game, onLeave }: { game: Game | null; onLeave: () => void })
       <div className="hud-bottom"><div className="health"><small>HEALTH</small><strong>{h.hp}<span> / 100</span></strong><div><i style={{ width: `${h.hp}%` }} /></div></div><div className="hud-hints">WASD MOVE · R RELOAD · G GRENADE · V CAMERA<br />TAB SCORES · ESC PAUSE</div><div className="ammo"><small>{WEAPONS[h.weapon].name} · {h.thirdPerson ? "TPP" : "FPP"}</small><strong>{h.mag}<span> / {h.reserve}</span></strong><small>{h.reloading >= 0 ? `RELOADING ${Math.round(h.reloading * 100)}%` : `${h.grenades} GRENADES`}</small></div></div>
       {!h.alive && h.ready && !scoreboard && !paused && <div className="death-card"><span className="eyebrow">ELIMINATED</span><h2>{h.killedBy?.name ?? "Returning to the field"}</h2><p>Respawning in {Math.max(0, Math.ceil((h.respawnAt - now - h.serverOffset) / 1000))}s</p></div>}
     </div>
-    {h.touch && h.ready && !h.menu && game && <TouchControls game={game} />}
+    {h.touch && h.ready && (h.alive || h.customizingControls) && !h.menu && h.conn === "connected" && h.phase !== "ended" && game && <MobileControls game={game} />}
     {scoreboard && <div className="scoreboard"><span className="eyebrow">{h.phase === "ended" ? "MATCH COMPLETE" : "FIELD REPORT"}</span><h2>{h.phase === "ended" ? winner : h.roomName}</h2><table><thead><tr><th>PLAYER</th><th>K</th><th>D</th><th>SCORE</th><th>PING</th></tr></thead><tbody>{h.players.map((p) => <tr key={p.id} className={p.me ? "self" : ""}><td><span className={p.team === 1 ? "blue" : p.team === 2 ? "red" : ""}>{p.name}</span>{p.me ? " (YOU)" : p.bot ? " [BOT]" : ""}{!p.connected && " · OFFLINE"}</td><td>{p.kills}</td><td>{p.deaths}</td><td>{p.score}</td><td>{p.bot ? "—" : p.ping}</td></tr>)}</tbody></table>{h.phase === "ended" && <p>Next match in {seconds}s <button onClick={onLeave}>Leave match</button></p>}</div>}
     {(!h.ready || failed || h.conn === "reconnecting" || (paused && !scoreboard)) && <div className="modal-shade"><div className="match-modal">
       <span className="eyebrow">HOLLOWMERE / {h.code}</span>
@@ -87,6 +93,7 @@ function MatchHud({ game, onLeave }: { game: Game | null; onLeave: () => void })
         <p>{h.roomName} · {MODE_INFO[h.mode].name} · Room <b>{h.code}</b></p>
         <RoomInvite code={h.code} />
         <button className="primary-button" onClick={() => game?.resume()}>ENTER MATCH <span>↗</span></button>
+        {h.touch && <button className="outline-button" onClick={() => { game?.input.releaseAll(); hud().set({ menu: false, customizingControls: true }); }}>CUSTOMIZE TOUCH CONTROLS</button>}
         <label>NEXT SPAWN LOADOUT<select value={loadout} onChange={(e) => { const w = e.target.value as WeaponId; setLoadout(w); game?.send("loadout", { primary: w }); }}>{PRIMARIES.map((w) => <option key={w} value={w}>{WEAPONS[w].name}</option>)}</select></label>
         <details className="settings-details"><summary>GAME SETTINGS & CONTROLS</summary><SettingsPanel /><p className="controls-help">WASD move · Mouse aim · Click fire · Right-click ADS · Shift sprint · Space jump · C crouch · R reload · Q switch · Hold G grenade · V camera · Tab scores</p></details>
         <p className="controls-help">WASD to move, mouse to aim, click to shoot. Press Esc to pause and invite friends.</p>
@@ -94,6 +101,22 @@ function MatchHud({ game, onLeave }: { game: Game | null; onLeave: () => void })
       <button className="outline-button" onClick={onLeave}>RETURN TO LOBBY</button>
     </div></div>}
   </>;
+}
+
+function Scope({ enemy, ads, fov }: { enemy: boolean; ads: number; fov: number }) {
+  const baseFov = useSettings((s) => s.fov);
+  const zoom = Math.tan(baseFov * Math.PI / 360) / Math.tan(fov * Math.PI / 360);
+  return <div aria-label={enemy ? "Enemy in scope" : "Sniper scope"} className={`scope ${enemy ? "enemy-sighted" : ""}`} style={{ opacity: Math.min(1, (ads - 0.68) / 0.22) }}>
+    <svg className="scope-reticle" viewBox="0 0 1000 1000" aria-hidden="true">
+      <g className="reticle-lines" fill="none" strokeWidth="1.4">
+        <path d="M0 500H490 M510 500H1000 M500 0V490 M500 510V1000" />
+        {[100, 160, 220, 280].map((offset) => <g key={offset}><path d={`M${500 - offset} 491v18 M${500 + offset} 491v18 M491 ${500 - offset}h18 M491 ${500 + offset}h18`} /><path d={`M492 ${500 + offset + 30}h16 M496 ${500 + offset + 60}h8`} /></g>)}
+        <path strokeWidth="5" d="M0 500H180 M820 500H1000 M500 820V1000" />
+      </g>
+      <g className="reticle-center" stroke="currentColor" fill="currentColor"><circle cx="500" cy="500" r="2.2" /><path fill="none" strokeWidth="1.2" d="M484 500h8 M508 500h8 M500 484v8 M500 508v8" /></g>
+    </svg>
+    <span className="scope-label">HUNTER OPTIC <b>{zoom.toFixed(1)}×</b></span>
+  </div>;
 }
 
 function RoomInvite({ code }: { code: string }) {
@@ -108,21 +131,5 @@ function RoomInvite({ code }: { code: string }) {
     <div className="invite-actions"><button aria-label="Copy invite link" onClick={() => void copy(url, "Invite link")}>COPY INVITE LINK ↗</button><button aria-label="Copy room code" onClick={() => void copy(code, "Room code")}>COPY CODE</button></div>
     <input aria-label="Invite link" value={url} readOnly onFocus={(e) => e.target.select()} />
     {message && <small role="status">{message}</small>}
-  </div>;
-}
-
-function TouchControls({ game }: { game: Game }) {
-  const input = game.input;
-  const moveStart = useRef<{ x: number; y: number } | null>(null);
-  const lookStart = useRef<{ x: number; y: number } | null>(null);
-  const capture = (e: PointerEvent) => e.currentTarget.setPointerCapture(e.pointerId);
-  function action(label: string, down: () => void, up: () => void = () => {}) {
-    return <button key={label} onPointerDown={(e) => { capture(e); down(); }} onPointerUp={up} onPointerCancel={up} onLostPointerCapture={up}>{label}</button>;
-  }
-  return <div className="touch-controls">
-    <div className="touch-look" aria-label="Drag to look" onPointerDown={(e) => { capture(e); lookStart.current = { x: e.clientX, y: e.clientY }; }} onPointerMove={(e) => { if (lookStart.current) { input.addLook(e.clientX - lookStart.current.x, e.clientY - lookStart.current.y); lookStart.current = { x: e.clientX, y: e.clientY }; } }} onLostPointerCapture={() => { lookStart.current = null; }} />
-    <div className="touch-stick" aria-label="Movement joystick" onPointerDown={(e) => { capture(e); moveStart.current = { x: e.clientX, y: e.clientY }; }} onPointerMove={(e) => { if (moveStart.current) input.setStick({ x: THREE.MathUtils.clamp((e.clientX - moveStart.current.x) / 45, -1, 1), y: THREE.MathUtils.clamp((moveStart.current.y - e.clientY) / 45, -1, 1) }); }} onLostPointerCapture={() => { moveStart.current = null; input.setStick(null); }}>MOVE</div>
-    <div className="touch-actions">{action("FIRE", () => { input.setAction("fire", true); }, () => { input.setAction("fire", false); })}{action("ADS", () => { input.setAction("ads", true); }, () => { input.setAction("ads", false); })}{action("JUMP", () => { input.setAction("jump", true); }, () => { input.setAction("jump", false); })}{action("RELOAD", () => input.press("KeyR"))}{action("SWITCH", () => input.press("KeyQ"))}{action("GRENADE", () => input.hold("KeyG", true), () => input.hold("KeyG", false))}</div>
-    <button className="touch-menu" onClick={() => { input.releaseAll(); hud().set({ menu: true }); }}>MENU</button>
   </div>;
 }

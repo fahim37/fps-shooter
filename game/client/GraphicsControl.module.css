@@ -1,0 +1,45 @@
+.control {
+  position: absolute;
+  z-index: 6;
+  top: 98px;
+  left: 24px;
+  width: 184px;
+  display: grid;
+  gap: 7px;
+  padding: 11px 12px;
+  border: 1px solid #d9ed7933;
+  border-radius: 4px;
+  background: #111812db;
+  color: #eeeede;
+  font: 10px var(--font-geist-mono), monospace;
+  letter-spacing: 0.08em;
+  pointer-events: auto;
+}
+.control > label:first-child { display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
+.control kbd { border: 1px solid #d9ed794d; padding: 2px 5px; color: #d9ed79; font: inherit; }
+.control select {
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 7px;
+  border: 1px solid #eeeede33;
+  border-radius: 2px;
+  color: #eeeede;
+  background: #1c271f;
+  font: 11px var(--font-geist-mono), monospace;
+  letter-spacing: 0;
+}
+.control .adaptive { display: flex; flex-direction: row; gap: 6px; align-items: center; color: #dddccd; letter-spacing: 0; font-size: 10px; cursor: pointer; }
+.adaptive input { accent-color: #d9ed79; width: 12px; height: 12px; margin: 0; }
+.status { font-size: 8px; color: #aebaa2; letter-spacing: 0.02em; }
+.compact { width: 153px; background: #111812a8; }
+.compact select, .compact .adaptive { display: none; }
+.touchControl { top: auto; bottom: 82px; left: 50%; transform: translateX(-50%); width: auto; padding: 0; }
+.touchControl button { border: 0; background: transparent; color: #d9ed79; padding: 11px 13px; font: inherit; font-size: 9px; white-space: nowrap; cursor: pointer; }
+.touchControl button span { margin-left: 8px; }
+.touchControl button:focus-visible { outline: 2px solid #d9ed79; outline-offset: 3px; }
+.control select:focus-visible, .adaptive input:focus-visible { outline: 2px solid #d9ed79; outline-offset: 3px; }
+@media (max-width: 640px) {
+  .control { top: auto; bottom: 82px; left: 50%; transform: translateX(-50%); width: 153px; padding: 8px; gap: 5px; }
+}
+
+.control.touchControl { width: auto; padding: 0; bottom: calc(82px + env(safe-area-inset-bottom, 0px)); }

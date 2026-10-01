@@ -17,6 +17,7 @@ export class Input {
   // Edge-triggered actions, cleared by `consume*`.
   private pressed = new Set<string>();
   private keys = new Set<string>();
+  private touchActions = new Set<"jump" | "sprint" | "crouch">();
   locked = false;
   touch = false;
   /** Set by the touch UI: analog stick values override keyboard axes. */
@@ -112,6 +113,7 @@ export class Input {
 
   /** Touch look input (pixels). */
   addLook(dx: number, dy: number) {
+    if (!this.enabled) return;
     this.lookX += dx;
     this.lookY += dy;
   }
@@ -132,16 +134,26 @@ export class Input {
   }
 
   press(code: string) {
+    if (!this.enabled) return;
     this.pressed.add(code);
   }
 
   hold(code: string, down: boolean) {
-    if (down) { this.keys.add(code); this.pressed.add(code); }
+    if (down && !this.enabled) return;
+    if (down) { if (!this.keys.has(code)) this.pressed.add(code); this.keys.add(code); }
     else this.keys.delete(code);
+    this.updateAxes();
   }
 
-  setStick(value: { x: number; y: number } | null) { this.stick = value; }
-  setAction(action: "fire" | "ads" | "jump", down: boolean) { this[action] = down; }
+  setStick(value: { x: number; y: number } | null) { if (value && !this.enabled) return; this.stick = value; }
+  setAction(action: "fire" | "ads" | "jump" | "sprint" | "crouch", down: boolean) {
+    if (down && !this.enabled) return;
+    if (action === "fire" || action === "ads") this[action] = down;
+    else {
+      if (down) this.touchActions.add(action); else this.touchActions.delete(action);
+      this.updateAxes();
+    }
+  }
 
   held(code: string) {
     return this.keys.has(code);
@@ -153,6 +165,7 @@ export class Input {
 
   releaseAll() {
     this.keys.clear();
+    this.touchActions.clear();
     this.pressed.clear();
     this.fire = this.ads = false;
     this.stick = null;
@@ -164,9 +177,9 @@ export class Input {
     const k = this.keys;
     this.forward = (k.has("KeyW") || k.has("ArrowUp") ? 1 : 0) - (k.has("KeyS") || k.has("ArrowDown") ? 1 : 0);
     this.right = (k.has("KeyD") || k.has("ArrowRight") ? 1 : 0) - (k.has("KeyA") || k.has("ArrowLeft") ? 1 : 0);
-    this.jump = k.has("Space");
-    this.sprint = k.has("ShiftLeft") || k.has("ShiftRight");
-    this.crouch = k.has("ControlLeft") || k.has("KeyC");
+    this.jump = k.has("Space") || this.touchActions.has("jump");
+    this.sprint = k.has("ShiftLeft") || k.has("ShiftRight") || this.touchActions.has("sprint");
+    this.crouch = k.has("ControlLeft") || k.has("KeyC") || this.touchActions.has("crouch");
   }
 
   /** Axes with the touch stick taking priority when active. */

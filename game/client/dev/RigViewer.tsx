@@ -14,11 +14,11 @@ const WEAPONS: WeaponId[] = ["ar", "smg", "shotgun", "sniper", "pistol"];
 function Rigs({ pitch, speed, reload, ads }: { pitch: number; speed: number; reload: number; ads: number }) {
   const [male, female] = use(loadCharacters());
   const weapons = use(loadWeapons());
-  const rigs = useMemo(() => WEAPONS.map((w, i) => {
-    const r = new CharacterRig(i % 2 ? female : male, weapons, (i % 2) + 1, i % 2 === 0, "tpp");
+  const rigs = useMemo(() => WEAPONS.flatMap((w) => [male, female].map((template, gender) => {
+    const r = new CharacterRig(template, weapons, gender + 1, gender === 0, "tpp");
     r.setWeapon(w);
     return r;
-  }), [male, female, weapons]);
+  })), [male, female, weapons]);
   const scene = useThree((s) => s.scene);
   useEffect(() => {
     (window as unknown as { __rigs: CharacterRig[]; THREE: typeof THREE }).__rigs = rigs;
@@ -29,7 +29,7 @@ function Rigs({ pitch, speed, reload, ads }: { pitch: number; speed: number; rel
   useFrame((_, dt) => {
     rigs.forEach((r, i) => {
       const s: RigState = {
-        x: (i - 2) * 1.3, y: 0, z: 0, yaw: Math.PI * 0.75, pitch, speed, moveYaw: Math.PI * 0.75,
+        x: (Math.floor(i / 2) - 2) * 1.3, y: 0, z: (i % 2) * 1.7, yaw: Math.PI * 0.75, pitch, speed, moveYaw: Math.PI * 0.75,
         crouch: false, grounded: true, alive: true, sprint: 0, ads, reload, recoil: 0,
       };
       r.update(Math.min(dt, 0.05), s);

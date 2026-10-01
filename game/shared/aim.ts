@@ -1,5 +1,16 @@
 type V3 = [number, number, number];
 
+/** Preserve screen-space mouse travel through zoom, with no sensitivity jump on ADS. */
+export function zoomSensitivity(baseFov: number, currentFov: number, ads: number, adsSensitivity: number) {
+  const projection = Math.tan(currentFov * Math.PI / 360) / Math.tan(baseFov * Math.PI / 360);
+  return (1 + (adsSensitivity - 1) * ads) * projection;
+}
+
+/** Angular cone projected into CSS pixels, matching the actual camera's zoom. */
+export function spreadRadius(spreadDeg: number, fov: number, viewportHeight: number) {
+  return Math.tan(spreadDeg * Math.PI / 180) * viewportHeight / (2 * Math.tan(fov * Math.PI / 360));
+}
+
 /** Unit view direction for a yaw/pitch (yaw 0 looks toward -Z, positive pitch looks up). */
 export function aimDir(yaw: number, pitch: number): V3 {
   const cp = Math.cos(pitch);
