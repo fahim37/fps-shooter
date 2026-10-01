@@ -12,8 +12,11 @@ export interface PublicRoom {
   mode: GameMode;
   humans: number;
   bots: number;
+  botFill: number;
   max: number;
   locked: boolean;
+  format: string;
+  phase: string;
 }
 
 let client: Client | null = null;
@@ -50,11 +53,11 @@ async function adopt(p: Promise<GameRoom>) {
 }
 
 export function quickPlay(opts: JoinOptions) {
-  return adopt(getClient().joinOrCreate(ROOM_NAME, opts) as Promise<GameRoom>);
+  return adopt(getClient().joinOrCreate(ROOM_NAME, { ...opts, queue: "quick" }) as Promise<GameRoom>);
 }
 
 export function createRoom(opts: JoinOptions) {
-  return adopt(getClient().create(ROOM_NAME, opts) as Promise<GameRoom>);
+  return adopt(getClient().create(ROOM_NAME, { ...opts, queue: "rooms" }) as Promise<GameRoom>);
 }
 
 export function joinByCode(code: string, opts: JoinOptions) {
@@ -80,7 +83,7 @@ export async function serverOnline(): Promise<boolean> {
 export function joinErrorMessage(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
   if (/not found|invalid|expired/i.test(msg)) return "That room doesn't exist anymore. Check the code or start a new one.";
-  if (/locked|full/i.test(msg)) return "That room is full.";
-  if (/fetch|network|ECONNREFUSED|Failed/i.test(msg)) return "Can't reach the game server. Is it running? (npm run dev starts it)";
+  if (/locked|full/i.test(msg)) return "That room is full or the match has already started. Ask the host to invite you for the next round.";
+  if (/fetch|network|ECONNREFUSED|Failed/i.test(msg)) return "Can't reach the game server. Please try again in a moment.";
   return msg;
 }

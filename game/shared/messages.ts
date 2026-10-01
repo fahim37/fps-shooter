@@ -8,6 +8,7 @@ export interface JoinOptions {
   mode?: GameMode;
   /** 0 = male, 1 = female character. */
   char: number;
+  queue?: "quick" | "rooms";
   create?: {
     mode: GameMode;
     maxPlayers: number;
@@ -15,16 +16,23 @@ export interface JoinOptions {
     botSkill: 0 | 1 | 2;
     private: boolean;
     roomName: string;
+    /** Custom rooms wait for players to ready up and for the host to start. */
+    lobby?: boolean;
+    format?: "1v1" | "2v2" | "custom";
   };
 }
 
 /** Room metadata shown in the public room list. */
 export interface RoomMeta {
+  queue: "quick" | "rooms";
   mode: GameMode;
   roomName: string;
   code: string;
   humans: number;
   bots: number;
+  botFill: number;
+  format: string;
+  phase: string;
 }
 
 // Player state flag bits (PlayerState.flags).

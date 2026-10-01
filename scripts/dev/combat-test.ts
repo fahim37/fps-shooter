@@ -2,6 +2,7 @@ import { chromium } from "playwright-core";
 import { Client, type Room } from "@colyseus/sdk";
 import type { MatchState } from "../../game/shared/schema";
 import type { ShotEvent } from "../../game/shared/messages";
+import type { Game } from "../../game/client/core/game";
 import assert from "node:assert/strict";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -50,12 +51,26 @@ async function main() {
         await sleep(3000);
       }
     }
+    // Keep the fixture level after pointer-lock/death camera transitions.
+    console.log(await page.locator(".hud-layer").evaluate((element) => {
+      type Fiber = { memoizedProps?: { game?: Game }; return?: Fiber };
+      const key = Object.keys(element).find((name) => name.startsWith("__reactFiber"))!;
+      let fiber = (element as unknown as Record<string, Fiber>)[key];
+      while (fiber && !fiber.memoizedProps?.game) fiber = fiber.return!;
+      const game = fiber.memoizedProps!.game!;
+      game.input.consumeLook();
+      game.local!.pitch = 0;
+      game.local!.updateView();
+      return { alive: game.local!.alive, pitch: game.local!.pitch, yaw: game.local!.yaw, weapon: game.local!.weapon };
+    }));
+    await sleep(300);
     const player = [...room.state.players.entries()].find(([id]) => id !== room!.sessionId)![1];
     const forwardX = -Math.sin(player.yaw), forwardZ = -Math.cos(player.yaw);
     const position = { x: player.x + forwardX * 2, y: player.y, z: player.z + forwardZ * 2 };
     const pose = (offset: number) => room!.send("pose", { ...position, x: position.x + Math.cos(player.yaw) * offset, z: position.z - Math.sin(player.yaw) * offset, yaw: player.yaw + Math.PI, pitch: 0, vx: 0, vy: 0, vz: 0, flags: 8, weapon: "ar" });
     pose(0);
     await page.locator(".crosshair.enemy-sighted").waitFor({ timeout: 10000 });
+    await page.waitForFunction(() => getComputedStyle(document.querySelector(".crosshair")!).color === "rgb(255, 69, 69)");
     const color = await page.locator(".crosshair").evaluate((el) => getComputedStyle(el).color);
     assert.equal(color, "rgb(255, 69, 69)");
     await page.screenshot({ path: ".next/combat-enemy.png" });

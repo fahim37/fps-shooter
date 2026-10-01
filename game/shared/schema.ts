@@ -25,6 +25,7 @@ export const PlayerState = schema({
   /** Increments on every shot so remote clients can play fire animations. */
   shots: t.uint8().default(0),
   connected: t.boolean().default(true),
+  ready: t.boolean().default(false),
 }, "PlayerState");
 export type PlayerState = SchemaType<typeof PlayerState>;
 
@@ -40,9 +41,16 @@ export const MatchState = schema({
   /** Server clock (ms) at the last simulation tick; stamps each state snapshot for interpolation. */
   serverTime: t.float64().default(0),
   mode: t.string().default("ffa"),
+  queue: t.string().default("quick"),
   roomName: t.string().default(""),
   code: t.string().default(""),
-  /** "warmup" | "live" | "ended" */
+  hostId: t.string().default(""),
+  lobby: t.boolean().default(false),
+  format: t.string().default("custom"),
+  maxPlayers: t.uint8().default(12),
+  botFill: t.uint8().default(0),
+  privateRoom: t.boolean().default(false),
+  /** "waiting" | "warmup" | "live" | "ended" */
   phase: t.string().default("warmup"),
   /** Server time (ms) when the current phase ends. */
   phaseEndsAt: t.float64().default(0),

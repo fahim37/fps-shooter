@@ -1,4 +1,4 @@
-import { Room, type Client } from "colyseus";
+import { Room, ServerError, type Client } from "colyseus";
 import type RAPIER_NS from "@dimforge/rapier3d-compat";
 import { MatchState, PlayerState, GrenadeState } from "../game/shared/schema";
 import {
@@ -16,6 +16,7 @@ import {
 } from "../game/shared/messages";
 import { createRoomWorld, RAPIER, map } from "./world";
 import { Bot, BOT_NAMES } from "./bot";
+import { startBlockReason } from "../game/shared/lobby";
 
 type V3 = [number, number, number];
 
@@ -67,17 +68,24 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   private botTarget = 0;
   botSkill: 0 | 1 | 2 = 1;
   private botSeq = 0;
-  private lastMetaHumans = -1;
 
   onCreate(options: JoinOptions) {
     const c = options.create ?? { mode: options.mode ?? "tdm", maxPlayers: MAX_PLAYERS, bots: 8, botSkill: 1 as const, private: false, roomName: "" };
-    const mode: GameMode = c.mode === "ffa" ? "ffa" : "tdm";
+    const format = c.format === "1v1" || c.format === "2v2" ? c.format : "custom";
+    const mode: GameMode = format !== "custom" ? "tdm" : c.mode === "ffa" ? "ffa" : "tdm";
     this.roomId = makeCode();
     this.maxClients = Math.max(2, Math.min(MAX_PLAYERS, c.maxPlayers | 0 || MAX_PLAYERS));
     this.botTarget = Math.max(0, Math.min(this.maxClients, c.bots | 0));
+    if (format !== "custom") { this.maxClients = format === "1v1" ? 2 : 4; this.botTarget = 0; }
     this.botSkill = ([0, 1, 2] as const).includes(c.botSkill) ? c.botSkill : 1;
 
     this.state.mode = mode;
+    this.state.lobby = c.lobby === true || format !== "custom" || options.queue === "rooms";
+    this.state.queue = this.state.lobby ? "rooms" : "quick";
+    this.state.format = format;
+    this.state.maxPlayers = this.maxClients;
+    this.state.botFill = this.botTarget;
+    this.state.privateRoom = c.private === true;
     this.state.code = this.roomId;
     this.state.roomName = (c.roomName || `${options.name || "Player"}'s game`).slice(0, 32);
     this.state.scoreLimit = MODE_INFO[mode].scoreLimit;
@@ -113,14 +121,34 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       const p = this.players.get(client.sessionId);
       if (p && typeof m.rtt === "number") p.st.ping = Math.min(999, Math.round(m.rtt));
     });
+    this.onMessage("ready", (client, value: unknown) => {
+      const p = this.players.get(client.sessionId);
+      if (this.state.phase === "waiting" && p && typeof value === "boolean") p.st.ready = value;
+    });
+    this.onMessage("team", (client, team: unknown) => {
+      const p = this.players.get(client.sessionId);
+      if (!p || this.state.phase !== "waiting" || mode !== "tdm" || (team !== 1 && team !== 2) || p.st.team === team) return;
+      const count = this.humans().filter((other) => other.st.team === team).length;
+      if (count >= Math.ceil(this.maxClients / 2)) { client.send("lobbyError", "That team is full. Choose the other team."); return; }
+      p.st.team = team;
+      this.resetReady();
+    });
+    this.onMessage("start", (client) => {
+      if (!this.state.lobby || this.state.phase !== "waiting" || client.sessionId !== this.state.hostId) return;
+      const reason = startBlockReason(this.state, [...this.state.players.values()]);
+      if (reason) { client.send("lobbyError", reason); return; }
+      void this.lock();
+      this.startPhase("warmup");
+    });
 
-    this.startPhase("warmup");
+    this.startPhase(this.state.lobby ? "waiting" : "warmup");
     this.setSimulationInterval(() => this.tick(), TICK_MS);
   }
 
   // ---------------------------------------------------------------- lifecycle
 
   onJoin(client: Client, options: JoinOptions) {
+    if (this.state.lobby && this.state.phase !== "waiting") throw new ServerError(403, "This match has started. Join the room for the next round.");
     const st = new PlayerState();
     st.name = sanitizeName(options?.name);
     st.char = options?.char === 1 ? 1 : 0;
@@ -129,14 +157,16 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     const p = this.newPlayer(client.sessionId, st);
     p.client = client;
     this.state.players.set(client.sessionId, st);
-    this.balanceBots();
-    this.spawn(p);
+    if (!this.state.hostId) this.state.hostId = client.sessionId;
+    if (this.state.phase === "waiting") this.resetReady();
+    else { this.balanceBots(); this.spawn(p); }
     this.updateMeta();
   }
 
   async onDrop(client: Client) {
     const p = this.players.get(client.sessionId);
-    if (p) p.st.connected = false;
+    if (p) { p.st.connected = false; p.st.ready = false; }
+    if (this.state.lobby && this.state.phase === "warmup") this.startPhase("waiting");
     try {
       await this.allowReconnection(client, 20);
     } catch {
@@ -150,12 +180,15 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     p.client = client;
     p.st.connected = true;
     // A fresh life resynchronizes health, ammunition and grenades on both sides.
-    this.spawn(p);
+    if (this.state.phase !== "waiting") this.spawn(p);
   }
 
   onLeave(client: Client) {
     this.players.delete(client.sessionId);
     this.state.players.delete(client.sessionId);
+    if (this.state.hostId === client.sessionId) this.state.hostId = this.humans()[0]?.id ?? "";
+    if (this.state.lobby && this.state.phase === "warmup") this.startPhase("waiting");
+    if (this.state.phase === "waiting") this.resetReady();
     this.balanceBots();
     this.updateMeta();
   }
@@ -190,14 +223,16 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
 
   private updateMeta() {
     const humans = this.humans().length;
-    if (humans === this.lastMetaHumans) return;
-    this.lastMetaHumans = humans;
     this.setMetadata({
+      queue: this.state.lobby ? "rooms" : "quick",
       mode: this.state.mode as GameMode,
       roomName: this.state.roomName,
       code: this.roomId,
       humans,
       bots: this.players.size - humans,
+      botFill: this.botTarget,
+      format: this.state.format,
+      phase: this.state.phase,
     });
   }
 
@@ -214,7 +249,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   /** Keep humans + bots at the configured fill count, bots never taking a human's seat. */
   private balanceBots() {
     const humans = this.humans().length;
-    const want = humans === 0 ? 0 : Math.max(0, Math.min(this.botTarget, this.maxClients) - humans);
+    const want = humans === 0 || this.state.phase === "waiting" ? 0 : Math.max(0, Math.min(this.botTarget, this.maxClients) - humans);
     const bots = [...this.players.values()].filter((p) => p.bot);
     while (bots.length > want) {
       const b = bots.pop()!;
@@ -240,10 +275,25 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
 
   // ---------------------------------------------------------------- phases
 
-  private startPhase(phase: "warmup" | "live" | "ended") {
+  private resetReady() { for (const p of this.humans()) p.st.ready = false; }
+
+  private startPhase(phase: "waiting" | "warmup" | "live" | "ended") {
     const t = now();
     this.state.phase = phase;
-    if (phase === "warmup") this.state.phaseEndsAt = t + WARMUP_MS;
+    if (phase === "waiting") {
+      this.state.phaseEndsAt = 0;
+      this.resetReady();
+      this.balanceBots();
+      for (const p of this.players.values()) { p.st.alive = false; p.respawnAt = 0; }
+      for (const g of this.grenades.values()) this.world.removeRigidBody(g.body);
+      this.grenades.clear(); this.state.grenades.clear();
+      void this.unlock();
+    }
+    if (phase === "warmup") {
+      this.state.phaseEndsAt = t + WARMUP_MS;
+      this.balanceBots();
+      for (const p of this.players.values()) this.spawn(p);
+    }
     if (phase === "live") {
       this.state.phaseEndsAt = t + MODE_INFO[this.state.mode as GameMode].minutes * 60_000;
       this.state.team1 = this.state.team2 = 0;
@@ -258,6 +308,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       this.state.phaseEndsAt = t + END_SCREEN_MS;
       this.state.winner = this.computeWinner();
     }
+    this.updateMeta();
   }
 
   private computeWinner(): string {
@@ -284,10 +335,11 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   private tick() {
     const t = now();
     this.state.serverTime = t;
+    if (this.state.phase === "waiting") return;
     if (t >= this.state.phaseEndsAt) {
       if (this.state.phase === "warmup") this.startPhase("live");
       else if (this.state.phase === "live") this.startPhase("ended");
-      else this.startPhase("warmup");
+      else this.startPhase(this.state.lobby ? "waiting" : "warmup");
     }
 
     for (const p of this.players.values()) {
@@ -352,7 +404,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   fire(p: ServerPlayer, m: FireMsg) {
     const t = now();
     const def = WEAPONS[m.weapon];
-    if (!def || !p.st.alive || this.state.phase === "ended") return;
+    if (!def || !p.st.alive || this.state.phase === "ended" || this.state.phase === "waiting") return;
     if (m.weapon !== p.st.primary && m.weapon !== "pistol") return;
     if (t - p.lastFireAt < fireIntervalMs(def) * 0.75) return;
     if (p.reloadingUntil && t < p.reloadingUntil - 150) return;

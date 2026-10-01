@@ -10,7 +10,7 @@ const port = Number(process.env.PORT || 2567);
 const server = defineServer({
   rooms: {
     // Quick play joins the fullest public room first.
-    [ROOM_NAME]: defineRoom(MatchRoom).filterBy(["mode"]).sortBy({ clients: -1 }),
+    [ROOM_NAME]: defineRoom(MatchRoom).filterBy(["mode", "queue"]).sortBy({ clients: -1 }),
   },
   greet: false,
   beforeListen: () => initWorldData(),
@@ -34,8 +34,11 @@ const server = defineServer({
             mode: meta.mode ?? "tdm",
             humans: meta.humans ?? r.clients,
             bots: meta.bots ?? 0,
+            botFill: meta.botFill ?? 0,
             max: r.maxClients,
             locked: r.locked,
+            format: meta.format ?? "custom",
+            phase: meta.phase ?? "live",
           };
         }),
       );
