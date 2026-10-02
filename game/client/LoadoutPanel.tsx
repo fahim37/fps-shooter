@@ -23,9 +23,12 @@ function GunIcon({ weapon }: { weapon: WeaponId }) {
 
 function OpticIcon({ optic }: { optic: OpticId }) {
   return <svg viewBox="0 0 40 40" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5">
-    {optic === "iron" ? <path d="M9 27V15h5v12h12V15h5v12 M20 20v7" /> : <>
-      <circle cx="20" cy="20" r={optic === "red-dot" ? 11 : 14} /><circle cx="20" cy="20" r="2" fill="currentColor" />
-      {optic !== "red-dot" && <path d="M20 6v9 M20 25v9 M6 20h9 M25 20h9" />}
+    {optic === "iron" ? <path d="M9 27V15h5v12h12V15h5v12 M20 20v7" /> : optic === "red-dot" ? <>
+      <path d="M12 7H28L32 12L34 28H6L8 12Z M10 28L8 33H32L30 28 M6 33H34" />
+      <circle cx="20" cy="19" r="1.5" fill="#ff6256" stroke="none" />
+    </> : <>
+      <circle cx="20" cy="20" r="14" /><circle cx="20" cy="20" r="2" fill="currentColor" />
+      <path d="M20 6v9 M20 25v9 M6 20h9 M25 20h9" />
     </>}
   </svg>;
 }
