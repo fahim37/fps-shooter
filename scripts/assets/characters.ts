@@ -1,12 +1,15 @@
 import path from "node:path";
 import { Document, type Node, type Primitive, type Skin } from "@gltf-transform/core";
-import { mergeDocuments, prune, resample, dedup } from "@gltf-transform/functions";
+import { mergeDocuments, prune, resample, dedup, weld, simplifyPrimitive } from "@gltf-transform/functions";
+import { MeshoptSimplifier } from "meshoptimizer";
+import { SHOWOFFS } from "../../game/shared/showcase";
 import { RAW, PUBLIC_MODELS, readModel, writeGLB, compressTextures, invert } from "./common";
 
 const OUTFITS = path.join(RAW, "outfits/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits");
-const BASE = path.join(RAW, "chars/Universal Base Characters[Standard]/Base Characters/Godot - UE");
-const HAIR = path.join(RAW, "chars/Universal Base Characters[Standard]/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)");
-const UAL1 = path.join(RAW, "ual/Universal Animation Library[Standard]/Unreal-Godot/UAL1_Standard.glb");
+const BASE_PACK = process.env.CHARACTER_PACK || path.join(RAW, "chars/Universal Base Characters[Standard]");
+const BASE = path.join(BASE_PACK, "Base Characters/Godot - UE");
+const HAIR = path.join(BASE_PACK, "Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)");
+const UAL1 = path.join(process.env.ANIMATION_PACK || path.join(RAW, "ual/Universal Animation Library[Standard]"), "Unreal-Godot/UAL1_Standard.glb");
 const UAL2 = path.join(RAW, "ual2/Universal Animation Library 2[Standard]/Unreal-Godot/UAL2_Standard.glb");
 
 /** Clips the game uses, renamed to stable ids. */
@@ -159,28 +162,39 @@ async function buildCharacter(gender: "Male" | "Female") {
     for (const a of root.listAccessors()) if (a.getBuffer() === b) a.setBuffer(root.listBuffers()[0]);
     b.dispose();
   }
-  await doc.transform(dedup(), prune());
+  await doc.transform(dedup(), prune(), weld());
+  // Reduce dense accessories, preserving faces, hands and first-person arm geometry.
+  await MeshoptSimplifier.ready;
+  for (const mesh of root.listMeshes()) {
+    if (!/Feet|Boots|Bracer|Belt|Pauldron/.test(mesh.getName())) continue;
+    for (const prim of mesh.listPrimitives()) {
+      simplifyPrimitive(prim, { simplifier: MeshoptSimplifier, ratio: 0.55, error: 0.001, lockBorder: true });
+    }
+  }
   await compressTextures(doc, 1024);
   const out = path.join(PUBLIC_MODELS, `char_${gender.toLowerCase()}.glb`);
-  const bytes = await writeGLB(doc, out, { compress: false });
+  const bytes = await writeGLB(doc, out, { compress: true });
   console.log(`[characters] ${path.basename(out)} ${(bytes / 1e6).toFixed(1)} MB, meshes: ${root.listMeshes().map((m) => m.getName()).join(", ")}`);
 }
 
-async function buildAnimations() {
+async function buildAnimations(lobby = false) {
   const doc = await readModel(UAL1);
   const root = doc.getRoot();
+  const selected: Record<string, string> = lobby ? Object.fromEntries(SHOWOFFS.map((clip) => [clip.source, clip.id])) : CLIPS;
   const byName = new Map(root.listNodes().map((n) => [n.getName(), n]));
 
-  const src2 = await readModel(UAL2);
-  const map = mergeDocuments(doc, src2);
-  for (const anim of src2.getRoot().listAnimations()) {
-    const copy = map.get(anim) as ReturnType<Document["createAnimation"]>;
-    for (const ch of copy.listChannels()) ch.setTargetNode(byName.get(ch.getTargetNode()!.getName())!);
+  if (!lobby) {
+    const src2 = await readModel(UAL2);
+    const map = mergeDocuments(doc, src2);
+    for (const anim of src2.getRoot().listAnimations()) {
+      const copy = map.get(anim) as ReturnType<Document["createAnimation"]>;
+      for (const ch of copy.listChannels()) ch.setTargetNode(byName.get(ch.getTargetNode()!.getName())!);
+    }
+    for (const s of root.listScenes().slice(1)) { s.traverse((n) => n.dispose()); s.dispose(); }
   }
-  for (const s of root.listScenes().slice(1)) { s.traverse((n) => n.dispose()); s.dispose(); }
 
   for (const anim of root.listAnimations()) {
-    const id = CLIPS[anim.getName()];
+    const id = selected[anim.getName()];
     if (!id || root.listAnimations().some((a) => a !== anim && a.getName() === id)) {
       // Samplers outlive a disposed animation and keep their accessors alive; drop them too.
       for (const ch of anim.listChannels()) ch.dispose();
@@ -217,14 +231,16 @@ async function buildAnimations() {
     }
   }
   await doc.transform(dedup({ propertyTypes: ["Accessor"] }));
-  const missing = Object.values(CLIPS).filter((id) => !root.listAnimations().some((a) => a.getName() === id));
-  if (missing.length) console.warn("  missing clips:", missing.join(", "));
-  const bytes = await writeGLB(doc, path.join(PUBLIC_MODELS, "anims.glb"), { compress: true });
-  console.log(`[characters] anims.glb ${(bytes / 1e3).toFixed(0)} KB, ${root.listAnimations().length} clips`);
+  const missing = Object.values(selected).filter((id) => !root.listAnimations().some((a) => a.getName() === id));
+  if (missing.length) throw new Error(`Missing clips: ${missing.join(", ")}`);
+  const filename = lobby ? "lobby-anims.glb" : "anims.glb";
+  const bytes = await writeGLB(doc, path.join(PUBLIC_MODELS, filename), { compress: true });
+  console.log(`[characters] ${filename} ${(bytes / 1e3).toFixed(0)} KB, ${root.listAnimations().length} clips`);
 }
 
 export async function importCharacters() {
   await buildCharacter("Male");
   await buildCharacter("Female");
   await buildAnimations();
+  await buildAnimations(true);
 }

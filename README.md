@@ -23,7 +23,15 @@ The crosshair turns red over a visible, vulnerable enemy. ADS smoothly zooms and
 
 On mobile, use the left thumbstick and drag the right side to look. Both fire buttons can be held independently; the right fire and ADS buttons also support dragging to aim. Jump is held, crouch and sprint toggle, and grenade is held to cook then released to throw. Camera, scores and pause have separate buttons. Tap **Layout**, or **Customize touch controls** in the pause menu, to drag controls, resize them and adjust transparency. **Save & play** remembers the layout in this browser on this device, with separate positions for landscape and portrait. Reset restores the default arrangement.
 
+Mobile play requests fullscreen on the first touch after loading and tries to lock landscape orientation. Use **Fullscreen** to retry or **Exit fullscreen** to leave it. Unsupported browsers keep the game fitted to the viewport. Browser and operating-system gestures remain controlled by the device.
+
 Graphics can change during a match: press **F6**, use the pause-menu selector, or tap the mobile graphics button. Low removes shadows and postprocessing, simplifies terrain and reduces nearby foliage and combat effects. **Auto-adjust resolution** lowers render resolution under sustained frame drops, then recovers it when performance improves. Preferences persist locally; changing quality keeps the room and weapon state.
+
+**Clearer combat view**, enabled by default in Game Settings & Controls, reduces bloom and ambient-occlusion darkness and removes decorative screen-edge shading. Turn it off to restore the cinematic effects. Scope masks and damage feedback remain visible.
+
+Camera and character rendering interpolate between the 120 Hz physics steps to smooth movement on displays whose refresh rate differs from the simulation. Translation trails the simulation by one step (8.3 ms); mouse rotation stays immediate, and collision, shot origins and network poses use the current physical position. Respawns and server corrections reset interpolation immediately. Finished locomotion blends stop sampling unused animation tracks, static scenery avoids rebuilding unchanged transforms, and weapon/loadout panels subscribe only to the HUD values they display. Resolution adaptation pauses in loadout menus and while disconnected.
+
+Arm IK reuses the rig's current world matrices instead of repeatedly updating ancestor bones. A local Chrome benchmark with ten shipped character/weapon rigs measured a median update cost of 0.446 ms before and 0.311 ms after this change (about 30% less animation CPU time; this is not a whole-game FPS measurement). Audio updates also skip unchanged volume and listener parameters. Reproduce the animation benchmark with `npx tsx scripts/dev/rig-benchmark.ts http://localhost:3000`; results are saved under `out/qa/`.
 
 ## Validation
 
@@ -54,3 +62,5 @@ The room state lives in memory. Restarting the game server ends current matches.
 ## Assets
 
 The asset import scripts document the original packs and transformations: Quaternius characters, animation, environment kits and weapons, plus Poly Haven environment textures and HDR skies. `scripts/import-assets.ts` rebuilds optimized assets from the ignored `assets-raw` directory. See the source scripts for pack names and download sources.
+
+Male and female Rangers have animated selection previews and shared lobby showoffs (At ease, Dance, Talk and Spell stance). See [character assets and lobby showoffs](docs/characters.md) for optimization budgets, pack overrides, and validation commands.

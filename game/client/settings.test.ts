@@ -3,10 +3,10 @@ import { sanitizeSettings } from "./settings";
 
 describe("stored graphics settings", () => {
   it("preserves valid quality preferences and adaptive resolution", () => {
-    expect(sanitizeSettings({ quality: "low", adaptiveResolution: false })).toEqual({ quality: "low", adaptiveResolution: false });
+    expect(sanitizeSettings({ quality: "low", adaptiveResolution: false, clearView: false })).toEqual({ quality: "low", adaptiveResolution: false, clearView: false });
   });
   it("ignores invalid qualities, unexpected fields and invalid numeric values", () => {
-    expect(sanitizeSettings({ quality: "broken", adaptiveResolution: "false", volume: NaN, set: "bad" })).toEqual({});
+    expect(sanitizeSettings({ quality: "broken", adaptiveResolution: "false", clearView: "false", volume: NaN, set: "bad" })).toEqual({});
     expect(sanitizeSettings(null)).toEqual({});
     expect(sanitizeSettings([])).toEqual({});
   });

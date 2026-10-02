@@ -12,11 +12,12 @@ import { rayVsPose, type HitPart } from "../game/shared/hitboxes";
 import { raycastWorld, lineOfSight, GROUP_GRENADE, type World } from "../game/shared/physics";
 import {
   F_CROUCH, type JoinOptions, type PoseMsg, type FireMsg, type GrenadeMsg, type LoadoutMsg, type ShotEvent,
-  type HitConfirm, type DamagedEvent, type KillEvent, type SpawnEvent, type RoomMeta, type AmmoEvent,
+  type HitConfirm, type DamagedEvent, type KillEvent, type SpawnEvent, type RoomMeta, type AmmoEvent, type LoadoutEvent,
 } from "../game/shared/messages";
 import { createRoomWorld, RAPIER, map } from "./world";
 import { Bot, BOT_NAMES } from "./bot";
 import { startBlockReason } from "../game/shared/lobby";
+import { canShowoff } from "../game/shared/showcase";
 
 type V3 = [number, number, number];
 
@@ -33,6 +34,7 @@ export interface ServerPlayer {
   lastAttacker: string;
   respawnAt: number;
   lastPoseAt: number;
+  lastEmoteAt: number;
   /** After a server spawn, ignore client poses until one arrives near this point. */
   expectSpawn: { x: number; z: number; until: number } | null;
   vel: V3;
@@ -114,7 +116,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     });
     this.onMessage("loadout", (client, m: LoadoutMsg) => {
       const p = this.players.get(client.sessionId);
-      if (p && PRIMARIES.includes(m.primary)) p.st.primary = m.primary;
+      if (p) this.changeLoadout(p, m);
     });
     this.onMessage("ping", (client, m: { c: number; rtt?: number }) => {
       client.send("pong", { c: m.c, s: now() });
@@ -124,6 +126,13 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     this.onMessage("ready", (client, value: unknown) => {
       const p = this.players.get(client.sessionId);
       if (this.state.phase === "waiting" && p && typeof value === "boolean") p.st.ready = value;
+    });
+    this.onMessage("emote", (client, value: unknown) => {
+      const p = this.players.get(client.sessionId);
+      const at = now();
+      if (!p || !canShowoff(this.state.phase, p.st.connected, value, p.lastEmoteAt, at)) return;
+      p.st.emote = value as string;
+      p.lastEmoteAt = at;
     });
     this.onMessage("team", (client, team: unknown) => {
       const p = this.players.get(client.sessionId);
@@ -210,6 +219,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       lastAttacker: "",
       respawnAt: 0,
       lastPoseAt: 0,
+      lastEmoteAt: 0,
       expectSpawn: null,
       vel: [0, 0, 0],
     };
@@ -280,6 +290,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   private startPhase(phase: "waiting" | "warmup" | "live" | "ended") {
     const t = now();
     this.state.phase = phase;
+    for (const p of this.players.values()) { p.st.emote = "idle"; p.lastEmoteAt = 0; }
     if (phase === "waiting") {
       this.state.phaseEndsAt = 0;
       this.resetReady();
@@ -400,6 +411,19 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   }
 
   // ---------------------------------------------------------------- combat
+
+  changeLoadout(p: ServerPlayer, m: LoadoutMsg) {
+    if (!m || !PRIMARIES.includes(m.primary) || this.state.phase === "ended") return;
+    const changed = p.st.primary !== m.primary;
+    p.st.primary = m.primary;
+    if (changed && p.st.alive) {
+      p.st.weapon = m.primary;
+      p.reloadingUntil = 0;
+    }
+    // Keep each gun's ammunition for this life; swapping never refills a magazine.
+    const a = p.ammo[m.primary];
+    p.client?.send("loadout", { primary: m.primary, weapon: m.primary, ...a, shot: p.shotSeq } satisfies LoadoutEvent);
+  }
 
   fire(p: ServerPlayer, m: FireMsg) {
     const t = now();

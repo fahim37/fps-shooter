@@ -1,0 +1,22 @@
+.showcase { min-width: 0; border: 1px solid #ffffff24; background: #101912; overflow: hidden; }
+.heading { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; gap: 10px; font-size: 11px; letter-spacing: .14em; color: #c8d5b8; }
+.showcase button { cursor: pointer; font: inherit; color: inherit; }
+.heading button,.stageTools button { border: 0; background: transparent; color: #b9c6ab; font-size: 12px; letter-spacing: normal; padding: 6px; }
+.showcase button:focus-visible { outline: 2px solid #d4eea4; outline-offset: -2px; }
+.showcase button:disabled { cursor: default; opacity: .4; }
+.viewport { height: 290px; width: 100%; position: relative; background: radial-gradient(ellipse at 50% 80%,#56754665,transparent 65%), linear-gradient(180deg,#141f19,#1c2b22); }
+.viewport canvas { display: block; }
+.canvasHost { position: absolute; inset: 0; }
+.notice { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 30px; color: #c5cfbe; font-size: 13px; text-align: center; z-index: 1; }
+.notice button { padding: 8px 14px; border: 1px solid #789467; background: #23331c; }
+.names { display: flex; padding: 12px 16px 0; text-align: center; gap: 10px; }
+.names>div { flex: 1; min-width: 0; }
+.names strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #edf2e5; font-size: 13px; }
+.names span { display: block; color: #a5b59a; font-size: 11px; margin-top: 4px; }
+.stageTools { display: flex; justify-content: space-between; align-items: center; padding: 5px 14px; font-size: 11px; color: #bbc9ad; }
+.stageTools>div { display: flex; align-items: center; gap: 12px; }
+.showoffs { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 6px; padding: 12px 16px 0; }
+.showoffs button { min-height: 40px; padding: 7px 4px; border: 1px solid #ffffff26; background: #ffffff06; color: #cbd7bf; font-size: 12px; }
+.showoffs button[aria-pressed="true"] { color: #10200e; background: #c5df9b; border-color: #c5df9b; }
+.help { margin: 10px 16px 16px; color: #9dab91; font-size: 11px; line-height: 1.5; }
+@media(max-width:450px) { .viewport { height: 260px; }.heading { padding: 12px 16px; }.showoffs { gap: 4px; }.showoffs button { font-size: 11px; } }

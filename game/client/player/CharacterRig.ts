@@ -215,8 +215,8 @@ export class CharacterRig {
     this.object.updateMatrixWorld(true);
     if (this.mode === "tpp" && Math.abs(this.legYaw) > 1e-3) {
       // Legs face the movement direction; turn the torso back onto the aim.
-      rotateBoneWorld(this.inst.bones.get("spine_01")!, _q.setFromAxisAngle(UP, -this.legYaw * 0.6));
-      rotateBoneWorld(this.inst.bones.get("spine_03")!, _q.setFromAxisAngle(UP, -this.legYaw * 0.4));
+      rotateBoneWorld(this.inst.bones.get("spine_01")!, _q.setFromAxisAngle(UP, -this.legYaw * 0.6), true);
+      rotateBoneWorld(this.inst.bones.get("spine_03")!, _q.setFromAxisAngle(UP, -this.legYaw * 0.4), true);
     }
     this.placeGun(s);
     this.solveArms(s);
@@ -263,7 +263,11 @@ export class CharacterRig {
 
     const k = Math.min(1, dt * 9);
     for (const [name, a] of this.loco) {
-      const w = this.locoWeights.get(name)! + ((name === pick ? 1 : 0) - this.locoWeights.get(name)!) * k;
+      const target = name === pick ? 1 : 0;
+      const blended = this.locoWeights.get(name)! + (target - this.locoWeights.get(name)!) * k;
+      // Three evaluates every track for any positive weight, however tiny. Finish
+      // the fade so previously used movement clips don't keep costing CPU forever.
+      const w = Math.abs(blended - target) < 0.001 ? target : blended;
       this.locoWeights.set(name, w);
       a.setEffectiveWeight(w);
       if (name === pick && name !== "idle" && name !== "crouchIdle" && name !== "jumpLoop") {
@@ -293,7 +297,7 @@ export class CharacterRig {
       // View-space placement: hip at the lower right, ADS lines the sights up with the eye.
       // Eye just above the top of the receiver / rear sight.
       const sightY = pistol ? meta.max[1] - 0.004 : w === "sniper" ? meta.max[1] - 0.01 : meta.max[1] + 0.004;
-      const hip = pistol ? _v.set(0.13, -0.17, -0.34) : _v.set(0.15, -0.2, -0.3);
+      const hip = pistol ? _v.set(0.13, -0.21, -0.34) : _v.set(0.15, -0.25, -0.3);
       // Keep the stock end just in front of the eye.
       const ads = _v2.set(0, -sightY, pistol ? -0.36 : -(meta.max[2] + 0.07));
       hip.lerp(ads, s.ads);
@@ -312,7 +316,7 @@ export class CharacterRig {
       this.gunPivot.quaternion.copy(_q);
     } else {
       // Stock in the right shoulder, pointing along the aim.
-      const shoulder = this.inst.bones.get(pistol ? "neck_01" : "upperarm_r")!.getWorldPosition(_v);
+      const shoulder = _v.setFromMatrixPosition(this.inst.bones.get(pistol ? "neck_01" : "upperarm_r")!.matrixWorld);
       _e.set(s.pitch + s.recoil * (pistol ? 0.075 : 0.035) - reload * 0.35 - sprint * 0.6, s.yaw + sprint * 0.6, reload * 0.45, "YXZ");
       _q.setFromEuler(_e);
       const fwd = _v2.set(0, 0, -1).applyQuaternion(_q);
@@ -340,9 +344,9 @@ export class CharacterRig {
     _m.multiplyMatrices(gun, this.refs.right);
     _target.setFromMatrixPosition(_m);
     _handQuat.setFromRotationMatrix(_m2.extractRotation(_m));
-    b("upperarm_r").getWorldPosition(_pole).addScaledVector(bodyLeft, -0.35).addScaledVector(DOWN, 0.65);
-    solveTwoBone(b("upperarm_r"), b("lowerarm_r"), b("hand_r"), _target, _pole);
-    setBoneWorldQuaternion(b("hand_r"), _handQuat);
+    _pole.setFromMatrixPosition(b("upperarm_r").matrixWorld).addScaledVector(bodyLeft, -0.35).addScaledVector(DOWN, 0.65);
+    solveTwoBone(b("upperarm_r"), b("lowerarm_r"), b("hand_r"), _target, _pole, 1, true);
+    setBoneWorldQuaternion(b("hand_r"), _handQuat, true);
 
     // Support hand on the foregrip (moves to the magazine while reloading).
     const fg = FOREGRIP[w];
@@ -359,9 +363,9 @@ export class CharacterRig {
     _m.multiplyMatrices(gun, leftLocal);
     _target.setFromMatrixPosition(_m);
     _handQuat.setFromRotationMatrix(_m2.extractRotation(_m));
-    b("upperarm_l").getWorldPosition(_pole).addScaledVector(bodyLeft, 0.35).addScaledVector(DOWN, 0.65);
-    solveTwoBone(b("upperarm_l"), b("lowerarm_l"), b("hand_l"), _target, _pole);
-    setBoneWorldQuaternion(b("hand_l"), _handQuat);
+    _pole.setFromMatrixPosition(b("upperarm_l").matrixWorld).addScaledVector(bodyLeft, 0.35).addScaledVector(DOWN, 0.65);
+    solveTwoBone(b("upperarm_l"), b("lowerarm_l"), b("hand_l"), _target, _pole, 1, true);
+    setBoneWorldQuaternion(b("hand_l"), _handQuat, true);
   }
 }
 

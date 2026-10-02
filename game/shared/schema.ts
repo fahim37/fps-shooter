@@ -26,6 +26,8 @@ export const PlayerState = schema({
   shots: t.uint8().default(0),
   connected: t.boolean().default(true),
   ready: t.boolean().default(false),
+  /** Cosmetic lobby animation, replicated to peers and late joiners. */
+  emote: t.string().default("idle"),
 }, "PlayerState");
 export type PlayerState = SchemaType<typeof PlayerState>;
 

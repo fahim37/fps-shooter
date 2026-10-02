@@ -1,6 +1,7 @@
 "use client";
+import { memo } from "react";
 import { useSettings, type Quality } from "./settings";
-export function SettingsPanel() {
+export const SettingsPanel = memo(function SettingsPanel() {
   const s = useSettings();
   return <div className="settings-grid">
     <label>QUALITY<select value={s.quality} onChange={(e) => s.set({ quality: e.target.value as Quality })}>{["low", "medium", "high", "ultra"].map((q) => <option key={q}>{q}</option>)}</select></label>
@@ -11,6 +12,8 @@ export function SettingsPanel() {
     <label className="check-label"><input type="checkbox" checked={s.thirdPerson} onChange={(e) => s.set({ thirdPerson: e.target.checked })} /> Third-person camera</label>
     <label className="check-label"><input type="checkbox" checked={s.showFps} onChange={(e) => s.set({ showFps: e.target.checked })} /> Show performance</label>
     <label className="check-label"><input type="checkbox" checked={s.adaptiveResolution} onChange={(e) => s.set({ adaptiveResolution: e.target.checked })} /> Auto-adjust resolution</label>
+    <label className="check-label"><input type="checkbox" checked={s.clearView} onChange={(e) => s.set({ clearView: e.target.checked })} /> Clearer combat view</label>
+    <p className="controls-help settings-note">Clearer combat view reduces bloom and shadow contrast, and removes darkened screen edges while aiming.</p>
     <p className="controls-help settings-note">Graphics apply immediately. Press F6 during a match to cycle quality. Auto resolution helps keep play smooth when your PC is busy.</p>
   </div>;
-}
+});

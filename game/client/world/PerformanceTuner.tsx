@@ -18,7 +18,7 @@ export function PerformanceTuner() {
   useFrame((_, dt) => {
     if (!enabled) return;
     const h = useHud.getState();
-    if (!h.ready || h.menu || h.customizingControls || (!h.locked && !h.touch) || document.hidden) { governor.pause(); return; }
+    if (!h.ready || h.conn !== "connected" || h.phase === "ended" || h.menu || h.loadoutOpen || h.customizingControls || (!h.locked && !h.touch) || document.hidden) { governor.pause(); return; }
     const next = governor.sample(dt);
     if (next !== null) setDpr(next);
   });

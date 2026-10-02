@@ -11,10 +11,30 @@ function arm() {
   lower.position.set(0, -0.25, 0);
   hand.position.set(0, -0.24, 0);
   parent.updateMatrixWorld(true);
-  return { upper, lower, hand };
+  return { parent, upper, lower, hand };
 }
 
 describe("weapon hand IK", () => {
+  it.each([false, true])("reaches the world target under a moving, rotated and scaled parent (prepared=%s)", (prepared) => {
+    const { parent, upper, lower, hand } = arm();
+    for (let frame = 0; frame < 20; frame++) {
+      parent.position.set(frame * 0.2, 1.5, -3);
+      parent.rotation.set(0.2, frame * 0.1, -0.3);
+      parent.scale.setScalar(1.4);
+      parent.updateMatrix();
+      const target = new THREE.Vector3(0.18, -0.3, -0.2).applyMatrix4(parent.matrix);
+      const pole = new THREE.Vector3(-0.4, -0.5, 0).applyMatrix4(parent.matrix);
+      if (prepared) parent.updateMatrixWorld(true);
+      solveTwoBone(upper, lower, hand, target, pole, 1, prepared);
+      const shoulder = upper.getWorldPosition(new THREE.Vector3());
+      const elbow = lower.getWorldPosition(new THREE.Vector3());
+      const wrist = hand.getWorldPosition(new THREE.Vector3());
+      expect(wrist.distanceTo(target)).toBeLessThan(1e-6);
+      expect(shoulder.distanceTo(elbow)).toBeCloseTo(0.25 * 1.4, 6);
+      expect(elbow.distanceTo(wrist)).toBeCloseTo(0.24 * 1.4, 6);
+    }
+  });
+
   it.each([
     { target: new THREE.Vector3(0.18, -0.3, -0.2), pole: new THREE.Vector3(-0.4, -0.5, 0) },
     { target: new THREE.Vector3(0, 0, 0), pole: new THREE.Vector3(0, -1, 0) },

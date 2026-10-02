@@ -16,6 +16,7 @@ import { useSettings, PRESETS } from "../settings";
  */
 export function PostFX() {
   const quality = useSettings((s) => s.quality);
+  const clearView = useSettings((s) => s.clearView);
   const p = PRESETS[quality];
   const gl = useThree((s) => s.gl);
   const usePost = quality !== "low";
@@ -29,15 +30,15 @@ export function PostFX() {
   return (
     <EffectComposer multisampling={0} enableNormalPass={false}>
       {p.ao ? (
-        <N8AO aoRadius={1.6} distanceFalloff={0.6} intensity={2.4} halfRes={p.aoHalfRes} quality={p.aoHalfRes ? "medium" : "high"} />
+        <N8AO aoRadius={1.6} distanceFalloff={0.6} intensity={clearView ? 1.4 : 2.4} halfRes={p.aoHalfRes} quality={p.aoHalfRes ? "medium" : "high"} />
       ) : (
         <></>
       )}
-      {p.bloom ? <Bloom mipmapBlur luminanceThreshold={0.95} luminanceSmoothing={0.2} intensity={0.55} /> : <></>}
+      {p.bloom ? <Bloom mipmapBlur luminanceThreshold={0.95} luminanceSmoothing={0.2} intensity={clearView ? 0.18 : 0.55} /> : <></>}
       <HueSaturation saturation={0.1} />
       <BrightnessContrast contrast={0.06} brightness={0.0} />
       <ToneMapping mode={ToneMappingMode.AGX} />
-      <Vignette offset={0.28} darkness={0.42} />
+      {clearView ? <></> : <Vignette offset={0.28} darkness={0.42} />}
       {p.smaa ? <SMAA /> : <></>}
     </EffectComposer>
   );

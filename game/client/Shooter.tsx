@@ -9,6 +9,8 @@ import { audio } from "./core/audio";
 import { parseRoomCode } from "./net/invite";
 import { ConnectedRoom } from "./RoomLobby";
 import { SettingsPanel } from "./SettingsPanel";
+import { CharacterShowcase } from "./CharacterShowcase";
+import type { ShowoffId } from "../shared/showcase";
 
 type PlayTab = "friends" | "quick" | "join";
 type Format = "1v1" | "2v2" | "custom";
@@ -23,6 +25,7 @@ export default function Shooter() {
   const [mode, setMode] = useState<GameMode>("tdm");
   const [format, setFormat] = useState<Format>("1v1");
   const [character, setCharacter] = useState(0);
+  const [emote, setEmote] = useState<ShowoffId>("idle");
   const [privateRoom, setPrivateRoom] = useState(true);
   const [bots, setBots] = useState(0);
   const [maxPlayers, setMaxPlayers] = useState(12);
@@ -76,7 +79,7 @@ export default function Shooter() {
     <div className="lobby-grain" />
     <header className="lobby-top"><span className="wordmark">H / M <small>HOLLOWMERE</small></span><span className={online ? "status online" : "status"}>{online === null ? "CHECKING SERVER…" : online ? "SERVER ONLINE" : "SERVER OFFLINE"}</span></header>
     <section className="lobby-intro"><span className="eyebrow">YOUR FRIENDS. YOUR TEAMS. YOUR MATCH.</span><h1>Better<br />with <em>friends</em><span className="title-dot">.</span></h1><p>A village. Two teams. A little friendly rivalry.<br />Create a room, share the invite and play on your terms.</p>
-      <div className="map-brief"><span className="eyebrow">01 / THE VILLAGE</span><div className="village-mark" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div><strong>Small teams.<br />Big moments.</strong><div className="brief-tags"><span>1v1 & 2v2</span><span>5 weapons</span><span>FPP + TPP</span></div></div>
+      <CharacterShowcase preview players={[{ id: "preview", name: name.trim() || "Ranger", char: character, team: 0, emote }]} me="preview" onShowoff={setEmote} />
       <div className="lobby-steps"><span><b>01</b> Create a room</span><span><b>02</b> Invite your friends</span><span><b>03</b> Ready up & play</span></div>
     </section>
     <section className="lobby-panel" aria-label="Play Hollowmere">
@@ -84,7 +87,7 @@ export default function Shooter() {
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
         <div className="play-heading"><span className="eyebrow">{tab === "friends" ? "MAKE IT YOUR MATCH" : tab === "quick" ? "STRAIGHT INTO THE ACTION" : "YOU’RE INVITED"}</span><h2>{tab === "friends" ? "Play with your people." : tab === "quick" ? "Jump into a match." : "Meet in the same room."}</h2><p>{tab === "friends" ? "Pick a format. Friends join with a code or invite link." : tab === "quick" ? "Join a public match. Bots fill empty slots so you can play right away." : "Paste a five-character room code or an invite link."}</p></div>
         <fieldset disabled={!!busy}>
-          <div className="field-row player-fields"><label>CALLSIGN<input value={name} onChange={(e) => setName(e.target.value)} maxLength={16} autoComplete="nickname" /></label><label>CHARACTER<select value={character} onChange={(e) => setCharacter(Number(e.target.value))}><option value={0}>Ranger / Male</option><option value={1}>Ranger / Female</option></select></label></div>
+          <div className="field-row player-fields"><label>CALLSIGN<input value={name} onChange={(e) => setName(e.target.value)} maxLength={16} autoComplete="nickname" /></label><label>CHARACTER<select aria-label="CHARACTER" value={character} onChange={(e) => setCharacter(Number(e.target.value))}><option value={0}>Ranger / Male</option><option value={1}>Ranger / Female</option></select></label></div>
           {tab === "friends" && <>
             <span className="field-caption">MATCH FORMAT</span>
             <div className="format-options" role="group" aria-label="Match format">{([ ["1v1", "Duel", "2 players"], ["2v2", "Doubles", "4 players"], ["custom", "Custom", "Up to 12"] ] as const).map(([id, label, count]) => <button key={id} className={format === id ? "selected" : ""} aria-pressed={format === id} onClick={() => setFormat(id)}><strong>{id === "custom" ? "Custom" : id}</strong><span>{label}</span><small>{count}</small></button>)}</div>

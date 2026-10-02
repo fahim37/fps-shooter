@@ -13,6 +13,7 @@ export function loadGLTF(url: string): Promise<GLTF> {
   if (!p) {
     p = gltfLoader.loadAsync(assetUrl(url));
     gltfCache.set(url, p);
+    void p.catch(() => gltfCache.delete(url));
   }
   return p;
 }

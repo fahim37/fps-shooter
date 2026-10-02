@@ -13,7 +13,9 @@
   color: #fff;
 }
 
-.lookZone { position: absolute; inset: 16% 0 14% 34%; pointer-events: auto; touch-action: none; }
+.moveZone, .lookZone { position: absolute; pointer-events: auto; touch-action: none; }
+.moveZone { inset: 0 50% 0 0; }
+.lookZone { inset: 0 0 0 50%; }
 
 .button {
   --control-size: 58px;
@@ -51,10 +53,11 @@
   border-radius: 50%;
   background: radial-gradient(circle, #ffffff08 0 34%, #ffffff03 35% 67%, #ffffff12 68%);
   box-shadow: inset 0 0 0 7px #ffffff0a, 0 2px 10px #0002;
-  pointer-events: auto;
+  pointer-events: none;
   touch-action: none;
 }
 .joystick[data-active="true"] { border-color: #ffffffc9; background-color: #ffffff0c; }
+.editing .joystick { pointer-events: auto; }
 .stickGuides { position: absolute; inset: 25%; border: 1px dashed #ffffff23; border-radius: 50%; pointer-events: none; }
 .knob { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 44%; height: 44%; border: 2px solid #ffffffb8; background: radial-gradient(circle at 35% 30%, #ffffff32, #ffffff13); border-radius: 50%; box-shadow: inset 0 0 0 4px #ffffff09, 0 2px 8px #0003; pointer-events: none; }
 .joystick > span { position: absolute; left: 0; right: 0; bottom: -18px; font: 600 8px system-ui, sans-serif; letter-spacing: .1em; text-align: center; color: #ffffff8a; pointer-events: none; }
@@ -70,7 +73,9 @@
 .utilities { position: absolute; right: var(--safe-right); bottom: calc(85px + var(--safe-bottom)); display: flex; gap: 13px; }
 .utility { --control-size: 48px; border-color: #f7ae978c; background: #67312f26; }
 .utility svg { width: 25px; height: 25px; }
-.toolbar { position: absolute; top: max(78px, calc(env(safe-area-inset-top) + 64px)); right: var(--safe-right); display: flex; gap: 11px; }
+.toolbar { position: absolute; top: max(78px, calc(env(safe-area-inset-top) + 64px)); right: calc(var(--safe-right) + 128px); display: flex; gap: 11px; }
+.screenTools { position: absolute; z-index: 9; right: max(18px, env(safe-area-inset-right)); top: max(78px, calc(env(safe-area-inset-top) + 64px)); display: flex; gap: 8px; }
+.editing .toolbar { right: var(--safe-right); }
 .tool { --control-size: 38px; background: #101d2052; border-color: #ffffff62; }
 .tool svg { width: 21px; height: 21px; }
 .tool > span { font-size: 7px; }
@@ -113,7 +118,8 @@
   .crouch { bottom: calc(146px + var(--safe-bottom)); }
   .sprint { --control-size: 44px; left: calc(var(--safe-left) + 144px); bottom: calc(96px + var(--safe-bottom)); }
   .utilities { bottom: calc(82px + var(--safe-bottom)); gap: 11px; }
-  .toolbar { top: max(72px, calc(env(safe-area-inset-top) + 58px)); gap: 10px; }
+  .toolbar, .screenTools { top: max(72px, calc(env(safe-area-inset-top) + 58px)); }
+  .toolbar { gap: 10px; }
   .tool { --control-size: 33px; }
   .toolSlot { width: 33px; height: 33px; }
   .utilitySlot { width: 44px; height: 44px; }
@@ -135,7 +141,8 @@
   .utilities { bottom: calc(131px + var(--safe-bottom)); gap: 10px; }
   .utility { --control-size: 42px; }
   .utilitySlot { width: 42px; height: 42px; }
-  .toolbar { top: max(84px, calc(env(safe-area-inset-top) + 68px)); gap: 10px; }
+  .toolbar, .screenTools { top: max(84px, calc(env(safe-area-inset-top) + 68px)); }
+  .toolbar { gap: 10px; }
   .lookHint { right: 12%; bottom: 45%; }
   .editor { grid-template-columns: 1fr 1fr; gap: 13px 16px; padding: 14px; bottom: max(12px, env(safe-area-inset-bottom)); }
   .editorTitle { grid-column: 1 / -1; }
@@ -145,7 +152,7 @@
 }
 
 @media (orientation: landscape) and (max-height: 360px) {
-  .toolbar { top: max(49px, calc(env(safe-area-inset-top) + 35px)); }
+  .toolbar, .screenTools { top: max(49px, calc(env(safe-area-inset-top) + 35px)); }
   .rightFire { top: 28%; bottom: auto; }
   .ads { top: calc(28% + 8px); bottom: auto; }
   .jump, .crouch { bottom: calc(125px + var(--safe-bottom)); }
@@ -154,3 +161,16 @@
 }
 
 @media (prefers-reduced-motion: reduce) { .button { transition: none; } }
+
+.screenTools button, .screenMessage button { min-height: 36px; padding: 6px 10px; border: 1px solid #ffffff62; border-radius: 8px; background: #101d20d9; color: #fff; font: 600 10px system-ui, sans-serif; touch-action: manipulation; }
+.screenTools button { min-height: 44px; }
+.screenMessage { position: absolute; z-index: 10; top: max(108px, calc(env(safe-area-inset-top) + 92px)); left: 50%; transform: translateX(-50%); width: min(380px, calc(100% - 24px)); padding: 10px; border-radius: 8px; background: #101d20ed; color: #e8edba; font: 12px system-ui, sans-serif; display: flex; align-items: center; gap: 8px; }
+.screenMessage button { margin-left: auto; font-size: 18px; }
+.rotateShade { position: absolute; z-index: 20; inset: 0; display: grid; place-items: center; overflow: auto; padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); background: #101914f5; backdrop-filter: blur(12px); color: #edf2e3; text-align: center; }
+.rotateCard { width: min(340px, 100%); }
+.rotateCard > svg { width: 110px; height: 94px; margin: 0 auto 20px; color: #d9ed79; }
+.rotateCard h2 { font-size: 30px; font-weight: 750; line-height: 1.12; letter-spacing: -.04em; margin: 14px 0; }
+.rotateCard p { color: #b7c4ad; font-size: 14px; line-height: 1.6; }
+.rotateCard small { color: #95a788; font-size: 11px; line-height: 1.6; margin: 18px 0; }
+.rotateCard .rotateMessage { color: #d9ed79; font-size: 12px; }
+.rotateCard button { min-height: 48px; border-radius: 6px; touch-action: manipulation; }

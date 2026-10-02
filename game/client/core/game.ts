@@ -10,7 +10,7 @@ import { INTERP_DELAY_MS, RESPAWN_MS, type GameMode } from "../../shared/constan
 import { WEAPONS, type WeaponId } from "../../shared/weapons";
 import { spreadRadius } from "../../shared/aim";
 import type { MatchState } from "../../shared/schema";
-import type { AmmoEvent, DamagedEvent, ExplosionEvent, HitConfirm, KillEvent, Pong, ShotEvent, SpawnEvent } from "../../shared/messages";
+import type { AmmoEvent, DamagedEvent, ExplosionEvent, HitConfirm, KillEvent, LoadoutEvent, Pong, ShotEvent, SpawnEvent } from "../../shared/messages";
 import { loadClientWorld } from "./physics";
 import { LocalPlayer } from "./local";
 import { RemotePlayer } from "./remotes";
@@ -20,6 +20,7 @@ import { audio } from "./audio";
 import { hud, useHud } from "./hud";
 import { useSettings } from "../settings";
 import { enemyAlongRay } from "./targeting";
+import { useLoadout } from "../loadout";
 
 type V3 = [number, number, number];
 
@@ -55,7 +56,9 @@ export class Game {
     useHud.setState({ ...useHud.getInitialState(), myId: room.sessionId, code: room.roomId, conn: "connected" });
     this.input = new Input(element);
     this.input.touch = matchMedia("(pointer: coarse)").matches;
+    hud().set({ mobilePortrait: this.input.touch && window.innerHeight > window.innerWidth });
     this.input.attach();
+    useLoadout.getState().hydrate();
     this.scene.add(this.effects.group);
     this.bindRoom();
   }
@@ -84,8 +87,17 @@ export class Game {
 
   resume() {
     audio.unlock();
-    hud().set({ menu: false, customizingControls: false });
+    hud().set({ menu: false, loadoutOpen: false, customizingControls: false });
+    this.input.enabled = !hud().mobilePortrait;
     this.input.requestLock();
+  }
+
+  openLoadout() {
+    this.input.releaseAll();
+    this.local?.cancelActions();
+    hud().set({ loadoutOpen: true, menu: false, customizingControls: false });
+    this.input.enabled = false;
+    this.input.exitLock();
   }
 
   private bindRoom() {
@@ -105,6 +117,7 @@ export class Game {
       room.onMessage<{ x: number; y: number; z: number }>("correct", (ev) => this.local?.correct(ev.x, ev.y, ev.z)),
       room.onMessage<Pong>("pong", (ev) => this.clock.onPong(ev.c, ev.s)),
       room.onMessage<AmmoEvent>("ammo", (ev) => this.local?.reconcileAmmo(ev)),
+      room.onMessage<LoadoutEvent>("loadout", (ev) => this.local?.applyLoadout(ev)),
       room.onMessage<ShotEvent>("shot", (ev) => this.remoteShot(ev)),
       room.onMessage<HitConfirm>("hit", (ev) => {
         hud().set({ hitmarker: { at: performance.now(), head: ev.part === "head", kill: ev.killed, confirmed: true, damage: ev.damage } });
@@ -268,7 +281,10 @@ export class Game {
     this.averageFrameTime += (Math.min(dt, 0.25) - this.averageFrameTime) * (1 - Math.exp(-dt * 2));
     dt = Math.min(dt, 0.1);
     const now = performance.now(), local = this.local;
-    const active = hud().conn === "connected" && !hud().menu && !hud().customizingControls && !this.matchEnded && (this.input.locked || this.input.touch);
+    const portrait = this.input.touch && window.innerHeight > window.innerWidth;
+    if (hud().mobilePortrait !== portrait) hud().set({ mobilePortrait: portrait });
+    if (this.input.consume("KeyB")) this.openLoadout();
+    const active = hud().conn === "connected" && !portrait && !hud().menu && !hud().loadoutOpen && !hud().customizingControls && !this.matchEnded && (this.input.locked || this.input.touch);
     this.input.enabled = active;
     if (!active) { this.input.releaseAll(); local.cancelActions(); }
     const scoreboard = this.input.held("Tab");
@@ -291,8 +307,8 @@ export class Game {
     const fov = local.alive ? local.currentFov() : useSettings.getState().fov;
     if (this.camera.fov !== fov) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
     const s: RigState = {
-      x: local.ms.x, y: local.ms.y, z: local.ms.z, yaw: local.yaw, pitch: local.pitch,
-      eye: local.eye, view: local.viewQuat, speed: Math.hypot(local.ms.vx, local.ms.vz),
+      x: local.motion.position.x, y: local.motion.position.y, z: local.motion.position.z, yaw: local.yaw, pitch: local.pitch,
+      eye: local.viewEye, view: local.viewQuat, speed: Math.hypot(local.ms.vx, local.ms.vz),
       moveYaw: Math.atan2(-local.ms.vx, -local.ms.vz), crouch: local.crouchT > 0.5,
       grounded: local.ms.grounded, alive: local.alive, sprint: local.ms.sprinting ? 1 : 0,
       ads: local.ads, reload: local.reloadProgress, recoil: local.recoil,
@@ -300,7 +316,7 @@ export class Game {
     };
     this.fpp?.setWeapon(local.weapon); this.tpp?.setWeapon(local.weapon);
     this.fpp?.setVisible(local.alive && !local.thirdPerson && !local.scoped);
-    this.tpp?.setVisible(local.thirdPerson || !local.alive);
+    this.tpp?.setVisible((local.thirdPerson && !local.scoped) || !local.alive);
     if (this.fpp?.object.visible) this.fpp.update(dt, s);
     if (this.tpp?.object.visible) this.tpp.update(dt, s);
     this.room.state.grenades?.forEach((g, id) => {

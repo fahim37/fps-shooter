@@ -19,6 +19,7 @@ export function GraphicsControl() {
   const locked = useHud((s) => s.locked);
   const touch = useHud((s) => s.touch);
   const menu = useHud((s) => s.menu);
+  const loadoutOpen = useHud((s) => s.loadoutOpen);
   const customizing = useHud((s) => s.customizingControls);
   const scoreboard = useHud((s) => s.scoreboard || s.phase === "ended");
 
@@ -32,9 +33,9 @@ export function GraphicsControl() {
     return () => window.removeEventListener("keydown", changeQuality);
   }, []);
 
-  if (!ready || scoreboard || customizing || (touch && menu)) return null;
+  if (!ready || scoreboard || customizing || loadoutOpen || (touch && menu)) return null;
   if (touch && !menu) return <div className={`${styles.control} ${styles.touchControl}`}>
-    <button type="button" aria-label="Change graphics quality" onClick={cycleQuality}>GRAPHICS {quality.toUpperCase()} <span aria-hidden="true">↻</span></button>
+    <button type="button" aria-label="Change graphics quality" title={`Graphics: ${quality}`} onClick={cycleQuality}><small>GRAPHICS</small><span>{quality.toUpperCase()} <span aria-hidden="true">↻</span></span></button>
   </div>;
   return <div className={`${styles.control} ${locked ? styles.compact : ""}`} aria-label="Live graphics settings">
     <label htmlFor="match-graphics-quality">GRAPHICS <kbd>F6</kbd></label>

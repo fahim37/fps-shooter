@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
 import { CharacterRig, type RigState } from "./CharacterRig";
 import type { CharacterTemplate, ClipName } from "../assets/characters";
@@ -43,6 +43,30 @@ function template(): CharacterTemplate {
 }
 
 describe("character shooting pose", () => {
+  it("returns to the same track sampling cost after cycling movement animations", () => {
+    const rig = new CharacterRig(template(), new Map(), 1, false, "tpp");
+    const state: RigState = {
+      x: 0, y: 0, z: 0, yaw: 0, pitch: 0, speed: 0, moveYaw: 0,
+      crouch: false, grounded: true, alive: true, sprint: 0, ads: 0, reload: -1, recoil: 0,
+    };
+    const evaluate = vi.spyOn(THREE.Interpolant.prototype, "evaluate");
+    try {
+      rig.update(1 / 60, state);
+      const restingCost = evaluate.mock.calls.length;
+      expect(restingCost).toBeGreaterThan(0);
+      for (const speed of [2, 5, 7]) {
+        for (let frame = 0; frame < 60; frame++) rig.update(1 / 60, { ...state, speed });
+      }
+      for (let frame = 0; frame < 120; frame++) rig.update(1 / 60, state);
+      evaluate.mockClear();
+      rig.update(1 / 60, state);
+      expect(evaluate.mock.calls.length).toBe(restingCost);
+    } finally {
+      evaluate.mockRestore();
+      rig.dispose();
+    }
+  });
+
   it.each(["ar", "pistol"] as WeaponId[])("holds a stable %s pose while the legs face sideways", (weapon) => {
     const rig = new CharacterRig(template(), new Map([[weapon, new THREE.Group()]]), 1, false, "tpp");
     rig.setWeapon(weapon);

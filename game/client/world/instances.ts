@@ -54,6 +54,8 @@ export function buildInstancedMeshes(
       mesh.instanceMatrix.needsUpdate = true;
       mesh.computeBoundingSphere();
       mesh.computeBoundingBox();
+      // Placements live in instanceMatrix; this mesh's own transform stays fixed.
+      mesh.matrixAutoUpdate = false;
       mesh.castShadow = !NO_SHADOW.test(name);
       mesh.receiveShadow = true;
       mesh.name = name;

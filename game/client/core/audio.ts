@@ -32,6 +32,8 @@ export class AudioEngine {
   private noise!: AudioBuffer;
   private ambience: { stop: () => void } | null = null;
   private listener = { x: 0, y: 0, z: 0 };
+  private forward = { x: 0, y: 0, z: -1 };
+  private listenerSynced = false;
   volume = 0.8;
 
   /** Must be called from a user gesture (click/tap) to unlock audio. */
@@ -44,6 +46,7 @@ export class AudioEngine {
     if (!Ctx) return;
     const ctx = new Ctx();
     this.ctx = ctx;
+    this.listenerSynced = false;
     this.master = ctx.createGain();
     this.master.gain.value = this.volume;
     const comp = ctx.createDynamicsCompressor();
@@ -65,6 +68,7 @@ export class AudioEngine {
   }
 
   setVolume(v: number) {
+    if (v === this.volume) return;
     this.volume = v;
     if (this.ctx) this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05);
   }
@@ -73,27 +77,38 @@ export class AudioEngine {
     this.ambience?.stop();
     void this.ctx?.close();
     this.ctx = null;
+    this.listenerSynced = false;
   }
 
   setListener(pos: V3, forward: V3) {
-    this.listener = { x: pos.x, y: pos.y, z: pos.z };
+    const moved = !this.listenerSynced || pos.x !== this.listener.x || pos.y !== this.listener.y || pos.z !== this.listener.z;
+    const turned = !this.listenerSynced || forward.x !== this.forward.x || forward.y !== this.forward.y || forward.z !== this.forward.z;
+    this.listener.x = pos.x; this.listener.y = pos.y; this.listener.z = pos.z;
+    this.forward.x = forward.x; this.forward.y = forward.y; this.forward.z = forward.z;
     const l = this.ctx?.listener;
     if (!l || !this.ctx) return;
     const t = this.ctx.currentTime;
     if (l.positionX) {
-      l.positionX.setValueAtTime(pos.x, t);
-      l.positionY.setValueAtTime(pos.y, t);
-      l.positionZ.setValueAtTime(pos.z, t);
-      l.forwardX.setValueAtTime(forward.x, t);
-      l.forwardY.setValueAtTime(forward.y, t);
-      l.forwardZ.setValueAtTime(forward.z, t);
-      l.upX.setValueAtTime(0, t);
-      l.upY.setValueAtTime(1, t);
-      l.upZ.setValueAtTime(0, t);
+      if (moved) {
+        l.positionX.setValueAtTime(pos.x, t);
+        l.positionY.setValueAtTime(pos.y, t);
+        l.positionZ.setValueAtTime(pos.z, t);
+      }
+      if (turned) {
+        l.forwardX.setValueAtTime(forward.x, t);
+        l.forwardY.setValueAtTime(forward.y, t);
+        l.forwardZ.setValueAtTime(forward.z, t);
+      }
+      if (!this.listenerSynced) {
+        l.upX.setValueAtTime(0, t);
+        l.upY.setValueAtTime(1, t);
+        l.upZ.setValueAtTime(0, t);
+      }
     } else {
-      l.setPosition(pos.x, pos.y, pos.z);
-      l.setOrientation(forward.x, forward.y, forward.z, 0, 1, 0);
+      if (moved) l.setPosition(pos.x, pos.y, pos.z);
+      if (turned) l.setOrientation(forward.x, forward.y, forward.z, 0, 1, 0);
     }
+    this.listenerSynced = true;
   }
 
   /** Output chain for a sound at `pos` (or non-spatial when omitted). Returns [input, distance]. */

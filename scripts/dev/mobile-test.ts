@@ -1,6 +1,7 @@
 import { chromium, type Locator } from "playwright-core";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
+import { Client, type Room } from "@colyseus/sdk";
 import type { Game } from "../../game/client/core/game";
 
 type TestWindow = Window & { __mobileTestGame?: Game; __mobileTestEvents?: { type: string; id: number; target: string | null }[] };
@@ -17,6 +18,7 @@ async function main() {
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
   const contacts = new Map<number, Point>();
+  let peer: Room | undefined;
   const controls = page.getByLabel("Mobile game controls", { exact: true });
   const action = (name: string) => controls.getByRole("button", { name, exact: true });
 
@@ -74,10 +76,16 @@ async function main() {
   }
 
   async function createMatch() {
+    await peer?.leave();
     await page.getByText("SERVER ONLINE", { exact: true }).waitFor({ timeout: 60000 });
-    await page.getByLabel("FILL MATCH TO").selectOption("0");
-    await page.getByLabel("Private room", { exact: true }).check();
-    await page.getByRole("button", { name: "CREATE TEAM DEATHMATCH", exact: true }).tap();
+    await page.getByRole("button", { name: /CREATE 1V1 ROOM/ }).tap();
+    const invite = await page.getByLabel("Invite link", { exact: true }).inputValue();
+    const roomCode = new URL(invite).searchParams.get("room")!;
+    peer = await new Client(process.env.GAME_SERVER_URL || "ws://localhost:2567").joinById(roomCode, { name: "Mobile QA peer" });
+    peer.onMessage("*", () => {});
+    peer.send("ready", true);
+    await page.getByRole("button", { name: "READY UP", exact: true }).tap();
+    await page.getByRole("button", { name: /START MATCH/ }).tap();
     await controls.waitFor({ timeout: 90000 });
     await captureGame();
   }
@@ -100,13 +108,9 @@ async function main() {
   try {
     await page.goto(base);
     await page.getByText("SERVER ONLINE", { exact: true }).waitFor({ timeout: 60000 });
-    await page.getByLabel("FILL MATCH TO").selectOption("0");
-    await page.getByLabel("Private room", { exact: true }).check();
     await page.locator(".lobby-panel .settings-details summary").tap();
     await page.getByLabel("QUALITY").selectOption("low");
-    await page.getByRole("button", { name: "CREATE TEAM DEATHMATCH", exact: true }).tap();
-    await controls.waitFor({ timeout: 90000 });
-    await captureGame();
+    await createMatch();
     await page.waitForFunction(() => (window as TestWindow).__mobileTestGame?.room.state.phase === "live", undefined, { timeout: 20000 });
     await page.waitForTimeout(400);
     assert.equal((await state()).touch, true, "Mobile emulation must activate touch controls");
@@ -141,6 +145,59 @@ async function main() {
     const released = await state();
     assert.equal(released.fire, false); assert.equal(released.stick, null); assert.equal(released.ads, 0);
     console.log("Simultaneous movement, view, ADS and fire released independently");
+
+    assert.equal(await page.evaluate(() => !!document.fullscreenElement), true, "The first gameplay touch must enter fullscreen");
+    const fullscreenOptions = page.getByLabel("Mobile screen options", { exact: true });
+    await tap(fullscreenOptions.getByRole("button", { name: "Exit fullscreen", exact: true }));
+    await page.waitForFunction(() => !document.fullscreenElement);
+    await tap(fullscreenOptions.getByRole("button", { name: "Fullscreen", exact: true }));
+    await page.waitForFunction(() => !!document.fullscreenElement);
+    console.log("Automatic fullscreen entry, exit and manual re-entry passed");
+
+    const screenButton = await fullscreenOptions.getByRole("button", { name: "Exit fullscreen", exact: true }).boundingBox();
+    assert.ok(screenButton && screenButton.x > page.viewportSize()!.width / 2, "Fullscreen must sit on the right side");
+    for (const tool of await controls.locator('[data-control-id="camera"], [data-control-id="scores"], [data-control-id="pause"]').all()) {
+      const box = await tool.boundingBox();
+      assert.ok(box && box.x + box.width < screenButton.x, "Fullscreen must not cover the toolbar");
+    }
+
+    // A fresh left-side touch anchors a neutral stick wherever the thumb lands.
+    // Keep these probes in the movement surface, clear of the graphics/loadout buttons.
+    for (const origin of [{ x: 270, y: 60 }, { x: 370, y: 200 }, { x: 6, y: 220 }]) {
+      assert.equal(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.getAttribute("aria-label"), origin), "Touch left to move");
+      const initialYaw = (await state()).yaw;
+      await down(30, origin);
+      const neutral = (await state()).stick;
+      assert.ok(neutral && Math.hypot(neutral.x, neutral.y) === 0, "Touch-down must not move the character");
+      const floating = await center(controls.getByLabel("Movement joystick", { exact: true }));
+      assert.ok(Math.abs(floating.x - origin.x) < 1 && Math.abs(floating.y - origin.y) < 1, "The joystick must appear at the initial touch");
+      await move(30, { x: origin.x + 2, y: origin.y - 1 });
+      assert.ok(Math.hypot((await state()).stick!.x, (await state()).stick!.y) === 0, "Small thumb jitter must stay in the dead zone");
+      await move(30, { x: origin.x + 80, y: origin.y - 25 });
+      const heldStick = (await state()).stick!;
+      assert.ok(heldStick.x > 0 && heldStick.y > 0 && Math.hypot(heldStick.x, heldStick.y) <= 1.00001, "Floating movement must stay analog and bounded");
+      await down(31, { x: 320, y: 190 });
+      await move(31, { x: 330, y: 170 });
+      await up(31);
+      assert.deepEqual((await state()).stick, heldStick, "A second left finger must not take over or release movement");
+      await move(30, { x: 540, y: origin.y });
+      assert.ok((await state()).stick!.x > 0.9, "Movement must remain captured when the thumb crosses the middle");
+      assert.ok(Math.abs((await state()).yaw - initialYaw) < 0.001, "Dragging the left thumb must never aim");
+      await up(30);
+      assert.equal((await state()).stick, null, "Lifting the floating thumb must stop movement");
+      assert.equal(await controls.getByLabel("Movement joystick", { exact: true }).getAttribute("data-active"), "false");
+    }
+    await down(32, { x: 270, y: 60 });
+    await move(32, { x: 290, y: 80 });
+    await cancel();
+    assert.equal((await state()).stick, null, "Touch cancellation must stop floating movement");
+    await down(33, { x: 270, y: 60 });
+    await move(33, { x: 290, y: 80 });
+    await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+    await move(33, { x: 300, y: 90 });
+    assert.equal((await state()).stick, null, "A stale touch after losing focus must not restart movement");
+    await up(33);
+    console.log("Right-side fullscreen and floating left-half joystick ownership, dead zone, edge touches and cleanup passed");
 
     // Both fire controls can be held without one release cancelling the other.
     await down(5, await center(action("Fire")));
@@ -212,12 +269,17 @@ async function main() {
     assert.notEqual(await graphics.innerText(), graphicsBefore, "Graphics must change live on touch");
     assert.equal(await page.locator(".modal-shade").count(), 0, "Changing graphics must keep the match running");
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.waitForTimeout(400);
+    await page.getByRole("dialog", { name: "Landscape required" }).waitFor();
+    await page.waitForFunction(() => !(window as TestWindow).__mobileTestGame!.input.enabled);
+    assert.equal(await controls.count(), 0, "Portrait must hide gameplay controls");
+    await page.screenshot({ path: "out/qa/mobile-rotate-prompt.png" });
+    await page.setViewportSize({ width: 844, height: 390 });
+    await controls.waitFor();
+    await page.waitForFunction(() => (window as TestWindow).__mobileTestGame!.input.enabled);
     await inspectLayout();
-    await page.screenshot({ path: "out/qa/mobile-portrait.png" });
-    console.log("Scores, pause release, live graphics and portrait circles passed");
+    console.log("Scores, pause release, live graphics and landscape requirement passed");
 
-    const portraitDefault = await center(controls.getByLabel("Movement joystick", { exact: true }));
+    const landscapeDefault = await center(controls.getByLabel("Movement joystick", { exact: true }));
     const editor = page.getByLabel("Control layout editor", { exact: true });
     await action("Customize controls").tap();
     await editor.waitFor();
@@ -226,7 +288,7 @@ async function main() {
     assert.equal(editingState.enabled, false, "Control editing must pause gameplay input");
     const editorStick = controls.locator('[data-control-id="joystick"]');
     const editStart = await center(editorStick);
-    assert.ok(Math.abs(editStart.x - portraitDefault.x) < 1 && Math.abs(editStart.y - portraitDefault.y) < 1, "The editor must preview the same default positions used during gameplay");
+    assert.ok(Math.abs(editStart.x - landscapeDefault.x) < 1 && Math.abs(editStart.y - landscapeDefault.y) < 1, "The editor must preview the same default positions used during gameplay");
     await tap(editor.getByRole("button", { name: "Collapse editor", exact: true }));
     await down(20, editStart);
     await move(20, { x: editStart.x + 35, y: editStart.y - 25 });
@@ -255,9 +317,9 @@ async function main() {
     const saved = JSON.parse(savedText);
     assert.equal(saved.version, 1);
     assert.equal(saved.opacity, 0.25);
-    assert.equal(saved.controls.portrait.joystick.size, 1.4);
-    assert.ok(saved.controls.portrait.rightFire.size > 1);
-    assert.deepEqual(saved.controls.landscape, {}, "Portrait edits must keep landscape placement independent");
+    assert.equal(saved.controls.landscape.joystick.size, 1.4);
+    assert.ok(saved.controls.landscape.rightFire.size > 1);
+    assert.deepEqual(saved.controls.portrait, {}, "Landscape edits must keep other stored layouts independent");
     const savedStick = await center(controls.getByLabel("Movement joystick", { exact: true }));
     assert.ok(Math.abs(savedStick.x - movedStick.x) < 2 && Math.abs(savedStick.y - movedStick.y) < 2);
     assert.equal((await state()).enabled, true, "Save & play must resume input");
@@ -277,9 +339,9 @@ async function main() {
     await editor.getByRole("button", { name: "Save & play", exact: true }).tap();
     await editor.waitFor({ state: "hidden" });
     const resetStick = await center(controls.getByLabel("Movement joystick", { exact: true }));
-    assert.ok(Math.abs(resetStick.x - portraitDefault.x) < 2 && Math.abs(resetStick.y - portraitDefault.y) < 2, "Reset must restore the default portrait placement");
+    assert.ok(Math.abs(resetStick.x - landscapeDefault.x) < 2 && Math.abs(resetStick.y - landscapeDefault.y) < 2, "Reset must restore the default landscape placement");
     const resetText = await page.evaluate(() => localStorage.getItem("hollowmere.mobile-controls.v1"));
-    assert.deepEqual(JSON.parse(resetText!).controls.portrait, {});
+    assert.deepEqual(JSON.parse(resetText!).controls.landscape, {});
     await action("Customize controls").tap();
     await editor.waitFor();
     const previewDefault = await center(controls.getByLabel("Movement joystick", { exact: true }));
@@ -300,6 +362,8 @@ async function main() {
     await editor.waitFor({ state: "hidden" });
     assert.equal(await page.evaluate(() => localStorage.getItem("hollowmere.mobile-controls.v1")), resizedText, "Cancelling edits must preserve the saved layout");
     console.log("Reload persistence, reset and cancel changes passed");
+
+    assert.equal(await page.getByRole("button", { name: "Lock touch", exact: true }).count(), 0, "Touch lock must be removed");
 
     // Oversized edge placements must stay reachable when the same orientation shrinks.
     await page.setViewportSize({ width: 844, height: 390 });
@@ -324,14 +388,14 @@ async function main() {
     assert.deepEqual(errors, []);
     await action("Pause").tap();
     await page.getByRole("button", { name: "RETURN TO LOBBY" }).tap();
-    console.log(JSON.stringify({ passed: true, checks: ["mobile landscape and portrait bounds", "four-contact movement / look / ADS / fire", "independent release", "both fire reference count", "right-fire and ADS drag aim", "touch cancel", "reload", "crouch / sprint", "grenade", "scores close", "pause reset", "live graphics", "control drag / size / opacity", "editing pauses gameplay", "save on device and restore after reload", "orientation independence", "reset and cancel", "editor preview equals live geometry", "collapsible editor", "large edge controls at 844 / 640 / 568 widths"], errors }));
+    console.log(JSON.stringify({ passed: true, checks: ["fullscreen entry / exit / re-entry", "mobile landscape and portrait bounds", "four-contact movement / look / ADS / fire", "independent release", "both fire reference count", "right-fire and ADS drag aim", "touch cancel", "reload", "crouch / sprint", "grenade", "scores close", "pause reset", "live graphics", "control drag / size / opacity", "editing pauses gameplay", "save on device and restore after reload", "orientation independence", "reset and cancel", "editor preview equals live geometry", "collapsible editor", "large edge controls at 844 / 640 / 568 widths"], errors }));
   } catch (error) {
     console.error("Mobile browser errors:", errors);
     console.error("Pointer events:", await page.evaluate(() => (window as TestWindow).__mobileTestEvents?.slice(-35)).catch(() => []));
     console.error("Visible UI:", await page.locator("body").innerText().catch(() => "unavailable"));
     await page.screenshot({ path: "out/qa/mobile-test-failure.png" }).catch(() => {});
     throw error;
-  } finally { await browser.close(); }
+  } finally { await peer?.leave(); await browser.close(); }
 }
 
 main().catch((error) => { console.error(error); process.exitCode = 1; });

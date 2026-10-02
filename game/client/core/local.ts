@@ -4,12 +4,15 @@ import { raycastWorld, type Rapier, type World } from "../../shared/physics";
 import { aimDir, spreadDir, zoomSensitivity } from "../../shared/aim";
 import { WEAPONS, GRENADE, currentSpread, fireIntervalMs, type WeaponId } from "../../shared/weapons";
 import { EYE_HEIGHT, CROUCH_EYE_HEIGHT, GRENADES_PER_LIFE, INTERP_DELAY_MS } from "../../shared/constants";
-import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_SPRINT, type AmmoEvent, type PoseMsg, type SpawnEvent } from "../../shared/messages";
+import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_SPRINT, type AmmoEvent, type LoadoutEvent, type PoseMsg, type SpawnEvent } from "../../shared/messages";
 import type { Input } from "./input";
 import type { Game } from "./game";
 import { useSettings } from "../settings";
 import { audio } from "./audio";
 import { ShotCadence } from "./cadence";
+import { RenderMotion } from "./motion";
+import { useLoadout } from "../loadout";
+import { OPTICS, opticFov } from "../../shared/optics";
 
 type V3 = [number, number, number];
 
@@ -62,13 +65,18 @@ export class LocalPlayer {
   tuck = 0;
   private acc = 0;
   readonly eye = new THREE.Vector3();
+  /** Visual position trails physics by one 120 Hz step; shots still use the physical eye. */
+  readonly motion = new RenderMotion();
+  readonly viewEye = new THREE.Vector3();
   readonly viewQuat = new THREE.Quaternion();
+  private viewEuler = new THREE.Euler(0, 0, 0, "YXZ");
   readonly bob = new THREE.Vector2();
   readonly sway = new THREE.Vector2();
   private tppDist = 2.6;
 
   constructor(private game: Game, private R: Rapier, private world: World) {
     this.ms = newMoveState(0, 0, 0);
+    this.motion.reset(this.ms);
     this.mover = new Mover(R, world);
     this.resetAmmo();
   }
@@ -96,6 +104,7 @@ export class LocalPlayer {
 
   spawn(ev: SpawnEvent) {
     this.mover.teleport(this.ms, ev.x, ev.y, ev.z);
+    this.motion.reset(this.ms);
     this.yaw = ev.yaw;
     this.pitch = 0;
     this.kickPitch = this.kickYaw = 0;
@@ -120,10 +129,14 @@ export class LocalPlayer {
   /** Server rejected our position (moved too fast): snap back. */
   correct(x: number, y: number, z: number) {
     this.mover.teleport(this.ms, x, y, z);
+    this.acc = 0;
+    this.motion.reset(this.ms);
+    this.updateView();
   }
 
   die() {
     this.alive = false;
+    this.motion.reset(this.ms);
     this.reloadEnd = 0;
     this.cookStart = 0;
   }
@@ -144,6 +157,15 @@ export class LocalPlayer {
     const pending = this.pendingShots.filter((p) => p.weapon === ev.weapon).length;
     this.ammo[ev.weapon] = { mag: Math.max(0, ev.mag - pending), reserve: ev.reserve };
   }
+
+  applyLoadout(ev: LoadoutEvent) {
+    const changed = this.primary !== ev.primary;
+    this.primary = ev.primary;
+    this.reconcileAmmo(ev);
+    if (changed && this.alive) this.switchTo(ev.primary, performance.now());
+  }
+
+  get optic() { return useLoadout.getState().optics[this.weapon]; }
 
   update(dt: number, input: Input, now: number) {
     const s = useSettings.getState();
@@ -202,11 +224,13 @@ export class LocalPlayer {
     const wasGrounded = this.ms.grounded;
     while (this.acc >= STEP) {
       this.acc -= STEP;
+      this.motion.beforeStep(this.ms);
       this.mover.step(this.ms, {
         forward: fwd, right, yaw: this.yaw, jump: input.jump, crouch: input.crouch, sprint: wantsSprint,
         ads: this.ads, speedMult: def.moveMult,
       }, STEP);
     }
+    this.motion.sample(this.ms, this.acc / STEP);
     if (wasSprinting && input.fire) this.switchEnd = Math.max(this.switchEnd, now + 150);
     if (this.ms.landSpeed > 0) {
       if (!wasGrounded || this.ms.landSpeed > 4) {
@@ -234,7 +258,7 @@ export class LocalPlayer {
     if (input.fire) this.tryFire(now);
 
     // ---- recoil recovery
-    const rec = Math.exp(-dt * 7);
+    const rec = Math.exp(-dt * 11);
     this.kickPitch *= rec;
     this.kickYaw *= rec;
     this.recoil = Math.max(0, this.recoil - dt * 9);
@@ -277,36 +301,37 @@ export class LocalPlayer {
   updateView() {
     const eyeH = EYE_HEIGHT + (CROUCH_EYE_HEIGHT - EYE_HEIGHT) * this.crouchT;
     this.eye.set(this.ms.x, this.ms.y + eyeH - this.landDip + this.bob.y * 0.4, this.ms.z);
-    this.viewQuat.setFromEuler(new THREE.Euler(this.pitch + this.kickPitch, this.yaw + this.kickYaw, 0, "YXZ"));
+    this.viewEye.copy(this.motion.position);
+    this.viewEye.y += eyeH - this.landDip + this.bob.y * 0.4;
+    this.viewQuat.setFromEuler(this.viewEuler.set(this.pitch + this.kickPitch, this.yaw + this.kickYaw, 0));
   }
 
   currentFov() {
     const base = useSettings.getState().fov;
-    const def = this.def;
-    const target = def.scope ? def.adsFov : Math.min(base, def.adsFov + (base - 78));
+    const target = opticFov(this.weapon, this.optic, base);
     return base + (target - base) * this.ads;
   }
 
   get scoped() {
-    return this.def.scope === true && this.ads > 0.7 && this.alive && !this.thirdPerson;
+    return OPTICS[this.optic].zoom > 1 && this.ads > 0.7 && this.alive;
   }
 
   /** Where the camera sits and looks (FPP eye, or over-the-shoulder in TPP). */
-  camera(cam: THREE.PerspectiveCamera, dt: number) {
-    if (!this.thirdPerson) {
-      cam.position.copy(this.eye);
+  camera(cam: THREE.PerspectiveCamera, dt: number, eye = this.viewEye) {
+    if (!this.thirdPerson || this.scoped) {
+      cam.position.copy(eye);
       cam.quaternion.copy(this.viewQuat);
       return;
     }
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(this.viewQuat);
     const rightV = new THREE.Vector3(1, 0, 0).applyQuaternion(this.viewQuat);
-    const pivot = this.eye.clone().addScaledVector(rightV, 0.55 - this.ads * 0.1);
+    const pivot = eye.clone().addScaledVector(rightV, 0.55 - this.ads * 0.1);
     pivot.y += 0.12;
-    const shoulder = pivot.clone().sub(this.eye);
+    const shoulder = pivot.clone().sub(eye);
     const shoulderLength = shoulder.length();
     shoulder.normalize();
-    const shoulderHit = raycastWorld(this.R, this.world, this.eye.toArray() as V3, shoulder.toArray() as V3, shoulderLength + 0.15);
-    if (shoulderHit) pivot.copy(this.eye).addScaledVector(shoulder, Math.max(0, shoulderHit.distance - 0.15));
+    const shoulderHit = raycastWorld(this.R, this.world, eye.toArray() as V3, shoulder.toArray() as V3, shoulderLength + 0.15);
+    if (shoulderHit) pivot.copy(eye).addScaledVector(shoulder, Math.max(0, shoulderHit.distance - 0.15));
     const want = 2.6 - this.ads * 1.2;
     const back = fwd.clone().negate();
     const hit = raycastWorld(this.R, this.world, [pivot.x, pivot.y, pivot.z], [back.x, back.y, back.z], want + 0.3);
@@ -317,12 +342,13 @@ export class LocalPlayer {
     cam.quaternion.copy(this.viewQuat);
   }
 
-  private switchTo(w: WeaponId, now: number) {
-    if (w === this.weapon) return;
+  switchTo(w: WeaponId, now: number) {
+    if (!this.alive || (w !== this.primary && w !== "pistol") || w === this.weapon) return;
     this.weapon = w;
     this.reloadEnd = 0;
     this.switchEnd = now + WEAPONS[w].equipMs;
     this.adsProgress = this.ads = 0;
+    this.kickPitch = this.kickYaw = this.burst = 0;
     this.cadence.reset();
     this.sendPose();
     audio.switchWeapon();
@@ -360,7 +386,7 @@ export class LocalPlayer {
     const eye: V3 = [this.eye.x, this.eye.y, this.eye.z];
     let aim = aimDir(this.yaw + this.kickYaw, this.pitch + this.kickPitch);
     if (this.thirdPerson) {
-      this.camera(this.game.camera, 0);
+      this.camera(this.game.camera, 0, this.eye);
       // Aim where the crosshair points from the camera, but fire from the character's eye.
       const cam = this.game.camera.position;
       const camDir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.game.camera.quaternion);
@@ -381,11 +407,11 @@ export class LocalPlayer {
     const damp = (1 - this.ads * 0.45) * (this.crouchT > 0.5 ? 0.85 : 1);
     const up = ((def.recoilUp * Math.PI) / 180) * damp * (0.9 + Math.random() * 0.2);
     const side = ((def.recoilSide * Math.PI) / 180) * damp * (Math.random() * 2 - 1) * 0.7;
-    this.pitch = THREE.MathUtils.clamp(this.pitch + up * 0.25, -1.5, 1.5);
-    this.yaw += side * 0.25;
-    this.kickPitch += up * 0.75;
-    this.kickYaw += side * 0.75;
-    this.recoil = 1;
+    this.pitch = THREE.MathUtils.clamp(this.pitch + up * 0.1, -1.5, 1.5);
+    this.yaw += side * 0.1;
+    this.kickPitch += up * 0.9;
+    this.kickYaw += side * 0.9;
+    this.recoil = 0.65;
     this.burst++;
   }
 
@@ -408,7 +434,7 @@ export class LocalPlayer {
   get spread() {
     const moving = Math.min(1, Math.hypot(this.ms.vx, this.ms.vz) / 5);
     return currentSpread(this.def, this.ads, moving, !this.ms.grounded, this.crouchT > 0.5)
-      * (1 + Math.min(this.burst, 6) * 0.06);
+      * (1 + Math.min(this.burst, 6) * 0.025);
   }
 
   private sendPose() {

@@ -6,19 +6,30 @@ async function main() {
   mkdirSync("out/qa", { recursive: true });
   const browser = await chromium.launch({ channel: "chrome", headless: true, args: ["--enable-gpu", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader"] });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
-  await context.addInitScript(() => localStorage.setItem("hollowmere.settings.v1", JSON.stringify({ quality: "low", adaptiveResolution: false })));
+  await context.addInitScript(() => {
+    if (location.protocol === "http:" || location.protocol === "https:") localStorage.setItem("hollowmere.settings.v1", JSON.stringify({ quality: "low", adaptiveResolution: false }));
+  });
   const errors: string[] = [];
   context.on("page", (page) => page.on("pageerror", (error) => errors.push(error.message)));
   const host = await context.newPage();
+  const assets: string[] = [];
+  host.on("request", (request) => { if (request.url().includes("/models/")) assets.push(request.url()); });
   const url = process.argv[2] || "http://localhost:3000";
   try {
     await host.goto(url);
     await host.getByText("SERVER ONLINE", { exact: true }).waitFor({ timeout: 60000 });
+    await host.locator('[data-stage-status="ready"]').waitFor({ timeout: 60000 });
+    await host.getByLabel("CHARACTER", { exact: true }).selectOption("1");
+    await host.locator('[data-stage-status="ready"]').waitFor();
+    await host.getByRole("button", { name: "Dance", exact: true }).click();
+    await host.waitForTimeout(900);
     await host.screenshot({ path: "out/qa/lobby-desktop.png", fullPage: true });
     await host.getByLabel("CALLSIGN", { exact: true }).fill("Host Ranger");
     await host.getByRole("button", { name: "CREATE 1V1 ROOM" }).click();
     await host.getByRole("button", { name: "READY UP", exact: true }).waitFor();
-    assert.equal(await host.locator("canvas").count(), 0, "Staging must not load the 3D scene");
+    await host.locator('[data-stage-status="ready"]').waitFor({ timeout: 60000 });
+    assert.equal(await host.locator("canvas").count(), 1, "Staging uses one lightweight character renderer");
+    assert.ok(!assets.some((url) => /village|weapons|anims\.glb/.test(url.replace("lobby-anims.glb", ""))), "Lobby must not load the village, weapons or combat clips");
     assert.ok(await host.getByRole("button", { name: "START MATCH" }).isDisabled());
     const invite = await host.getByLabel("Invite link", { exact: true }).inputValue();
     await host.getByRole("button", { name: "READY UP", exact: true }).click();
@@ -28,12 +39,17 @@ async function main() {
     await guest.getByLabel("CALLSIGN", { exact: true }).fill("Guest Ranger");
     await guest.getByRole("button", { name: "JOIN ROOM →", exact: true }).click();
     await guest.getByRole("button", { name: "READY UP", exact: true }).waitFor();
+    await host.locator('[data-stage-status="ready"]').waitFor();
+    await host.getByRole("button", { name: "Dance", exact: true }).click();
+    await guest.getByText("Female Ranger · Dance", { exact: true }).waitFor();
+    await guest.getByRole("button", { name: "Spell stance", exact: true }).click();
+    await host.getByText("Male Ranger · Spell stance", { exact: true }).waitFor();
     await host.getByRole("button", { name: "READY UP", exact: true }).waitFor();
     assert.equal(await host.locator(".player-slot.occupied").count(), 2);
     assert.equal(await guest.getByRole("button", { name: "START MATCH" }).count(), 0);
     await host.screenshot({ path: "out/qa/room-desktop.png", fullPage: true });
     await host.waitForTimeout(8500);
-    assert.equal(await host.locator("canvas").count(), 0, "Waiting rooms must never auto-start");
+    assert.equal(await host.getByRole("button", { name: "ENTER MATCH" }).count(), 0, "Waiting rooms must never auto-start");
     await guest.getByRole("button", { name: "READY UP", exact: true }).click();
     await host.getByRole("button", { name: "READY UP", exact: true }).click();
     await host.waitForFunction(() => !(document.querySelector(".room-start .primary-button:last-child") as HTMLButtonElement)?.disabled);
@@ -65,15 +81,17 @@ async function main() {
     await host.getByRole("button", { name: "Leave room", exact: false }).click();
 
     await host.setViewportSize({ width: 390, height: 844 });
+    await host.locator('[data-stage-status="ready"]').waitFor();
     await host.screenshot({ path: "out/qa/lobby-mobile.png", fullPage: true });
     assert.ok(await host.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Mobile home should not overflow horizontally");
     await host.getByRole("button", { name: "CREATE 2V2 ROOM" }).click();
     await host.getByRole("button", { name: "READY UP", exact: true }).waitFor();
+    await host.locator('[data-stage-status="ready"]').waitFor();
     await host.screenshot({ path: "out/qa/room-mobile.png", fullPage: true });
     assert.ok(await host.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Mobile room should not overflow horizontally");
     await host.getByRole("button", { name: "Leave room", exact: false }).click();
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ passed: true, checks: ["create duel", "invite join", "ready reset", "no auto-start", "host start", "enter game", "invalid code", "public 2v2 browser", "mobile layouts"], errors }));
+    console.log(JSON.stringify({ passed: true, checks: ["character selection", "shared showoffs", "no world assets in lobby", "create duel", "invite join", "ready reset", "no auto-start", "host start", "enter game", "invalid code", "public 2v2 browser", "mobile layouts"], errors }));
   } catch (error) {
     console.error(await host.locator("body").innerText());
     await host.screenshot({ path: "out/qa/lobby-failure.png", fullPage: true }).catch(() => {});

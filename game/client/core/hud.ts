@@ -77,9 +77,11 @@ export interface HudState {
 
   locked: boolean;
   menu: boolean;
+  loadoutOpen: boolean;
   customizingControls: boolean;
   scoreboard: boolean;
   touch: boolean;
+  mobilePortrait: boolean;
   fps: number;
   ping: number;
   set: (patch: Partial<HudState>) => void;
@@ -128,9 +130,11 @@ export const useHud = create<HudState>((set) => ({
   players: [],
   locked: false,
   menu: false,
+  loadoutOpen: false,
   customizingControls: false,
   scoreboard: false,
   touch: false,
+  mobilePortrait: false,
   fps: 0,
   ping: 0,
   set: (patch) => set(patch),

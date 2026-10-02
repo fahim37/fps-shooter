@@ -7,6 +7,7 @@ import { MODE_INFO, type GameMode } from "../shared/constants";
 import { startBlockReason } from "../shared/lobby";
 import { RoomInvite } from "./RoomInvite";
 import { SettingsPanel } from "./SettingsPanel";
+import { CharacterShowcase } from "./CharacterShowcase";
 
 const GameView = dynamic(() => import("./GameView"), { ssr: false, loading: () => <main className="boot-screen">Loading the village…</main> });
 
@@ -16,13 +17,13 @@ function snapshot(room: GameRoom) {
     phase: s?.code ? s.phase : "", lobby: s?.lobby ?? false, name: s?.roomName ?? "", mode: s?.mode ?? "tdm",
     host: s?.hostId ?? "", format: s?.format ?? "custom", maxPlayers: s?.maxPlayers ?? 12,
     botFill: s?.botFill ?? 0, privateRoom: s?.privateRoom ?? false,
-    players: s?.players ? [...s.players.entries()].map(([id, p]) => ({ id, name: p.name, team: p.team, ready: p.ready, connected: p.connected, bot: p.bot })) : [],
+    players: s?.players ? [...s.players.entries()].map(([id, p]) => ({ id, name: p.name, char: p.char, emote: p.emote, team: p.team, ready: p.ready, connected: p.connected, bot: p.bot })) : [],
   });
 }
 interface RoomSnapshot {
   phase: string; lobby: boolean; name: string; mode: GameMode; host: string; format: string;
   maxPlayers: number; botFill: number; privateRoom: boolean;
-  players: { id: string; name: string; team: number; ready: boolean; connected: boolean; bot: boolean }[];
+  players: { id: string; name: string; char: number; emote: string; team: number; ready: boolean; connected: boolean; bot: boolean }[];
 }
 
 export function ConnectedRoom({ room, onLeave }: { room: GameRoom; onLeave: () => void }) {
@@ -51,6 +52,8 @@ export function ConnectedRoom({ room, onLeave }: { room: GameRoom; onLeave: () =
   return <main className="waiting-room">
     <header className="lobby-top"><span className="wordmark">H / M</span><button className="text-button" onClick={onLeave}>← Leave room</button></header>
     <section className="room-heading"><span className="eyebrow">YOUR ROOM · {s.privateRoom ? "INVITE ONLY" : "PUBLIC"}</span><h1>{s.name || "Joining room…"}</h1><p>{s.format === "custom" ? MODE_INFO[s.mode].name : `${s.format} · Team Deathmatch`} <span>·</span> The Village <span>·</span> {s.botFill ? `Practice bots fill to ${s.botFill}` : "Players only · No bots"}</p></section>
+    <div className="room-lineup">
+    <CharacterShowcase players={s.players.filter((p) => !p.bot)} me={room.sessionId} onShowoff={(id) => send("emote", id)} disabled={disabled} />
     <section className="roster-panel" aria-label="Room players">
       <div className="panel-heading"><span>TEAM LINEUP</span><span>{s.players.filter((p) => !p.bot).length} / {s.maxPlayers} PLAYERS</span></div>
       <div className={`team-grid ${s.mode === "ffa" ? "solo-grid" : ""}`}>
@@ -72,6 +75,7 @@ export function ConnectedRoom({ room, onLeave }: { room: GameRoom; onLeave: () =
       </div>
       <p className="controls-help">Choose your team, then ready up. Team or player changes reset everyone’s ready status.</p>
     </section>
+    </div>
     <aside className="room-sidebar">
       <RoomInvite code={room.roomId} />
       <div className="room-start" aria-live="polite">

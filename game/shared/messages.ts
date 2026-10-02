@@ -83,6 +83,10 @@ export interface LoadoutMsg {
   primary: WeaponId;
 }
 
+export interface LoadoutEvent extends AmmoEvent {
+  primary: WeaponId;
+}
+
 // ----- server → client -----
 
 export interface ShotEvent {

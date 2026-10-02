@@ -33,13 +33,11 @@
 .status { font-size: 8px; color: #aebaa2; letter-spacing: 0.02em; }
 .compact { width: 153px; background: #111812a8; }
 .compact select, .compact .adaptive { display: none; }
-.touchControl { top: auto; bottom: 82px; left: 50%; transform: translateX(-50%); width: auto; padding: 0; }
-.touchControl button { border: 0; background: transparent; color: #d9ed79; padding: 11px 13px; font: inherit; font-size: 9px; white-space: nowrap; cursor: pointer; }
-.touchControl button span { margin-left: 8px; }
+.control.touchControl { top: auto; bottom: max(8px, env(safe-area-inset-bottom)); right: max(20px, env(safe-area-inset-right)); left: auto; transform: none; width: 52px; padding: 0; }
+.touchControl button { display: grid; align-content: center; gap: 4px; width: 100%; min-height: 44px; border: 0; background: transparent; color: #d9ed79; padding: 4px; font: inherit; font-size: 8px; letter-spacing: 0; white-space: nowrap; cursor: pointer; }
+.touchControl button small { font-size: 6.5px; letter-spacing: .03em; }
 .touchControl button:focus-visible { outline: 2px solid #d9ed79; outline-offset: 3px; }
 .control select:focus-visible, .adaptive input:focus-visible { outline: 2px solid #d9ed79; outline-offset: 3px; }
 @media (max-width: 640px) {
   .control { top: auto; bottom: 82px; left: 50%; transform: translateX(-50%); width: 153px; padding: 8px; gap: 5px; }
 }
-
-.control.touchControl { width: auto; padding: 0; bottom: calc(82px + env(safe-area-inset-bottom, 0px)); }

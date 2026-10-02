@@ -2,11 +2,13 @@ import * as THREE from "three";
 import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 import { loadGLTF } from "./loaders";
 import { TEAM_COLORS } from "../../shared/constants";
+import type { ShowoffId } from "../../shared/showcase";
 
 /** Bones driven by the upper-body (aim/reload/shoot) layer; the rest follow locomotion. */
 const LOWER_BONES = new Set(["root", "pelvis", "thigh_l", "calf_l", "foot_l", "ball_l", "thigh_r", "calf_r", "foot_r", "ball_r"]);
 
 export type ClipName =
+  | ShowoffId
   | "idle" | "walk" | "jog" | "sprint" | "crouchIdle" | "crouchWalk" | "jumpStart" | "jumpLoop" | "jumpLand"
   | "death" | "hitChest" | "hitHead" | "pistolIdle" | "aimNeutral" | "aimUp" | "aimDown" | "reload" | "shoot"
   | "roll" | "dance" | "throw" | "knockback" | "slideStart" | "slideLoop" | "slideExit" | "idleFoldArms";
@@ -21,6 +23,23 @@ export interface CharacterTemplate {
 }
 
 let templates: Promise<[CharacterTemplate, CharacterTemplate]> | null = null;
+
+const lobbyTemplates = new Map<number, Promise<CharacterTemplate>>();
+
+/** Lobby requests only the visible body and four showoff clips, never combat/world assets. */
+export function loadLobbyCharacter(index: number) {
+  const body = index === 1 ? 1 : 0;
+  let promise = lobbyTemplates.get(body);
+  if (!promise) {
+    promise = Promise.all([
+      loadGLTF(`/models/char_${body ? "female" : "male"}.glb`),
+      loadGLTF("/models/lobby-anims.glb"),
+    ]).then(([character, animations]) => makeTemplate(character.scene, animations.animations, findBone(animations.scene, "pelvis")!.position.clone()));
+    lobbyTemplates.set(body, promise);
+    void promise.catch(() => lobbyTemplates.delete(body));
+  }
+  return promise;
+}
 
 export function loadCharacters() {
   return (templates ??= Promise.all([

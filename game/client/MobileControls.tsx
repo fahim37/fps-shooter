@@ -40,7 +40,9 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
   const editDrag = useRef<{ id: MobileControlId; pointer: number; startX: number; startY: number; centerX: number; centerY: number; halfWidth: number; halfHeight: number } | null>(null);
   const [saveError, setSaveError] = useState("");
   const [editorCollapsed, setEditorCollapsed] = useState(false);
+  const joystick = useRef<HTMLDivElement>(null);
   const knob = useRef<HTMLDivElement>(null);
+  const [stickOrigin, setStickOrigin] = useState<{ x: number; y: number } | null>(null);
   const stick = useRef<{ id: number; x: number; y: number; radius: number } | null>(null);
   const look = useRef<{ id: number; x: number; y: number } | null>(null);
   const gestures = useRef(new Map<number, Gesture>());
@@ -93,14 +95,17 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
       gestures.current.forEach((gesture) => { gesture.element.dataset.pressed = "false"; });
       gestures.current.clear();
       stick.current = look.current = null;
+      setStickOrigin(null);
       if (knob.current) knob.current.style.transform = "translate(-50%, -50%)";
       setSprinting(false); setCrouching(false);
     };
     const visibility = () => { if (document.hidden) reset(); };
     window.addEventListener("blur", reset);
+    window.addEventListener("resize", reset);
     document.addEventListener("visibilitychange", visibility);
     return () => {
       window.removeEventListener("blur", reset);
+      window.removeEventListener("resize", reset);
       document.removeEventListener("visibilitychange", visibility);
       input.releaseAll();
     };
@@ -167,13 +172,22 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
     if (knob.current) knob.current.style.transform = `translate(calc(-50% + ${dx * scale}px), calc(-50% + ${dy * scale}px))`;
   }
 
+  function beginStick(e: PointerEvent<HTMLDivElement>) {
+    if (stick.current || !input.enabled || !joystick.current) return;
+    capture(e);
+    const radius = joystick.current.getBoundingClientRect().width * 0.34;
+    stick.current = { id: e.pointerId, x: e.clientX, y: e.clientY, radius };
+    setStickOrigin({ x: e.clientX, y: e.clientY });
+    // Touching down is neutral; only dragging moves the player.
+    moveStick(e.clientX, e.clientY);
+  }
+
   function endStick(e: PointerEvent<HTMLDivElement>) {
-    if (editing) { endEdit(e); return; }
     if (stick.current?.id !== e.pointerId) return;
     stick.current = null;
+    setStickOrigin(null);
     input.setStick(null);
     if (knob.current) knob.current.style.transform = "translate(-50%, -50%)";
-    e.currentTarget.dataset.active = "false";
   }
 
   function toggleScores() {
@@ -182,6 +196,7 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
     gestures.current.forEach((gesture) => { gesture.element.dataset.pressed = "false"; });
     gestures.current.clear();
     stick.current = look.current = null;
+    setStickOrigin(null);
     if (knob.current) knob.current.style.transform = "translate(-50%, -50%)";
     input.hold("Tab", open);
     setSprinting(false); setCrouching(false);
@@ -192,8 +207,8 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
     gestures.current.forEach((gesture) => { gesture.element.dataset.pressed = "false"; });
     gestures.current.clear();
     stick.current = look.current = null;
+    setStickOrigin(null);
     if (knob.current) knob.current.style.transform = "translate(-50%, -50%)";
-    if (knob.current?.parentElement) knob.current.parentElement.dataset.active = "false";
     setSprinting(false); setCrouching(false);
     setSaveError("");
     setEditorCollapsed(false);
@@ -211,6 +226,10 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
 
   return <div className={`${styles.controls} ${editing ? styles.editing : ""}`} aria-label="Mobile game controls" data-scoreboard={scoreboard || undefined}>
     {!scoreboard && <>
+      {!editing && <div className={styles.moveZone} aria-label="Touch left to move"
+        onPointerDown={beginStick}
+        onPointerMove={(e) => { if (stick.current?.id === e.pointerId) moveStick(e.clientX, e.clientY); }}
+        onPointerUp={endStick} onPointerCancel={endStick} onLostPointerCapture={endStick} />}
       {!editing && <div className={styles.lookZone} aria-label="Drag to aim"
         onPointerDown={(e) => { if (look.current || !input.enabled) return; capture(e); look.current = { id: e.pointerId, x: e.clientX, y: e.clientY }; }}
         onPointerMove={(e) => {
@@ -221,19 +240,13 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
         onPointerUp={(e) => { if (look.current?.id === e.pointerId) look.current = null; }}
         onPointerCancel={(e) => { if (look.current?.id === e.pointerId) look.current = null; }}
         onLostPointerCapture={(e) => { if (look.current?.id === e.pointerId) look.current = null; }} />}
-      <div className={styles.joystick} style={controlStyle("joystick")} aria-label="Movement joystick" data-control-id="joystick" data-selected={editing && selected === "joystick" || undefined}
-        onPointerDown={(e) => {
-          if (editing) { beginEdit(e, "joystick"); return; }
-          if (stick.current || !input.enabled) return;
-          capture(e);
-          const rect = e.currentTarget.getBoundingClientRect();
-          stick.current = { id: e.pointerId, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, radius: rect.width * 0.34 };
-          e.currentTarget.dataset.active = "true";
-          moveStick(e.clientX, e.clientY);
-        }}
-        onPointerMove={(e) => { if (editing) moveEdit(e); else if (stick.current?.id === e.pointerId) moveStick(e.clientX, e.clientY); }}
-        onPointerUp={endStick} onPointerCancel={endStick} onLostPointerCapture={endStick}>
-        <div className={styles.stickGuides} /><div ref={knob} className={styles.knob} /><span>MOVE</span>
+      <div ref={joystick} className={styles.joystick} style={{ ...controlStyle("joystick"), ...(stickOrigin && !editing ? {
+        position: "fixed", left: stickOrigin.x, top: stickOrigin.y, right: "auto", bottom: "auto", transform: "translate(-50%, -50%)",
+      } : {}) }} aria-label="Movement joystick" data-control-id="joystick" data-active={!!stickOrigin} data-selected={editing && selected === "joystick" || undefined}
+        onPointerDown={(e) => { if (editing) beginEdit(e, "joystick"); }}
+        onPointerMove={(e) => { if (editing) moveEdit(e); }}
+        onPointerUp={endEdit} onPointerCancel={endEdit} onLostPointerCapture={endEdit}>
+        <div className={styles.stickGuides} /><div ref={knob} className={styles.knob} /><span>{editing || stickOrigin ? "MOVE" : "TOUCH LEFT TO MOVE"}</span>
       </div>
       {button("fire", "Fire", styles.leftFire, "fire", undefined, undefined, false, "leftFire")}
       {button("fire", "Fire / aim", styles.rightFire, "fire", undefined, undefined, true, "rightFire")}

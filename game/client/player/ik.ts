@@ -2,6 +2,8 @@ import * as THREE from "three";
 
 const _qp = new THREE.Quaternion();
 const _qw = new THREE.Quaternion();
+const _position = new THREE.Vector3();
+const _scale = new THREE.Vector3();
 const _a = new THREE.Vector3();
 const _b = new THREE.Vector3();
 const _c = new THREE.Vector3();
@@ -15,17 +17,19 @@ const _swing = new THREE.Vector3();
 const EPSILON = 1e-6;
 
 /** Applies a world-space rotation `delta` on top of the bone's current world rotation. */
-export function rotateBoneWorld(bone: THREE.Object3D, delta: THREE.Quaternion) {
-  bone.getWorldQuaternion(_qw);
-  bone.parent!.getWorldQuaternion(_qp);
+export function rotateBoneWorld(bone: THREE.Object3D, delta: THREE.Quaternion, matricesCurrent = false) {
+  if (!matricesCurrent) bone.updateWorldMatrix(true, false);
+  bone.matrixWorld.decompose(_position, _qw, _scale);
+  bone.parent!.matrixWorld.decompose(_position, _qp, _scale);
   _qw.premultiply(delta);
   bone.quaternion.copy(_qp.invert().multiply(_qw));
   bone.updateMatrixWorld(true);
 }
 
 /** Sets a bone's world rotation. */
-export function setBoneWorldQuaternion(bone: THREE.Object3D, q: THREE.Quaternion) {
-  bone.parent!.getWorldQuaternion(_qp);
+export function setBoneWorldQuaternion(bone: THREE.Object3D, q: THREE.Quaternion, matricesCurrent = false) {
+  if (!matricesCurrent) bone.parent!.updateWorldMatrix(true, false);
+  bone.parent!.matrixWorld.decompose(_position, _qp, _scale);
   bone.quaternion.copy(_qp.invert().multiply(q));
   bone.updateMatrixWorld(true);
 }
@@ -33,16 +37,19 @@ export function setBoneWorldQuaternion(bone: THREE.Object3D, q: THREE.Quaternion
 /**
  * Analytic two-bone IK (shoulder → elbow → wrist). Moves the wrist to `target` with the elbow
  * bending toward `pole`. `weight` blends from the animated pose (0) to the solution (1).
+ * Set `matricesCurrent` only after updating the whole rig; each solved rotation then
+ * propagates to its descendants without repeatedly rebuilding the ancestor chain.
  */
 export function solveTwoBone(
   upper: THREE.Object3D, lower: THREE.Object3D, end: THREE.Object3D,
-  target: THREE.Vector3, pole: THREE.Vector3, weight = 1,
+  target: THREE.Vector3, pole: THREE.Vector3, weight = 1, matricesCurrent = false,
 ) {
   weight = THREE.MathUtils.clamp(weight, 0, 1);
   if (weight <= 0) return;
-  upper.getWorldPosition(_a);
-  lower.getWorldPosition(_b);
-  end.getWorldPosition(_c);
+  if (!matricesCurrent) upper.updateWorldMatrix(true, true);
+  _a.setFromMatrixPosition(upper.matrixWorld);
+  _b.setFromMatrixPosition(lower.matrixWorld);
+  _c.setFromMatrixPosition(end.matrixWorld);
   const la = _a.distanceTo(_b), lb = _b.distanceTo(_c);
   if (la < EPSILON || lb < EPSILON) return;
   _t.copy(_c).lerp(target, weight);
@@ -81,11 +88,11 @@ export function solveTwoBone(
   // Upper bone: swing its current direction onto the elbow.
   _d2.subVectors(_b, _a).normalize();
   _q.setFromUnitVectors(_d2, _swing.subVectors(_elbow, _a).normalize());
-  rotateBoneWorld(upper, _q);
+  rotateBoneWorld(upper, _q, true);
 
   // Lower bone: swing onto the target.
-  lower.getWorldPosition(_b);
-  end.getWorldPosition(_c);
+  _b.setFromMatrixPosition(lower.matrixWorld);
+  _c.setFromMatrixPosition(end.matrixWorld);
   _q.setFromUnitVectors(_d2.subVectors(_c, _b).normalize(), _d1.subVectors(_t, _b).normalize());
-  rotateBoneWorld(lower, _q);
+  rotateBoneWorld(lower, _q, true);
 }
