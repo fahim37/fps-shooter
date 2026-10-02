@@ -85,11 +85,11 @@ export class Game {
     if (!this.disposed && hud().conn === "connected") this.room.send(type, message);
   }
 
-  resume() {
+  resume(fullscreen = false) {
     audio.unlock();
     hud().set({ menu: false, loadoutOpen: false, customizingControls: false });
     this.input.enabled = !hud().mobilePortrait;
-    this.input.requestLock();
+    this.input.requestLock(fullscreen);
   }
 
   openLoadout() {

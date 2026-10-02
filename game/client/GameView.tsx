@@ -109,6 +109,7 @@ function MatchHud({ game, onLeave }: { game: Game | null; onLeave: () => void })
         <p>{h.roomName} · {MODE_INFO[h.mode].name} · Room <b>{h.code}</b></p>
         <RoomInvite code={h.code} />
         <button className="primary-button" onClick={() => game?.resume()}>ENTER MATCH <span>↗</span></button>
+        {!h.touch && <button className="outline-button" onClick={() => game?.resume(true)}>ENTER FULLSCREEN MATCH</button>}
         {h.touch && <button className="outline-button" onClick={() => { game?.input.releaseAll(); hud().set({ menu: false, customizingControls: true }); }}>CUSTOMIZE TOUCH CONTROLS</button>}
         {game && <LoadoutPicker game={game} />}
         <details className="settings-details"><summary>GAME SETTINGS & CONTROLS</summary><SettingsPanel /><p className="controls-help">WASD move · Mouse aim · Click fire · Right-click ADS · Shift sprint · Space jump · C crouch · R reload · Q switch · Hold G grenade · V camera · Tab scores</p></details>
