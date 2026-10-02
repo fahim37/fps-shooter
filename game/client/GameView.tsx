@@ -24,6 +24,7 @@ import { enterMobileFullscreen, exitMobileFullscreen } from "./mobileFullscreen"
 import { LoadoutPanel, LoadoutPicker, WeaponBar } from "./LoadoutPanel";
 import { useLoadout } from "./loadout";
 import { OPTICS } from "../shared/optics";
+import { RedDotSight } from "./RedDotSight";
 
 class SceneBoundary extends Component<{ children: ReactNode; onLeave: () => void }, { error: string }> {
   state = { error: "" };
@@ -88,7 +89,7 @@ function MatchHud({ game, onLeave }: { game: Game | null; onLeave: () => void })
       <div className="killfeed">{h.killfeed.filter((k) => now - k.at < 7000).map((k) => <div key={k.key} className={k.mine ? "mine" : ""}><b>{k.killer}</b><span>{k.headshot ? "⌖ " : ""}{k.weapon.toUpperCase()}</span>{k.victim}</div>)}</div>
       {h.ready && h.alive && !paused && !scoreboard && <>
         {!clearView && h.ads > 0.1 && !h.scoped && <div className="ads-vignette" style={{ opacity: h.ads * 0.45 }} />}
-        {h.scoped ? <Scope enemy={h.enemyInSight} ads={h.ads} fov={h.cameraFov} /> : <div aria-label={h.enemyInSight ? "Enemy in sights" : "Crosshair"} className={`crosshair ${h.enemyInSight ? "enemy-sighted" : ""} ${h.ads > 0.5 ? "aiming" : ""} ${h.ads > 0.5 && optic === "red-dot" ? "red-dot-sight" : ""}`} style={{ width: h.crosshairRadius * 2, height: h.crosshairRadius * 2 }}><i /><b /><em /><span /></div>}
+        {h.scoped ? <Scope enemy={h.enemyInSight} ads={h.ads} fov={h.cameraFov} /> : h.ads > 0.5 && optic === "red-dot" ? <RedDotSight enemy={h.enemyInSight} ads={h.ads} /> : <div aria-label={h.enemyInSight ? "Enemy in sights" : "Crosshair"} className={`crosshair ${h.enemyInSight ? "enemy-sighted" : ""} ${h.ads > 0.5 ? "aiming" : ""}`} style={{ width: h.crosshairRadius * 2, height: h.crosshairRadius * 2 }}><i /><b /><em /><span /></div>}
         {h.hitmarker.at > 0 && now - h.hitmarker.at < 200 && <div className={`hitmarker ${h.hitmarker.kill ? "kill" : ""} ${h.hitmarker.confirmed ? "confirmed" : "predicted"}`}>×</div>}
         {h.hitmarker.confirmed && now - h.hitmarker.at < 650 && <div className="hit-confirm">{h.hitmarker.kill ? "ELIMINATED" : `${h.hitmarker.damage} DAMAGE`}{h.hitmarker.head && " · HEADSHOT"}</div>}
         {h.hurtAt > 0 && now - h.hurtAt < 550 && <div className="hurt-vignette" />}

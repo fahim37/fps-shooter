@@ -1,0 +1,28 @@
+.sight {
+  --reticle-color: #ff3c35;
+  width: clamp(160px, 30vmin, 252px);
+  height: clamp(160px, 30vmin, 252px);
+  pointer-events: none;
+}
+.sight::after { display: none; }
+.sight > .frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: none;
+  box-shadow: none;
+  border-radius: 0;
+}
+.sight > .dot {
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #ffb0a2;
+  box-shadow: 0 0 0 1px var(--reticle-color), 0 0 4px 1px #ff302b80, 0 0 1px 2px #21070580;
+}
+.target { --reticle-color: #ff1428; }
+.target > .dot { background: #ffe3dd; }

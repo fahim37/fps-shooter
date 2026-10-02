@@ -77,9 +77,6 @@ small { display: block; }
 .crosshair.aiming em,.crosshair.aiming span { width: 4px; }
 .enemy-sighted { color: #ff4545; }
 .ads-vignette { position: absolute; inset: 0; box-shadow: inset 0 0 18vmin 5vmin #07100fcc; pointer-events: none; }
-.crosshair.red-dot-sight { color: #ff6256; }
-.crosshair.red-dot-sight > * { display: none; }
-.crosshair.red-dot-sight::after { width: 5px; height: 5px; box-shadow: 0 0 5px #ff6256, 0 0 2px 1px #000; }
 .hud-hints { margin-bottom: 68px; }
 .scope { width: 82vmin; height: 82vmin; color: #edfff3; border: 8px solid #141918; box-shadow: 0 0 0 100vmax #050807, inset 0 0 0 2px #85928780, inset 0 0 35px 12px #05100ab3; background: radial-gradient(circle, transparent 54%, #07130d48 79%, #000a 100%); transition: opacity .06s; }
 .scope.enemy-sighted { color: #ff4545; }
