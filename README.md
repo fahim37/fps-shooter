@@ -57,6 +57,8 @@ Build with `NEXT_PUBLIC_BASE_PATH=/fps npm run build`. This prefixes both Next r
 
 The supplied `deploy/ecosystem.config.cjs` runs the web app on loopback port 3006 and the game server on loopback port 2567. It assumes `/var/www/fps-shooter` and PM2. Include `deploy/nginx-locations.conf` in the domain's existing HTTPS server block, validate with `nginx -t`, and reload Nginx. Start with `pm2 start deploy/ecosystem.config.cjs` and `pm2 save`.
 
+The Nginx snippet serves models, environment textures and build assets directly from disk. Hashed JavaScript/CSS assets use a one-year immutable cache and gzip compression; models and textures revalidate their ETags because their filenames do not change with each release. WebSocket traffic remains unbuffered. Build the replacement in a separate directory before switching `.next` and restarting only the two Hollowmere processes.
+
 The room state lives in memory. Restarting the game server ends current matches. Client movement is predicted locally and checked for speed on the server; damage, ammunition and scoring are server-owned. This is a playable prototype, not a hardened competitive anti-cheat system.
 
 ## Assets
