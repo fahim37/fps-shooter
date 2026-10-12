@@ -38,7 +38,9 @@ function Rigs({ pitch, speed, reload, ads }: { pitch: number; speed: number; rel
   return null;
 }
 
-function FppRig({ weapon, ads, pitch }: { weapon: WeaponId; ads: number; pitch: number }) {
+const FPP_EYE = new THREE.Vector3(0, 1.62, 0);
+
+function FppRig({ weapon, ads, pitch, reload, orbit }: { weapon: WeaponId; ads: number; pitch: number; reload: number; orbit: boolean }) {
   const [male] = use(loadCharacters());
   const weapons = use(loadWeapons());
   const rig = useMemo(() => {
@@ -52,33 +54,37 @@ function FppRig({ weapon, ads, pitch }: { weapon: WeaponId; ads: number; pitch: 
     scene.add(rig.object);
     return () => rig.dispose();
   }, [rig, scene]);
+  const view = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch, 0, 0, "YXZ")), [pitch]);
   useFrame((_, dt) => {
-    camera.position.set(0, 1.62, 0);
-    camera.rotation.set(pitch, 0, 0, "YXZ");
-    camera.updateMatrixWorld();
+    // Orbit mode inspects the viewmodel from outside; the rig still sees the player's eye.
+    if (!orbit) {
+      camera.position.copy(FPP_EYE);
+      camera.quaternion.copy(view);
+      camera.updateMatrixWorld();
+    }
     rig.update(Math.min(dt, 0.05), {
-      x: 0, y: 0, z: 0, yaw: 0, pitch, eye: camera.position.clone(), view: camera.quaternion.clone(),
-      speed: 0, moveYaw: 0, crouch: false, grounded: true, alive: true, sprint: 0, ads, reload: -1, recoil: 0,
+      x: 0, y: 0, z: 0, yaw: 0, pitch, eye: FPP_EYE, view,
+      speed: 0, moveYaw: 0, crouch: false, grounded: true, alive: true, sprint: 0, ads, reload, recoil: 0,
     });
   });
   return null;
 }
 
-export default function RigViewer(props: { fpp: boolean; weapon: WeaponId; pitch: number; speed: number; reload: number; ads: number; cam: [number, number, number] }) {
+export default function RigViewer(props: { fpp: boolean; orbit: boolean; weapon: WeaponId; pitch: number; speed: number; reload: number; ads: number; cam: [number, number, number]; target?: [number, number, number] }) {
   return (
     <div style={{ position: "fixed", inset: 0 }}>
-      <Canvas shadows camera={{ position: props.cam, fov: props.fpp ? 78 : 40, near: 0.02 }} gl={{ preserveDrawingBuffer: true }}>
+      <Canvas shadows camera={{ position: props.cam, fov: props.fpp && !props.orbit ? 78 : 40, near: 0.02 }} gl={{ preserveDrawingBuffer: true }}>
         <color attach="background" args={["#9aa6ad"]} />
         <directionalLight position={[3, 6, 4]} intensity={2.5} castShadow />
         <Suspense fallback={null}>
           <Environment preset="city" />
-          {props.fpp ? <FppRig weapon={props.weapon} ads={props.ads} pitch={props.pitch} /> : <Rigs {...props} />}
+          {props.fpp ? <FppRig weapon={props.weapon} ads={props.ads} pitch={props.pitch} reload={props.reload} orbit={props.orbit} /> : <Rigs {...props} />}
         </Suspense>
         <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
           <planeGeometry args={[30, 30]} />
           <meshStandardMaterial color="#777" />
         </mesh>
-        {props.fpp ? null : <OrbitControls target={[0, 1.1, 0]} />}
+        {props.fpp && !props.orbit ? null : <OrbitControls target={props.target ?? (props.fpp ? [0.06, 1.42, -0.42] : [0, 1.1, 0])} />}
       </Canvas>
     </div>
   );
