@@ -16,6 +16,27 @@ function canvasDocument() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("combat effects", () => {
+  it("keeps close-range trails visible across frames, clips them to impact and fades them out", () => {
+    vi.stubGlobal("document", canvasDocument());
+    const effects = new Effects();
+    try {
+      const from = new THREE.Vector3(0, 1.5, 0), to = new THREE.Vector3(0, 1.5, -2);
+      effects.tracer(from, to, "enemy");
+      effects.update(1 / 30);
+      const streaks = effects.group.children.filter((o): o is THREE.Mesh => o instanceof THREE.Mesh && o.visible && o.geometry instanceof THREE.CylinderGeometry);
+      expect(streaks).toHaveLength(2);
+      for (const mesh of streaks) {
+        expect(mesh.position.z).toBe(-2);
+        expect(mesh.scale.z).toBeLessThanOrEqual(2);
+        expect((mesh.material as THREE.MeshBasicMaterial).opacity).toBeGreaterThan(0);
+      }
+      effects.update(0.2);
+      expect(streaks.every((mesh) => !mesh.visible)).toBe(true);
+      effects.tracer(new THREE.Vector3(4, 1.5, 0), new THREE.Vector3(4, 1.5, -20), "friendly");
+      const recycled = effects.group.children.filter((o) => o instanceof THREE.Mesh && o.visible && o.geometry instanceof THREE.CylinderGeometry);
+      expect(recycled.every((mesh) => mesh.position.x === 4)).toBe(true);
+    } finally { effects.dispose(); }
+  });
   it("keeps sustained combat bounded and retires transient effects after switching to Low", () => {
     vi.stubGlobal("document", canvasDocument());
     const effects = new Effects();

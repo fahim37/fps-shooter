@@ -35,6 +35,12 @@ const HOUSES: HouseSpec[] = [
   { x: 5, z: 28, sx: 8, sz: 8, front: "W", floors: 2, doors: [["F", 1], ["B", 2]], balconies: [[1, 2]], seed: 34, chimney: true },
 ];
 
+/** The same world-space building footprints used to construct the village. */
+export const VILLAGE_OVERVIEW = {
+  half: MAP_HALF, plaza: PLAZA, road: ROAD,
+  buildings: HOUSES.map(({ x, z, sx, sz }) => ({ x, z, sx, sz })),
+};
+
 type Rect = [number, number, number, number]; // x0, z0, x1, z1
 
 function inRects(x: number, z: number, rects: Rect[], pad = 0) {

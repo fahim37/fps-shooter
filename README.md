@@ -23,11 +23,17 @@ Ctrl keyboard shortcuts and Ctrl+wheel browser zoom are blocked while game contr
 
 The crosshair turns red over a visible, vulnerable enemy. ADS smoothly zooms and reduces mouse sensitivity; red-dot aim uses a compact angular reflex sight with a clear lens and crisp center dot, while sniper aim uses a circular optic. The reflex sight scales for desktop and mobile and fades out when aiming is released. Blood spray and nearby surface splatter follow server-confirmed bullet hits, while a faint hitmarker gives instant local feedback. Automatic-fire timing keeps its cadence across common rendering rates without firing catch-up bursts after a stall.
 
+A north-up minimap at the top right shows the village roads, plaza and actual building footprints. Your arrow shows your facing direction; blue dots mark teammates and red dots mark all living enemies. Above/below chevrons identify players on another floor. Positions follow the rendered players and disappear on death or disconnect. The map scales down on mobile, and the kill feed moves below it (alongside it on short landscape screens).
+
+The kill feed shows weapon silhouettes and names, headshots, team colors, and highlighted eliminations involving YOU. Every confirmed kill also displays a prominent YOU ELIMINATED banner naming your victim for 2.8 seconds, with headshot, rapid multi-kill and streak details. It remains visible for trade kills, and never appears for predicted hits or other players? kills. After a death, the camera briefly holds your position before cutting to a collision-checked close-up of your killer. The death report shows the lethal weapon, hit type, distance, killer health at the moment of elimination, and automatic respawn countdown. This is a live killer view; it holds the last known position if the attacker dies, disconnects or respawns. Environmental deaths show their actual cause. Bullet streaks leave a brief fading trail: gold for your shots, blue for teammates and orange for enemies. Effects stay bounded at every graphics preset.
+
 On mobile, use the left thumbstick and drag the right side to look. Both fire buttons can be held independently; the right fire and ADS buttons also support dragging to aim. Jump is held, crouch and sprint toggle, and grenade is held to cook then released to throw. Camera, scores and pause have separate buttons. Tap **Layout**, or **Customize touch controls** in the pause menu, to drag controls, resize them and adjust transparency. **Save & play** remembers the layout in this browser on this device, with separate positions for landscape and portrait. Reset restores the default arrangement.
 
 Mobile play requests fullscreen on the first touch after loading and tries to lock landscape orientation. Use **Fullscreen** to retry or **Exit fullscreen** to leave it. Unsupported browsers keep the game fitted to the viewport. Browser and operating-system gestures remain controlled by the device.
 
 Graphics can change during a match: press **F6**, use the pause-menu selector, or tap the mobile graphics button. Low removes shadows and postprocessing, simplifies terrain and reduces nearby foliage and combat effects. **Auto-adjust resolution** lowers render resolution under sustained frame drops, then recovers it when performance improves. Preferences persist locally; changing quality keeps the room and weapon state.
+
+Low also removes non-colliding grass and flowers, preserves a clearer minimum render resolution, and keeps the same draw distance as Medium. Enemy outfits receive a subtle warm edge accent and a texture-colored minimum light in shade using their existing material draw, with normal depth testing and fog. Skin, eyes and hair keep their natural materials; no gray lighting floor is applied. Teammates keep their normal team colors. Switching to another quality restores the original materials immediately.
 
 **Clearer combat view**, enabled by default in Game Settings & Controls, reduces bloom and ambient-occlusion darkness and removes decorative screen-edge shading. Turn it off to restore the cinematic effects. Scope masks and damage feedback remain visible.
 
@@ -47,6 +53,8 @@ npx tsx scripts/dev/play-test.ts http://localhost:3000
 npx tsx scripts/dev/network-test.ts ws://localhost:2567
 npx tsx scripts/dev/rig-test.ts http://localhost:3000
 npx tsx scripts/dev/combat-test.ts http://localhost:3000
+npx tsx scripts/dev/deathcam-test.ts http://localhost:3000
+npx tsx scripts/dev/minimap-test.ts http://localhost:3000
 npx tsx scripts/dev/graphics-test.ts http://localhost:3000
 npx tsx scripts/dev/mobile-test.ts http://localhost:3000
 ```
@@ -68,3 +76,7 @@ The room state lives in memory. Restarting the game server ends current matches.
 The asset import scripts document the original packs and transformations: Quaternius characters, animation, environment kits and weapons, plus Poly Haven environment textures and HDR skies. `scripts/import-assets.ts` rebuilds optimized assets from the ignored `assets-raw` directory. See the source scripts for pack names and download sources.
 
 Male and female Rangers have animated selection previews and shared lobby showoffs (At ease, Dance, Talk and Spell stance). See [character assets and lobby showoffs](docs/characters.md) for optimization budgets, pack overrides, and validation commands.
+
+Room readiness stays set until the player cancels it, including roster changes, team changes, reconnects and subsequent rounds. The host still starts each round. Warmup and active matches remain open while seats are available; joining players can choose Blue, Red or Auto assign in the invite form or public room browser. Team capacity is enforced by the server and late joiners receive a protected spawn. Departures do not cancel the countdown.
+
+A bottom-center health bar shows HP, amber/red damage states, a five-second cover countdown and a regeneration indicator driven by confirmed server health increases. After five seconds without another hit, health regenerates at 20 HP per second up to 100; taking damage restarts the delay. The bar sits above the weapon controls on desktop and touch layouts.

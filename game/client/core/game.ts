@@ -21,6 +21,8 @@ import { hud, useHud } from "./hud";
 import { useSettings } from "../settings";
 import { enemyAlongRay } from "./targeting";
 import { useLoadout } from "../loadout";
+import { DeathCamera } from "./deathcam";
+import { mapRelation, type MapPlayer } from "./minimap";
 
 type V3 = [number, number, number];
 
@@ -48,6 +50,7 @@ export class Game {
   private averageFrameTime = 1 / 60;
   private killSeq = 0;
   private killer = "";
+  private deathCamera = new DeathCamera();
   private grenadeMeshes = new Map<string, THREE.Mesh>();
   private grenadeGeo = new THREE.IcosahedronGeometry(0.09, 1);
   private grenadeMat = new THREE.MeshStandardMaterial({ color: "#4e593c", roughness: 0.65 });
@@ -128,7 +131,7 @@ export class Game {
         const now = performance.now();
         const p = this.local?.ms;
         const angle = p ? Math.atan2(ev.from[0] - p.x, ev.from[2] - p.z) + (this.local?.yaw ?? 0) : 0;
-        hud().set({ hp: ev.hp, hurtAt: now, damage: [...hud().damage.filter((d) => now - d.at < 1200), { angle, at: now }] });
+        hud().set({ hp: ev.hp, regenerating: false, hurtAt: now, damage: [...hud().damage.filter((d) => now - d.at < 1200), { angle, at: now }] });
         audio.hurt();
       }),
       room.onMessage<KillEvent>("kill", (ev) => this.onKill(ev)),
@@ -148,7 +151,8 @@ export class Game {
     this.killer = "";
     this.local.spawn(ev);
     this.local.updateView();
-    hud().set({ alive: true, hp: 100, killedBy: null, respawnAt: 0 });
+    this.deathCamera.start(this.local.eye, null);
+    hud().set({ alive: true, hp: 100, regenerating: false, hurtAt: 0, killedBy: null, respawnAt: 0, killerMarker: null, deathCam: "environment" });
   }
 
   private syncLife(alive: boolean) {
@@ -191,6 +195,7 @@ export class Game {
     }
     hud().set({
       myTeam: me?.team ?? 0, hp: me?.hp ?? 100, protectedUntil: me?.protectedUntil ?? 0,
+      regenerating: !!me?.alive && me.hp < 100 && me.hp >= hud().hp && (hud().regenerating || me.hp > hud().hp),
       mode: state.mode as GameMode, phase: state.phase, phaseEndsAt: state.phaseEndsAt,
       team1: state.team1, team2: state.team2, scoreLimit: state.scoreLimit, winner: state.winner,
       roomName: state.roomName,
@@ -218,7 +223,7 @@ export class Game {
     for (const dir of dirs) {
       const hit = this.traceFrom(origin, dir, WEAPONS[weapon].range);
       const point = new THREE.Vector3(...hit.point);
-      this.effects.tracer(muzzle, point);
+      this.effects.tracer(muzzle, point, "local");
       if (hit.target) {
         // Prediction is visual only. Damage, scores and kill confirmation stay server-owned.
         if (performance.now() - hud().hitmarker.at > 150 || !hud().hitmarker.confirmed) {
@@ -247,7 +252,7 @@ export class Game {
     if (ev.ends[0]) this.effects.muzzleFlash(from, new THREE.Vector3(...ev.ends[0]).sub(from).normalize(), 1, false);
     ev.ends.forEach((end, i) => {
       const to = new THREE.Vector3(...end);
-      this.effects.tracer(from, to);
+      this.effects.tracer(from, to, hud().mode === "tdm" && remote?.team === hud().myTeam ? "friendly" : "enemy");
       if (ev.hits?.[i]) {
         const delta = to.clone().sub(new THREE.Vector3(...ev.origin)).normalize();
         this.confirmedBlood(end, delta.toArray() as V3, ev.hits[i] === "head");
@@ -265,15 +270,30 @@ export class Game {
     const players = this.room.state.players;
     const killer = players.get(ev.killer), victim = players.get(ev.victim);
     const at = performance.now();
+    const self = ev.killer === ev.victim;
+    const name = self ? ev.weapon === "fall" ? "Fall damage" : "Own grenade" : ev.killerInfo?.name ?? killer?.name ?? "Unknown player";
     hud().set({ killfeed: [...hud().killfeed.filter((k) => at - k.at < 7000), {
-      key: ++this.killSeq, killer: killer?.name ?? "Environment", killerTeam: killer?.team ?? 0,
-      victim: victim?.name ?? "Player", victimTeam: victim?.team ?? 0, weapon: ev.weapon,
+      key: ++this.killSeq, killer: name, killerTeam: ev.killerInfo?.team ?? killer?.team ?? 0,
+      victim: ev.victimInfo?.name ?? victim?.name ?? "Player", victimTeam: ev.victimInfo?.team ?? victim?.team ?? 0, weapon: ev.weapon,
       headshot: ev.headshot, mine: ev.killer === this.room.sessionId || ev.victim === this.room.sessionId, at,
+      localKill: !self && ev.killer === this.room.sessionId, localDeath: ev.victim === this.room.sessionId,
     }].slice(-5) });
     if (ev.victim === this.room.sessionId) {
-      this.local?.die(); this.killer = ev.killer;
-      hud().set({ alive: false, respawnAt: this.clock.now() + RESPAWN_MS, killedBy: { name: killer?.name ?? "Environment", weapon: ev.weapon } });
-    } else if (ev.killer === this.room.sessionId) this.local?.onKillScavenge();
+      this.local?.die(); this.killer = self ? "" : ev.killer;
+      const position = !self ? ev.killerInfo?.position ?? (killer ? [killer.x, killer.y, killer.z] as V3 : null) : null;
+      this.deathCamera.start(this.local?.eye ?? new THREE.Vector3(), position ? new THREE.Vector3(...position).add(new THREE.Vector3(0, 1.5, 0)) : null);
+      hud().set({ alive: false, hp: 0, regenerating: false, respawnAt: ev.respawnAt ?? this.clock.now() + RESPAWN_MS, killedBy: {
+        id: this.killer, name, weapon: ev.weapon, headshot: ev.headshot,
+        hp: self ? null : ev.killerInfo?.hp ?? killer?.hp ?? null,
+        distance: ev.distance ?? (position && this.local ? this.local.eye.distanceTo(new THREE.Vector3(...position).add(new THREE.Vector3(0, 1.5, 0))) : null),
+        streak: ev.streak, at,
+      } });
+    } else if (ev.killer === this.room.sessionId) {
+      this.local?.onKillScavenge();
+      const previous = hud().elimination;
+      hud().set({ elimination: { name: ev.victimInfo?.name ?? victim?.name ?? "Player", weapon: ev.weapon,
+        headshot: ev.headshot, streak: ev.streak, at, count: previous && at - previous.at < 2800 ? previous.count + 1 : 1 } });
+    }
   }
 
   update(dt: number, viewportHeight: number, pixelRatio = 1) {
@@ -289,22 +309,21 @@ export class Game {
     if (!active) { this.input.releaseAll(); local.cancelActions(); }
     const scoreboard = this.input.held("Tab");
     local.thirdPerson = useSettings.getState().thirdPerson;
-    for (const remote of this.remotes.values()) remote.update(dt, this.clock.now() - INTERP_DELAY_MS, this.camera.position);
+    for (const remote of this.remotes.values()) {
+      remote.setReadability(useSettings.getState().quality === "low" && (hud().mode !== "tdm" || remote.team !== hud().myTeam));
+      remote.update(dt, this.clock.now() - INTERP_DELAY_MS, this.camera.position);
+    }
     local.update(dt, this.input, now);
     local.updateView();
     if (local.alive) local.camera(this.camera, dt);
     else {
-      // Keep the corpse in view, then ease the look direction toward its attacker.
-      const pivot = local.eye.clone();
-      const back = new THREE.Vector3(0, 0.8, 2.8).applyAxisAngle(new THREE.Vector3(0, 1, 0), local.yaw);
-      const len = back.length(); back.normalize();
-      const hit = raycastWorld(this.R, this.world!, pivot.toArray() as V3, back.toArray() as V3, len);
-      this.camera.position.lerp(pivot.addScaledVector(back, hit ? Math.max(0, hit.distance - 0.2) : len), Math.min(1, dt * 3));
-      const target = this.remotes.get(this.killer)?.head ?? local.eye;
-      const look = new THREE.Matrix4().lookAt(this.camera.position, target, this.camera.up);
-      this.camera.quaternion.slerp(new THREE.Quaternion().setFromRotationMatrix(look), Math.min(1, dt * 3));
+      const remote = this.remotes.get(this.killer);
+      const deathCam = this.deathCamera.update(this.camera, dt, local.eye, local.yaw,
+        remote?.alive && remote.rig && this.room.state.players.get(this.killer)?.connected ? remote.head : null,
+        (origin, direction, distance) => this.world ? raycastWorld(this.R, this.world, origin.toArray() as V3, direction.toArray() as V3, distance)?.distance ?? null : null);
+      if (hud().deathCam !== deathCam) hud().set({ deathCam });
     }
-    const fov = local.alive ? local.currentFov() : useSettings.getState().fov;
+    const fov = local.alive ? local.currentFov() : 62;
     if (this.camera.fov !== fov) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
     const s: RigState = {
       x: local.motion.position.x, y: local.motion.position.y, z: local.motion.position.z, yaw: local.yaw, pitch: local.pitch,
@@ -335,6 +354,20 @@ export class Game {
     if (now >= this.hudAt) {
       this.hudAt = now + 50;
       const ammo = local.ammo[local.weapon];
+      const mapPlayers: MapPlayer[] = [];
+      if (hud().conn === "connected") {
+        const me = this.room.state.players.get(this.room.sessionId);
+        if (local.alive) mapPlayers.push({
+          id: this.room.sessionId, name: me?.name ?? "You", x: local.motion.position.x,
+          y: local.motion.position.y, z: local.motion.position.z, yaw: local.yaw, relation: "self",
+        });
+        for (const [id, remote] of this.remotes) {
+          const player = this.room.state.players.get(id);
+          if (!remote.alive || !player?.alive || !player.connected) continue;
+          mapPlayers.push({ id, name: remote.name, x: remote.pos.x, y: remote.pos.y, z: remote.pos.z, yaw: remote.yaw,
+            relation: mapRelation(id, player.team, this.room.sessionId, me?.team ?? hud().myTeam, this.room.state.mode as GameMode) });
+        }
+      }
       let enemyInSight = false;
       if (active && local.alive) {
         const origin = this.camera.position.toArray() as V3;
@@ -354,6 +387,8 @@ export class Game {
         crosshairRadius: Math.min(120, Math.max(3, spreadRadius(local.spread, fov, viewportHeight))),
         cameraFov: fov, locked: this.input.locked, scoreboard, fps: Math.round(1 / Math.max(this.averageFrameTime, 0.001)),
         ping: Math.round(this.clock.rtt), serverOffset: this.clock.offset,
+        killerMarker: local.alive ? null : this.deathCamera.marker(this.camera),
+        mapPlayers,
       });
     }
   }

@@ -5,7 +5,7 @@ import { useHud } from "./hud";
 
 vi.mock("./audio", () => ({ audio: { shot: vi.fn() } }));
 
-beforeEach(() => useHud.setState({ hitmarker: { at: 0, head: false, kill: false, confirmed: false, damage: 0 } }));
+beforeEach(() => useHud.setState(useHud.getInitialState()));
 
 it("ignores the previous dead snapshot after respawn but accepts later deaths", () => {
   const state = { awaitingSpawnState: true, local: { alive: true, die: vi.fn() } };
@@ -43,5 +43,51 @@ describe("local shot presentation", () => {
     Game.prototype.onLocalShot.call(state as unknown as Game, "ar", [0, 1.62, 0], [[0, 0, -1]]);
     expect(blood).not.toHaveBeenCalled();
     expect(useHud.getState().hitmarker).toMatchObject({ confirmed: false, head: true, damage: 0, kill: false });
+  });
+});
+
+
+describe("elimination presentation", () => {
+  const onKill = (Game.prototype as unknown as { onKill(ev: import("../../shared/messages").KillEvent): void }).onKill;
+  function fixture() {
+    const die = vi.fn(), start = vi.fn();
+    const state = {
+      room: { sessionId: "me", state: { players: new Map() } },
+      local: { die, onKillScavenge: vi.fn(), eye: new THREE.Vector3(0, 1.5, 0) },
+      killSeq: 0, clock: { now: () => 1000 }, deathCamera: { start },
+    };
+    return { state, die, start };
+  }
+  it("uses elimination snapshots even when the killer has left replicated state", () => {
+    const { state, die, start } = fixture();
+    onKill.call(state, { killer: "enemy", victim: "me", weapon: "sniper", headshot: true, streak: 4,
+      killerInfo: { name: "Actual Killer", team: 2, hp: 27, position: [0, 0, -30] },
+      victimInfo: { name: "Me", team: 1 }, distance: 30, respawnAt: 4400 });
+    expect(die).toHaveBeenCalledOnce();
+    expect(start.mock.calls[0][1].toArray()).toEqual([0, 1.5, -30]);
+    expect(useHud.getState()).toMatchObject({ hp: 0, alive: false, respawnAt: 4400,
+      killedBy: { id: "enemy", name: "Actual Killer", hp: 27, distance: 30, headshot: true, streak: 4 } });
+    expect(useHud.getState().killfeed[0]).toMatchObject({ killer: "Actual Killer", victim: "Me", localDeath: true, localKill: false });
+  });
+  it("shows fall damage without identifying yourself as the killer and bounds the feed", () => {
+    const { state, start } = fixture();
+    for (let i = 0; i < 8; i++) onKill.call(state, { killer: "me", victim: "me", weapon: "fall", headshot: false, streak: 0 });
+    expect(start).toHaveBeenLastCalledWith(state.local.eye, null);
+    expect(useHud.getState().killedBy).toMatchObject({ id: "", name: "Fall damage", hp: null, distance: null });
+    expect(useHud.getState().killfeed).toHaveLength(5);
+    expect(useHud.getState().killfeed[0].localKill).toBe(false);
+  });
+  it("names confirmed victims and groups rapid kills without counting other players' kills", () => {
+    const { state } = fixture();
+    const kill = { killer: "me", victim: "enemy", weapon: "ar" as const, headshot: true, streak: 1, victimInfo: { name: "Enemy Scout", team: 2 } };
+    onKill.call(state, kill);
+    expect(useHud.getState().elimination).toMatchObject({ name: "Enemy Scout", count: 1, headshot: true });
+    onKill.call(state, { ...kill, victim: "enemy2", victimInfo: { name: "Enemy Two", team: 2 } });
+    expect(useHud.getState().elimination).toMatchObject({ name: "Enemy Two", count: 2 });
+    onKill.call(state, { ...kill, killer: "other" });
+    expect(useHud.getState().elimination?.name).toBe("Enemy Two");
+    useHud.setState({ elimination: { ...useHud.getState().elimination!, at: performance.now() - 3000 } });
+    onKill.call(state, kill);
+    expect(useHud.getState().elimination?.count).toBe(1);
   });
 });

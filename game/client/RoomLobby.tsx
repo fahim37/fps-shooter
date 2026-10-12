@@ -73,7 +73,7 @@ export function ConnectedRoom({ room, onLeave }: { room: GameRoom; onLeave: () =
           </div>;
         })}
       </div>
-      <p className="controls-help">Choose your team, then ready up. Team or player changes reset everyone’s ready status.</p>
+      <p className="controls-help">Ready stays on until you cancel it, even when players or teams change. Friends can join after the match starts.</p>
     </section>
     </div>
     <aside className="room-sidebar">

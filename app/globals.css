@@ -198,3 +198,10 @@ button:disabled { cursor: default; }
 @media(max-width:800px) { .home-lobby { grid-template-columns: 1fr; padding: 20px; }.home-lobby .lobby-intro { padding: 0; }.home-lobby .lobby-intro h1 { font-size: clamp(45px,9vw,70px); }.home-lobby .lobby-panel { max-width: none; }.map-brief { display: none; }.lobby-steps { margin: 20px 0 0; }.waiting-room { grid-template-columns: 1fr; padding: 20px; }.team-grid { grid-template-columns: 1fr 1fr; }.waiting-room .lobby-footer { gap: 15px; flex-wrap: wrap; }.browser-tools { align-items: stretch; flex-direction: column; }.browser-tools>input { max-width: none; }.room-row>span:last-child { white-space: nowrap; }.room-row b { margin-left: 10px; } }
 @media(max-width:450px) { .home-lobby .lobby-panel,.roster-panel { padding: 18px; }.wordmark small { display: none; }.play-heading h2 { font-size: 23px; }.format-options button { padding: 12px 9px; }.format-options strong { font-size: 20px; }.room-options { grid-template-columns: 1fr; }.team-grid { grid-template-columns: 1fr; }.room-row { align-items: start; flex-direction: column; }.room-row>span:last-child { align-self: stretch; display: flex; justify-content: space-between; }.room-filters { gap: 5px; }.room-filters button { padding: 9px 10px; }.home-lobby .join-code { grid-template-columns: 1fr; gap: 8px; }.home-lobby .join-code button { min-height: 44px; }.lobby-footer { flex-wrap: wrap; } }
 @media(prefers-reduced-motion:reduce) { button { transition: none; } }
+
+/* Keep the radar and kill feed in separate parts of the HUD. */
+.game-view { --minimap-size: 180px; --minimap-top: 82px; --minimap-chrome: 44px; }
+@media (max-width: 800px), (max-height: 550px) { .game-view { --minimap-size: 116px; --minimap-top: 76px; --minimap-chrome: 36px; } }
+
+.hud-bottom .hud-hints { margin-bottom: 0; text-align: left; }
+@media (max-height: 550px) { .hud-hints { display: none; } }

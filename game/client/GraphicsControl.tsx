@@ -17,6 +17,7 @@ export function GraphicsControl() {
   const adaptive = useSettings((s) => s.adaptiveResolution);
   const ready = useHud((s) => s.ready);
   const locked = useHud((s) => s.locked);
+  const alive = useHud((s) => s.alive);
   const touch = useHud((s) => s.touch);
   const menu = useHud((s) => s.menu);
   const loadoutOpen = useHud((s) => s.loadoutOpen);
@@ -33,7 +34,7 @@ export function GraphicsControl() {
     return () => window.removeEventListener("keydown", changeQuality);
   }, []);
 
-  if (!ready || scoreboard || customizing || loadoutOpen || (touch && menu)) return null;
+  if (!ready || scoreboard || customizing || loadoutOpen || (touch && menu) || (!alive && (locked || touch) && !menu)) return null;
   if (touch && !menu) return <div className={`${styles.control} ${styles.touchControl}`}>
     <button type="button" aria-label="Change graphics quality" title={`Graphics: ${quality}`} onClick={cycleQuality}><small>GRAPHICS</small><span>{quality.toUpperCase()} <span aria-hidden="true">↻</span></span></button>
   </div>;

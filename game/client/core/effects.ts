@@ -268,6 +268,7 @@ const EFFECT_BUDGETS: Record<Quality, EffectBudget> = {
 
 interface Tracer {
   mesh: THREE.Mesh;
+  trail: THREE.Mesh;
   from: THREE.Vector3;
   dir: THREE.Vector3;
   length: number;
@@ -369,11 +370,13 @@ export class Effects {
       this.flashes.push({ sprite, life: 0 });
     }
     for (let i = 0; i < 64; i++) {
-      const mesh = new THREE.Mesh(this.tracerGeo, this.tracerMat);
+      const mesh = new THREE.Mesh(this.tracerGeo, this.tracerMat.clone());
+      const trail = new THREE.Mesh(this.tracerGeo, this.tracerMat.clone());
       mesh.frustumCulled = false;
-      mesh.visible = false;
-      this.group.add(mesh);
-      this.tracerPool.push({ mesh, from: new THREE.Vector3(), dir: new THREE.Vector3(), length: 0, t: 0 });
+      trail.frustumCulled = false;
+      mesh.visible = trail.visible = false;
+      this.group.add(mesh, trail);
+      this.tracerPool.push({ mesh, trail, from: new THREE.Vector3(), dir: new THREE.Vector3(), length: 0, t: 0 });
     }
   }
 
@@ -387,7 +390,7 @@ export class Effects {
     this.droplets.setLimit(this.budget.blood);
     while (this.tracers.length > this.budget.tracers) {
       const tr = this.tracers.pop()!;
-      tr.mesh.visible = false;
+      tr.mesh.visible = tr.trail.visible = false;
       this.tracerPool.push(tr);
     }
     for (let i = this.budget.flashes; i < this.flashes.length; i++) {
@@ -417,6 +420,10 @@ export class Effects {
   dispose() {
     this.group.removeFromParent();
     this.smoke.dispose(); this.glow.dispose(); this.droplets.dispose();
+    for (const tr of [...this.tracers, ...this.tracerPool]) {
+      (tr.mesh.material as THREE.Material).dispose();
+      (tr.trail.material as THREE.Material).dispose();
+    }
     this.tracerGeo.dispose(); this.tracerMat.dispose();
     this.flashGeo.dispose(); this.flashMat.map?.dispose(); this.flashMat.dispose();
     this.decals.geometry.dispose();
@@ -458,10 +465,10 @@ export class Effects {
     }
   }
 
-  tracer(from: THREE.Vector3, to: THREE.Vector3) {
+  tracer(from: THREE.Vector3, to: THREE.Vector3, source: "local" | "friendly" | "enemy" = "local") {
     const d = _v.subVectors(to, from);
     const length = d.length();
-    if (length < 1.5) return;
+    if (!Number.isFinite(length) || length < 0.15) return;
     let tr: Tracer;
     if (this.tracers.length < this.budget.tracers) {
       tr = this.tracerPool.pop()!;
@@ -470,11 +477,30 @@ export class Effects {
       this.tracerIndex %= this.tracers.length;
       tr = this.tracers[this.tracerIndex++];
     }
-    tr.mesh.visible = true;
+    tr.mesh.visible = tr.trail.visible = true;
     tr.from.copy(from);
     tr.dir.copy(d).normalize();
     tr.length = length;
     tr.t = 0;
+    const color = source === "friendly" ? new THREE.Color(1.1, 2.7, 4) : source === "enemy" ? new THREE.Color(4, 1.55, 0.65) : new THREE.Color(4, 3.2, 1.8);
+    (tr.mesh.material as THREE.MeshBasicMaterial).color.copy(color);
+    (tr.trail.material as THREE.MeshBasicMaterial).color.copy(color);
+    // Initialize immediately: a recycled streak must never flash at its old position.
+    this.placeTracer(tr);
+  }
+
+  private placeTracer(tr: Tracer) {
+    const head = Math.min(tr.length, Math.max(0.15, tr.t * 380));
+    const tail = Math.max(0, head - 7);
+    const fade = Math.max(0, 1 - Math.max(0, tr.t - tr.length / 380) / 0.12);
+    tr.mesh.position.copy(tr.from).addScaledVector(tr.dir, head);
+    tr.mesh.quaternion.setFromUnitVectors(NEG_Z, _v.copy(tr.dir).negate());
+    tr.mesh.scale.set(1, 1, Math.max(0.01, head - tail));
+    (tr.mesh.material as THREE.MeshBasicMaterial).opacity = 0.9 * fade;
+    tr.trail.position.copy(tr.mesh.position);
+    tr.trail.quaternion.copy(tr.mesh.quaternion);
+    tr.trail.scale.set(1.8, 1.8, head);
+    (tr.trail.material as THREE.MeshBasicMaterial).opacity = 0.15 * fade;
   }
 
   impact(point: THREE.Vector3, normal: THREE.Vector3, soft: boolean) {
@@ -612,25 +638,19 @@ export class Effects {
     this.bloodDecals.visible = stains;
     if (alphaChanged) this.bloodDecalAlpha.needsUpdate = true;
 
-    // Tracers: a 4 m streak travelling at bullet speed along the path.
-    const SPEED = 380, STREAK = 4;
+    // Travel at bullet speed, then retain a brief fading path even at close range.
     for (let i = this.tracers.length - 1; i >= 0; i--) {
       const tr = this.tracers[i];
       tr.t += dt;
-      const head = Math.min(tr.length, tr.t * SPEED);
-      const tail = Math.max(0, tr.t * SPEED - STREAK);
-      if (tail >= tr.length - 0.01) {
-        tr.mesh.visible = false;
+      if (tr.t >= tr.length / 380 + 0.12) {
+        tr.mesh.visible = tr.trail.visible = false;
         this.tracerPool.push(tr);
         // Order does not affect tracer rendering; avoid shifting the active pool.
         this.tracers[i] = this.tracers[this.tracers.length - 1];
         this.tracers.pop();
         continue;
       }
-      tr.mesh.position.copy(tr.from).addScaledVector(tr.dir, head);
-      // Geometry spans local z ∈ [-1, 0]; point local -Z back along the path so the streak trails the head.
-      tr.mesh.quaternion.setFromUnitVectors(NEG_Z, _v.copy(tr.dir).negate());
-      tr.mesh.scale.set(1, 1, Math.max(0.01, head - tail));
+      this.placeTracer(tr);
     }
   }
 }

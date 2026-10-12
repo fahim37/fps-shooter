@@ -44,14 +44,13 @@ async function main() {
     await guest.getByText("Female Ranger · Dance", { exact: true }).waitFor();
     await guest.getByRole("button", { name: "Spell stance", exact: true }).click();
     await host.getByText("Male Ranger · Spell stance", { exact: true }).waitFor();
-    await host.getByRole("button", { name: "READY UP", exact: true }).waitFor();
+    await host.getByRole("button", { name: "CANCEL READY", exact: true }).waitFor();
     assert.equal(await host.locator(".player-slot.occupied").count(), 2);
     assert.equal(await guest.getByRole("button", { name: "START MATCH" }).count(), 0);
     await host.screenshot({ path: "out/qa/room-desktop.png", fullPage: true });
     await host.waitForTimeout(8500);
     assert.equal(await host.getByRole("button", { name: "ENTER MATCH" }).count(), 0, "Waiting rooms must never auto-start");
     await guest.getByRole("button", { name: "READY UP", exact: true }).click();
-    await host.getByRole("button", { name: "READY UP", exact: true }).click();
     await host.waitForFunction(() => !(document.querySelector(".room-start .primary-button:last-child") as HTMLButtonElement)?.disabled);
     await host.getByRole("button", { name: "START MATCH" }).click();
     await host.getByRole("button", { name: "ENTER MATCH" }).waitFor({ timeout: 90000 });
@@ -91,7 +90,7 @@ async function main() {
     assert.ok(await host.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Mobile room should not overflow horizontally");
     await host.getByRole("button", { name: "Leave room", exact: false }).click();
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ passed: true, checks: ["character selection", "shared showoffs", "no world assets in lobby", "create duel", "invite join", "ready reset", "no auto-start", "host start", "enter game", "invalid code", "public 2v2 browser", "mobile layouts"], errors }));
+    console.log(JSON.stringify({ passed: true, checks: ["character selection", "shared showoffs", "no world assets in lobby", "create duel", "invite join", "persistent readiness", "no auto-start", "host start", "enter game", "invalid code", "public 2v2 browser", "mobile layouts"], errors }));
   } catch (error) {
     console.error(await host.locator("body").innerText());
     await host.screenshot({ path: "out/qa/lobby-failure.png", fullPage: true }).catch(() => {});

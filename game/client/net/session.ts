@@ -83,7 +83,8 @@ export async function serverOnline(): Promise<boolean> {
 export function joinErrorMessage(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
   if (/not found|invalid|expired/i.test(msg)) return "That room doesn't exist anymore. Check the code or start a new one.";
-  if (/locked|full/i.test(msg)) return "That room is full or the match has already started. Ask the host to invite you for the next round.";
+  if (/team is full/i.test(msg)) return msg;
+  if (/locked|full/i.test(msg)) return "That room is full. Try another room or wait for a player to leave.";
   if (/fetch|network|ECONNREFUSED|Failed/i.test(msg)) return "Can't reach the game server. Please try again in a moment.";
   return msg;
 }

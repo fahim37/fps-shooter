@@ -8,6 +8,8 @@ export interface JoinOptions {
   mode?: GameMode;
   /** 0 = male, 1 = female character. */
   char: number;
+  /** Preferred team when joining TDM; omitted/0 assigns an available team. */
+  team?: 0 | 1 | 2;
   queue?: "quick" | "rooms";
   create?: {
     mode: GameMode;
@@ -124,6 +126,11 @@ export interface KillEvent {
   headshot: boolean;
   /** Killer's streak after this kill. */
   streak: number;
+  /** Captured at elimination, before replication, respawns or disconnects. */
+  killerInfo?: { name: string; team: number; hp: number; position: [number, number, number] };
+  victimInfo?: { name: string; team: number };
+  distance?: number;
+  respawnAt?: number;
 }
 
 export interface SpawnEvent {

@@ -140,13 +140,11 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       const count = this.humans().filter((other) => other.st.team === team).length;
       if (count >= Math.ceil(this.maxClients / 2)) { client.send("lobbyError", "That team is full. Choose the other team."); return; }
       p.st.team = team;
-      this.resetReady();
     });
     this.onMessage("start", (client) => {
       if (!this.state.lobby || this.state.phase !== "waiting" || client.sessionId !== this.state.hostId) return;
       const reason = startBlockReason(this.state, [...this.state.players.values()]);
       if (reason) { client.send("lobbyError", reason); return; }
-      void this.lock();
       this.startPhase("warmup");
     });
 
@@ -157,25 +155,28 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   // ---------------------------------------------------------------- lifecycle
 
   onJoin(client: Client, options: JoinOptions) {
-    if (this.state.lobby && this.state.phase !== "waiting") throw new ServerError(403, "This match has started. Join the room for the next round.");
+    const requestedTeam = options?.team;
+    if (this.state.mode === "tdm" && (requestedTeam === 1 || requestedTeam === 2) &&
+      this.humans().filter((p) => p.st.team === requestedTeam).length >= Math.ceil(this.maxClients / 2)) {
+      throw new ServerError(403, "That team is full. Choose the other team or Auto assign.");
+    }
     const st = new PlayerState();
     st.name = sanitizeName(options?.name);
     st.char = options?.char === 1 ? 1 : 0;
-    st.team = this.pickTeam();
+    st.team = this.state.mode === "tdm" && (requestedTeam === 1 || requestedTeam === 2) ? requestedTeam : this.pickTeam(true);
+    st.ready = this.state.phase !== "waiting";
     st.primary = "ar";
     const p = this.newPlayer(client.sessionId, st);
     p.client = client;
     this.state.players.set(client.sessionId, st);
     if (!this.state.hostId) this.state.hostId = client.sessionId;
-    if (this.state.phase === "waiting") this.resetReady();
-    else { this.balanceBots(); this.spawn(p); }
+    if (this.state.phase !== "waiting") { this.balanceBots(); this.spawn(p); }
     this.updateMeta();
   }
 
   async onDrop(client: Client) {
     const p = this.players.get(client.sessionId);
-    if (p) { p.st.connected = false; p.st.ready = false; }
-    if (this.state.lobby && this.state.phase === "warmup") this.startPhase("waiting");
+    if (p) p.st.connected = false;
     try {
       await this.allowReconnection(client, 20);
     } catch {
@@ -196,8 +197,6 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     this.players.delete(client.sessionId);
     this.state.players.delete(client.sessionId);
     if (this.state.hostId === client.sessionId) this.state.hostId = this.humans()[0]?.id ?? "";
-    if (this.state.lobby && this.state.phase === "warmup") this.startPhase("waiting");
-    if (this.state.phase === "waiting") this.resetReady();
     this.balanceBots();
     this.updateMeta();
   }
@@ -246,10 +245,11 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     });
   }
 
-  private pickTeam(): number {
+  private pickTeam(humansOnly = false): number {
     if (this.state.mode !== "tdm") return 0;
     let a = 0, b = 0;
     for (const p of this.players.values()) {
+      if (humansOnly && p.bot) continue;
       if (p.st.team === 1) a++;
       else if (p.st.team === 2) b++;
     }
@@ -262,7 +262,12 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     const want = humans === 0 || this.state.phase === "waiting" ? 0 : Math.max(0, Math.min(this.botTarget, this.maxClients) - humans);
     const bots = [...this.players.values()].filter((p) => p.bot);
     while (bots.length > want) {
-      const b = bots.pop()!;
+      // Replace a bot on the crowded team so a late human can choose either side.
+      const blue = [...this.players.values()].filter((p) => p.st.team === 1).length;
+      const red = [...this.players.values()].filter((p) => p.st.team === 2).length;
+      const crowded = blue > red ? 1 : 2;
+      const index = this.state.mode === "tdm" ? bots.findIndex((p) => p.st.team === crowded) : -1;
+      const b = bots.splice(index < 0 ? bots.length - 1 : index, 1)[0];
       b.bot!.dispose();
       this.players.delete(b.id);
       this.state.players.delete(b.id);
@@ -285,15 +290,12 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
 
   // ---------------------------------------------------------------- phases
 
-  private resetReady() { for (const p of this.humans()) p.st.ready = false; }
-
   private startPhase(phase: "waiting" | "warmup" | "live" | "ended") {
     const t = now();
     this.state.phase = phase;
     for (const p of this.players.values()) { p.st.emote = "idle"; p.lastEmoteAt = 0; }
     if (phase === "waiting") {
       this.state.phaseEndsAt = 0;
-      this.resetReady();
       this.balanceBots();
       for (const p of this.players.values()) { p.st.alive = false; p.respawnAt = 0; }
       for (const g of this.grenades.values()) this.world.removeRigidBody(g.body);
@@ -532,6 +534,13 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       weapon,
       headshot: part === "head",
       streak: killer?.st.streak ?? 0,
+      killerInfo: killer && killer !== target ? {
+        name: killer.st.name, team: killer.st.team, hp: killer.st.hp,
+        position: [killer.st.x, killer.st.y, killer.st.z],
+      } : undefined,
+      victimInfo: { name: target.st.name, team: target.st.team },
+      distance: killer && killer !== target ? Math.hypot(killer.st.x - target.st.x, killer.st.y - target.st.y, killer.st.z - target.st.z) : undefined,
+      respawnAt: target.respawnAt,
     } satisfies KillEvent);
     this.checkScoreLimit();
     return true;

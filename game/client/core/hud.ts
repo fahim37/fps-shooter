@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { WeaponId } from "../../shared/weapons";
 import type { GameMode } from "../../shared/constants";
+import type { MapPlayer } from "./minimap";
 
 export interface KillFeedEntry {
   key: number;
@@ -11,6 +12,8 @@ export interface KillFeedEntry {
   weapon: string;
   headshot: boolean;
   mine: boolean;
+  localKill: boolean;
+  localDeath: boolean;
   at: number;
 }
 
@@ -40,6 +43,7 @@ export interface HudState {
   myTeam: number;
   alive: boolean;
   hp: number;
+  regenerating: boolean;
   weapon: WeaponId;
   primary: WeaponId;
   mag: number;
@@ -54,13 +58,16 @@ export interface HudState {
   scoped: boolean;
   thirdPerson: boolean;
   respawnAt: number;
-  killedBy: { name: string; weapon: string } | null;
+  killedBy: { id: string; name: string; weapon: string; headshot: boolean; hp: number | null; distance: number | null; streak: number; at: number } | null;
+  deathCam: "killer" | "last-position" | "environment";
+  killerMarker: { x: number; y: number } | null;
   protectedUntil: number;
 
   hitmarker: { at: number; head: boolean; kill: boolean; confirmed: boolean; damage: number };
   damage: { angle: number; at: number }[];
   hurtAt: number;
   killfeed: KillFeedEntry[];
+  elimination: { name: string; weapon: string; headshot: boolean; streak: number; count: number; at: number } | null;
   announce: { text: string; sub?: string; at: number } | null;
 
   mode: GameMode;
@@ -74,6 +81,7 @@ export interface HudState {
   code: string;
   roomName: string;
   players: ScoreRow[];
+  mapPlayers: MapPlayer[];
 
   locked: boolean;
   menu: boolean;
@@ -96,6 +104,7 @@ export const useHud = create<HudState>((set) => ({
   myTeam: 0,
   alive: false,
   hp: 100,
+  regenerating: false,
   weapon: "ar",
   primary: "ar",
   mag: 0,
@@ -111,11 +120,14 @@ export const useHud = create<HudState>((set) => ({
   thirdPerson: false,
   respawnAt: 0,
   killedBy: null,
+  deathCam: "environment",
+  killerMarker: null,
   protectedUntil: 0,
   hitmarker: { at: 0, head: false, kill: false, confirmed: false, damage: 0 },
   damage: [],
   hurtAt: 0,
   killfeed: [],
+  elimination: null,
   announce: null,
   mode: "tdm",
   phase: "warmup",
@@ -128,6 +140,7 @@ export const useHud = create<HudState>((set) => ({
   code: "",
   roomName: "",
   players: [],
+  mapPlayers: [],
   locked: false,
   menu: false,
   loadoutOpen: false,

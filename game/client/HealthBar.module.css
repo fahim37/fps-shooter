@@ -1,0 +1,16 @@
+.panel { --health-color: #d9ed79; position: absolute; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); width: 270px; padding: 9px 12px 7px; border: 1px solid #ffffff24; border-radius: 6px; background: #101914d9; color: #eff5e9; text-shadow: 0 1px 3px #0008; }
+.heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 6px; }
+.heading > span { font-size: 9px; letter-spacing: .15em; }
+.heading b { font-size: 13px; color: var(--health-color); margin-right: 5px; }
+.heading strong { font: 600 16px var(--font-geist-mono), monospace; }
+.heading small { display: inline; font-size: 9px; color: #adbaa6; }
+.track { height: 8px; overflow: hidden; border-radius: 2px; background: #0008; outline: 1px solid #ffffff18; }
+.track i { display: block; height: 100%; background: var(--health-color); transition: width .15s linear, background-color .2s; box-shadow: 0 0 9px color-mix(in srgb, var(--health-color) 30%, transparent); }
+.status { display: block; margin-top: 5px; font: 8px var(--font-geist-mono), monospace; letter-spacing: .06em; color: #bac5b4; }
+.critical { --health-color: #ff746b; border-color: #ff746b75; }
+.wounded { --health-color: #f4c36b; }
+.healing { --health-color: #8cebc5; }
+.healing .status { color: var(--health-color); }
+@media (max-width: 800px), (max-height: 550px) { .panel { width: 220px; padding: 6px 9px; bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }.heading { margin-bottom: 4px; }.heading strong { font-size: 13px; }.track { height: 7px; }.status { font-size: 7px; margin-top: 4px; } }
+@media (pointer: coarse) { .panel { bottom: calc(68px + env(safe-area-inset-bottom, 0px)); width: 220px; } }
+@media (prefers-reduced-motion: reduce) { .track i { transition: none; } }

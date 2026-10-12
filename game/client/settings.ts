@@ -23,7 +23,7 @@ export interface QualityPreset {
 }
 
 export const PRESETS: Record<Quality, QualityPreset> = {
-  low: { dpr: 0.8, minDpr: 0.55, shadows: false, shadowMapSize: 512, shadowExtent: 30, ao: false, aoHalfRes: true, bloom: false, smaa: false, foliage: 0.12, hdri: "1k", drawDistance: 140, decorationDistance: 35, terrainDetail: false, wind: false, textureAnisotropy: 2 },
+  low: { dpr: 0.8, minDpr: 0.65, shadows: false, shadowMapSize: 512, shadowExtent: 30, ao: false, aoHalfRes: true, bloom: false, smaa: false, foliage: 0, hdri: "1k", drawDistance: 180, decorationDistance: 35, terrainDetail: false, wind: false, textureAnisotropy: 2 },
   medium: { dpr: 1, minDpr: 0.65, shadows: true, shadowMapSize: 1024, shadowExtent: 34, ao: false, aoHalfRes: true, bloom: true, smaa: true, foliage: 0.45, hdri: "1k", drawDistance: 180, decorationDistance: 55, terrainDetail: true, wind: true, textureAnisotropy: 4 },
   high: { dpr: 1.25, minDpr: 0.7, shadows: true, shadowMapSize: 2048, shadowExtent: 38, ao: true, aoHalfRes: true, bloom: true, smaa: true, foliage: 1, hdri: "2k", drawDistance: 240, decorationDistance: 90, terrainDetail: true, wind: true, textureAnisotropy: 8 },
   ultra: { dpr: 2, minDpr: 1, shadows: true, shadowMapSize: 4096, shadowExtent: 44, ao: true, aoHalfRes: false, bloom: true, smaa: true, foliage: 1, hdri: "2k", drawDistance: 300, decorationDistance: 140, terrainDetail: true, wind: true, textureAnisotropy: 8 },

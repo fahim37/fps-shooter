@@ -7,6 +7,7 @@ import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_SPRINT } from "../../shared
 import type { PlayerState } from "../../shared/schema";
 import type { Pose } from "../../shared/hitboxes";
 import { audio } from "./audio";
+import { setEnemyReadability } from "../assets/readability";
 
 interface Snap {
   t: number;
@@ -36,6 +37,7 @@ export class RemotePlayer {
   private stepDist = 0;
   recoil = 0;
   readonly head = new THREE.Vector3();
+  private readable = false;
 
   constructor(readonly id: string) {}
 
@@ -58,6 +60,7 @@ export class RemotePlayer {
     this.team = team;
     this.char = char;
     this.rig = new CharacterRig(templates[char === 1 ? 1 : 0], weapons, team, char === 0 && hash(this.id) % 2 === 0, "tpp");
+    this.readable = false;
     this.rig.setWeapon(this.weapon);
     scene.add(this.rig.object);
   }
@@ -66,6 +69,12 @@ export class RemotePlayer {
     if (w === this.weapon || !WEAPONS[w]) return;
     this.weapon = w;
     this.rig?.setWeapon(w);
+  }
+
+  setReadability(enabled: boolean) {
+    if (!this.rig || enabled === this.readable) return;
+    setEnemyReadability(this.rig.inst.meshes, enabled);
+    this.readable = enabled;
   }
 
   onShot() {
