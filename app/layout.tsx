@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Hollowmere — Village Combat",
-  description: "A multiplayer first- and third-person shooter. Gear up and join the fight in Hollowmere village.",
+  title: "Hollowmere — Village & City Combat",
+  description: "A multiplayer first- and third-person shooter. Gear up and fight across The Village and Downtown city maps.",
 };
 
 export const viewport: Viewport = {
