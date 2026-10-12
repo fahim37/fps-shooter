@@ -59,7 +59,12 @@ async function main() {
     await page.keyboard.press("KeyB");
     await page.getByRole("button", { name: "Attach Red dot to AK Rifle" }).click();
     await page.getByRole("button", { name: "Close loadout" }).click();
-    await page.waitForFunction(() => !!document.pointerLockElement);
+    await page.waitForFunction(() => {
+      // Wait for the game's input loop as well as the browser's pointer lock.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return !!document.pointerLockElement && (window as any).__presentationGame.input.enabled;
+    });
+    await page.waitForTimeout(150);
     await page.mouse.down({ button: "right" });
     await page.getByLabel("Red dot sight", { exact: true }).waitFor();
     await page.waitForTimeout(700);
