@@ -1,3 +1,5 @@
+import { leanOffset } from "./lean";
+
 /**
  * Player hitboxes and ray tests, shared by the server (authoritative hits) and the client
  * (instant hit feedback). Pose position is the feet.
@@ -8,6 +10,9 @@ export interface Pose {
   y: number;
   z: number;
   crouch: boolean;
+  /** Facing and peek (-1 left .. 1 right); the upper body tilts out from behind cover. */
+  yaw?: number;
+  lean?: number;
 }
 
 export type HitPart = "head" | "body" | "legs";
@@ -21,10 +26,14 @@ type V3 = [number, number, number];
 
 export function hitboxes(p: Pose) {
   const c = p.crouch;
+  const at = (height: number): V3 => {
+    const o = leanOffset(p.lean ?? 0, p.yaw ?? 0, c ? 1 : 0, height);
+    return [p.x + o[0], p.y + height + o[1], p.z + o[2]];
+  };
   return {
-    head: { c: [p.x, p.y + (c ? 1.15 : 1.64), p.z] as V3, r: 0.16 },
+    head: { c: at(c ? 1.15 : 1.64), r: 0.16 },
     // End the torso below the head center so its rounded cap cannot swallow headshots.
-    body: { a: [p.x, p.y + (c ? 0.62 : 1.0), p.z] as V3, b: [p.x, p.y + (c ? 0.82 : 1.32), p.z] as V3, r: 0.29 },
+    body: { a: at(c ? 0.62 : 1.0), b: at(c ? 0.82 : 1.32), r: 0.29 },
     legs: { a: [p.x, p.y + 0.12, p.z] as V3, b: [p.x, p.y + (c ? 0.6 : 0.98), p.z] as V3, r: 0.22 },
   };
 }
@@ -32,7 +41,7 @@ export function hitboxes(p: Pose) {
 /** Nearest hit of a ray (unit `dir`) against a player's hitboxes, within `maxDist`. */
 export function rayVsPose(o: V3, dir: V3, maxDist: number, pose: Pose): PoseHit | null {
   // Cheap reject: bounding capsule around the whole body.
-  const cheap = rayCapsule(o, dir, [pose.x, pose.y, pose.z], [pose.x, pose.y + 1.85, pose.z], 0.5);
+  const cheap = rayCapsule(o, dir, [pose.x, pose.y, pose.z], [pose.x, pose.y + 1.85, pose.z], 0.5 + Math.abs(pose.lean ?? 0) * 0.4);
   if (cheap === null || cheap > maxDist) return null;
   const hb = hitboxes(pose);
   let best: PoseHit | null = null;

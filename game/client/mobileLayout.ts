@@ -3,7 +3,7 @@
 import { create } from "zustand";
 
 export const MOBILE_LAYOUT_KEY = "hollowmere.mobile-controls.v1";
-export const MOBILE_CONTROL_IDS = ["joystick", "leftFire", "rightFire", "ads", "jump", "crouch", "sprint", "grenade", "reload", "switch", "camera", "scores", "pause"] as const;
+export const MOBILE_CONTROL_IDS = ["joystick", "leftFire", "rightFire", "ads", "jump", "crouch", "sprint", "grenade", "reload", "switch", "peekLeft", "peekRight", "camera", "scores", "pause"] as const;
 export type MobileControlId = typeof MOBILE_CONTROL_IDS[number];
 export type MobileOrientation = "landscape" | "portrait";
 

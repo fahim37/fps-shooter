@@ -1,7 +1,8 @@
 import { create } from "zustand";
 import type { WeaponId } from "../../shared/weapons";
 import type { GameMode } from "../../shared/constants";
-import type { MapPlayer } from "./minimap";
+import type { MapPlayer, Threat } from "./minimap";
+import type { SquadMember } from "./squad";
 
 export interface KillFeedEntry {
   key: number;
@@ -64,7 +65,8 @@ export interface HudState {
   protectedUntil: number;
 
   hitmarker: { at: number; head: boolean; kill: boolean; confirmed: boolean; damage: number };
-  damage: { angle: number; at: number }[];
+  /** Directions you were recently hit from (no attacker positions). */
+  threats: Threat[];
   hurtAt: number;
   killfeed: KillFeedEntry[];
   elimination: { name: string; weapon: string; headshot: boolean; streak: number; count: number; at: number } | null;
@@ -82,6 +84,9 @@ export interface HudState {
   roomName: string;
   players: ScoreRow[];
   mapPlayers: MapPlayer[];
+  squad: SquadMember[];
+  /** Latched peek side for the touch buttons: -1, 0 or 1. */
+  peek: number;
 
   locked: boolean;
   menu: boolean;
@@ -124,7 +129,7 @@ export const useHud = create<HudState>((set) => ({
   killerMarker: null,
   protectedUntil: 0,
   hitmarker: { at: 0, head: false, kill: false, confirmed: false, damage: 0 },
-  damage: [],
+  threats: [],
   hurtAt: 0,
   killfeed: [],
   elimination: null,
@@ -141,6 +146,8 @@ export const useHud = create<HudState>((set) => ({
   roomName: "",
   players: [],
   mapPlayers: [],
+  squad: [],
+  peek: 0,
   locked: false,
   menu: false,
   loadoutOpen: false,

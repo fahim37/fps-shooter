@@ -8,13 +8,16 @@ import {
 } from "../game/shared/constants";
 import { WEAPONS, PRIMARIES, GRENADE, damageAt, fireIntervalMs, type WeaponId } from "../game/shared/weapons";
 import { PoseHistory } from "../game/shared/lagcomp";
-import { rayVsPose, type HitPart } from "../game/shared/hitboxes";
+import { rayVsPose, type HitPart, type Pose } from "../game/shared/hitboxes";
+import { clampLean, leanOffset } from "../game/shared/lean";
 import { raycastWorld, lineOfSight, GROUP_GRENADE, type World } from "../game/shared/physics";
 import {
   F_CROUCH, type JoinOptions, type PoseMsg, type FireMsg, type GrenadeMsg, type LoadoutMsg, type ShotEvent,
   type HitConfirm, type DamagedEvent, type KillEvent, type SpawnEvent, type RoomMeta, type AmmoEvent, type LoadoutEvent,
 } from "../game/shared/messages";
-import { createRoomWorld, RAPIER, map } from "./world";
+import { createRoomWorld, RAPIER } from "./world";
+import { getMap, isMapId } from "../game/shared/map/maps";
+import type { MapData } from "../game/shared/map/types";
 import { Bot, BOT_NAMES } from "./bot";
 import { startBlockReason } from "../game/shared/lobby";
 import { canShowoff } from "../game/shared/showcase";
@@ -64,6 +67,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   maxClients = MAX_PLAYERS;
 
   world!: World;
+  map!: MapData;
   players = new Map<string, ServerPlayer>();
   private grenades = new Map<string, LiveGrenade>();
   private grenadeSeq = 0;
@@ -72,7 +76,9 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   private botSeq = 0;
 
   onCreate(options: JoinOptions) {
-    const c = options.create ?? { mode: options.mode ?? "tdm", maxPlayers: MAX_PLAYERS, bots: 8, botSkill: 1 as const, private: false, roomName: "" };
+    const c = options.create ?? { mode: options.mode ?? "tdm", map: options.map, maxPlayers: MAX_PLAYERS, bots: 8, botSkill: 1 as const, private: false, roomName: "" };
+    this.map = getMap(c.map);
+    this.state.map = this.map.id;
     const format = c.format === "1v1" || c.format === "2v2" ? c.format : "custom";
     const mode: GameMode = format !== "custom" ? "tdm" : c.mode === "ffa" ? "ffa" : "tdm";
     this.roomId = makeCode();
@@ -94,7 +100,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     if (c.private) this.setPrivate(true);
     this.updateMeta();
 
-    this.world = createRoomWorld();
+    this.world = createRoomWorld(this.map);
     this.world.timestep = TICK_MS / 1000;
 
     this.onMessage("pose", (client, m: PoseMsg) => this.onPose(client, m));
@@ -140,6 +146,16 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       const count = this.humans().filter((other) => other.st.team === team).length;
       if (count >= Math.ceil(this.maxClients / 2)) { client.send("lobbyError", "That team is full. Choose the other team."); return; }
       p.st.team = team;
+    });
+    this.onMessage("map", (client, id: unknown) => {
+      // Host only, before the match: no bots, grenades or live bodies exist in the world yet.
+      if (!this.state.lobby || this.state.phase !== "waiting" || client.sessionId !== this.state.hostId || !isMapId(id) || id === this.map.id) return;
+      this.map = getMap(id);
+      this.state.map = id;
+      this.world.free();
+      this.world = createRoomWorld(this.map);
+      this.world.timestep = TICK_MS / 1000;
+      this.updateMeta();
     });
     this.onMessage("start", (client) => {
       if (!this.state.lobby || this.state.phase !== "waiting" || client.sessionId !== this.state.hostId) return;
@@ -235,6 +251,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     this.setMetadata({
       queue: this.state.lobby ? "rooms" : "quick",
       mode: this.state.mode as GameMode,
+      map: this.map.id,
       roomName: this.state.roomName,
       code: this.roomId,
       humans,
@@ -363,7 +380,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
           p.st.hp = Math.min(MAX_HEALTH, p.st.hp + (REGEN_PER_SEC * TICK_MS) / 1000);
         }
         if (p.reloadingUntil && t >= p.reloadingUntil) this.finishReload(p);
-        p.history.push(t, { x: p.st.x, y: p.st.y, z: p.st.z, crouch: (p.st.flags & F_CROUCH) !== 0 });
+        p.history.push(t, this.livePose(p));
       } else if (p.respawnAt && t >= p.respawnAt) {
         this.spawn(p);
       }
@@ -391,13 +408,18 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       }
       p.lastPoseAt = t;
     }
-    const h = map.half;
+    const h = this.map.half;
     p.st.x = clamp(m.x, -h, h);
     p.st.y = clamp(m.y, -2, 40);
     p.st.z = clamp(m.z, -h, h);
     p.st.yaw = m.yaw;
     p.st.pitch = clamp(m.pitch, -1.55, 1.55);
     p.st.flags = m.flags & 0xff;
+    // Re-check the peek against the map so a modified client cannot lean through walls.
+    const lean = typeof m.lean === "number" && finite(m.lean) ? clamp(m.lean, -1, 1) : 0;
+    const crouch = (p.st.flags & F_CROUCH) ? 1 : 0;
+    const allowed = clampLean(lean, p.st.x, p.st.y, p.st.z, p.st.yaw, crouch, (o, d, dist) => raycastWorld(RAPIER, this.world, o, d, dist)?.distance ?? null);
+    p.st.lean = Math.round(allowed * 20) / 20;
     if (m.weapon === p.st.primary || m.weapon === "pistol") {
       if (p.st.weapon !== m.weapon) p.reloadingUntil = 0;
       p.st.weapon = m.weapon;
@@ -409,7 +431,14 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   }
 
   eyePos(p: ServerPlayer): V3 {
-    return [p.st.x, p.st.y + ((p.st.flags & F_CROUCH) ? CROUCH_EYE_HEIGHT : EYE_HEIGHT), p.st.z];
+    const crouch = (p.st.flags & F_CROUCH) !== 0;
+    const height = crouch ? CROUCH_EYE_HEIGHT : EYE_HEIGHT;
+    const o = leanOffset(p.st.lean, p.st.yaw, crouch ? 1 : 0, height);
+    return [p.st.x + o[0], p.st.y + height + o[1], p.st.z + o[2]];
+  }
+
+  livePose(p: ServerPlayer): Pose {
+    return { x: p.st.x, y: p.st.y, z: p.st.z, crouch: (p.st.flags & F_CROUCH) !== 0, yaw: p.st.yaw, lean: p.st.lean };
   }
 
   // ---------------------------------------------------------------- combat
@@ -463,7 +492,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       let bestT = maxDist, bestTarget: ServerPlayer | null = null, bestPart: HitPart = "body";
       for (const o of this.players.values()) {
         if (o === p || !o.st.alive || !this.canDamage(p, o)) continue;
-        const pose = p.bot ? { x: o.st.x, y: o.st.y, z: o.st.z, crouch: (o.st.flags & F_CROUCH) !== 0 } : o.history.sample(viewTime);
+        const pose = p.bot ? this.livePose(o) : o.history.sample(viewTime);
         if (!pose) continue;
         const hit = rayVsPose(m.origin, dir, bestT, pose);
         if (hit && hit.distance < bestT) {
@@ -505,7 +534,11 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     target.st.hp = Math.round(hp);
     target.lastDamageAt = now();
     if (attacker && attacker !== target) target.lastAttacker = attacker.id;
-    target.client?.send("damaged", { from, damage: Math.round(amount), hp: target.st.hp } satisfies DamagedEvent);
+    target.client?.send("damaged", {
+      from, damage: Math.round(amount), hp: target.st.hp,
+      attacker: attacker && attacker !== target ? attacker.id : undefined,
+      kind: weapon === "fall" ? "fall" : weapon === "grenade" ? "explosion" : "bullet",
+    } satisfies DamagedEvent);
     target.bot?.onDamaged(attacker);
     if (hp > 0) return false;
 
@@ -575,6 +608,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     p.st.hp = MAX_HEALTH;
     p.st.alive = true;
     p.st.flags = 0;
+    p.st.lean = 0;
     p.st.weapon = p.st.primary;
     p.st.protectedUntil = t + SPAWN_PROTECTION_MS;
     p.ammo = fullAmmo();
@@ -591,7 +625,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   /** Spawn point furthest from living enemies (team spawns in TDM). */
   private pickSpawn(p: ServerPlayer) {
     const tdm = this.state.mode === "tdm";
-    const candidates = map.spawns.filter((s) => (tdm ? s.team === p.st.team : s.team === 0));
+    const candidates = this.map.spawns.filter((s) => (tdm ? s.team === p.st.team : s.team === 0));
     const enemies = [...this.players.values()].filter((o) => o !== p && o.st.alive && (!tdm || o.st.team !== p.st.team));
     let best = candidates[0], bestScore = -Infinity;
     for (const s of candidates) {

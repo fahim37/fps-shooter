@@ -4,7 +4,7 @@ import { ServerClock } from "../net/clock";
 import { loadCharacters, type CharacterTemplate } from "../assets/characters";
 import { loadWeapons } from "../assets/weapons";
 import { CharacterRig, type RigState } from "../player/CharacterRig";
-import { getVillage } from "../../shared/map/village";
+import { getMap } from "../../shared/map/maps";
 import { raycastWorld, type Rapier, type World } from "../../shared/physics";
 import { INTERP_DELAY_MS, RESPAWN_MS, type GameMode } from "../../shared/constants";
 import { WEAPONS, type WeaponId } from "../../shared/weapons";
@@ -22,7 +22,9 @@ import { useSettings } from "../settings";
 import { enemyAlongRay } from "./targeting";
 import { useLoadout } from "../loadout";
 import { DeathCamera } from "./deathcam";
-import { mapRelation, type MapPlayer } from "./minimap";
+import { THREAT_MS, addThreat, mapRelation, type MapPlayer } from "./minimap";
+import { buildSquad } from "./squad";
+import { updateSightMotion } from "./sightMotion";
 
 type V3 = [number, number, number];
 
@@ -70,7 +72,7 @@ export class Game {
 
   async init() {
     // Capture spawn messages while assets load; initial state also recovers a missed join message.
-    const physics = await loadClientWorld(getVillage());
+    const physics = await loadClientWorld(getMap(this.room.state?.map));
     if (this.disposed) { physics.world.free(); return; }
     this.R = physics.R;
     this.world = physics.world;
@@ -129,9 +131,11 @@ export class Game {
       }),
       room.onMessage<DamagedEvent>("damaged", (ev) => {
         const now = performance.now();
-        const p = this.local?.ms;
-        const angle = p ? Math.atan2(ev.from[0] - p.x, ev.from[2] - p.z) + (this.local?.yaw ?? 0) : 0;
-        hud().set({ hp: ev.hp, regenerating: false, hurtAt: now, damage: [...hud().damage.filter((d) => now - d.at < 1200), { angle, at: now }] });
+        // Falls and your own grenade hurt without pointing at anyone.
+        const threats = ev.attacker && ev.kind !== "fall"
+          ? addThreat(hud().threats, { key: ev.attacker, from: ev.from, at: now, damage: ev.damage, kind: ev.kind === "explosion" ? "explosion" : "bullet" })
+          : hud().threats;
+        hud().set({ hp: ev.hp, regenerating: false, hurtAt: now, threats });
         audio.hurt();
       }),
       room.onMessage<KillEvent>("kill", (ev) => this.onKill(ev)),
@@ -152,7 +156,7 @@ export class Game {
     this.local.spawn(ev);
     this.local.updateView();
     this.deathCamera.start(this.local.eye, null);
-    hud().set({ alive: true, hp: 100, regenerating: false, hurtAt: 0, killedBy: null, respawnAt: 0, killerMarker: null, deathCam: "environment" });
+    hud().set({ alive: true, hp: 100, regenerating: false, hurtAt: 0, threats: [], killedBy: null, respawnAt: 0, killerMarker: null, deathCam: "environment" });
   }
 
   private syncLife(alive: boolean) {
@@ -199,6 +203,7 @@ export class Game {
       mode: state.mode as GameMode, phase: state.phase, phaseEndsAt: state.phaseEndsAt,
       team1: state.team1, team2: state.team2, scoreLimit: state.scoreLimit, winner: state.winner,
       roomName: state.roomName,
+      squad: buildSquad(state.players.entries(), this.room.sessionId, me?.team ?? 0, state.mode as GameMode),
       players: Array.from(state.players.entries()).map(([id, p]) => ({
         id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, score: p.score,
         ping: p.ping, bot: p.bot, alive: p.alive, me: id === this.room.sessionId, connected: p.connected,
@@ -325,13 +330,18 @@ export class Game {
     }
     const fov = local.alive ? local.currentFov() : 62;
     if (this.camera.fov !== fov) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
+    if (local.alive && local.ads > 0.4) updateSightMotion(dt, {
+      swayX: local.sway.x, swayY: local.sway.y, bobX: local.bob.x, bobY: local.bob.y,
+      strafe: local.ms.vx * Math.cos(local.yaw) - local.ms.vz * Math.sin(local.yaw), vy: local.ms.vy,
+      recoil: local.recoil, time: now / 1000,
+    });
     const s: RigState = {
       x: local.motion.position.x, y: local.motion.position.y, z: local.motion.position.z, yaw: local.yaw, pitch: local.pitch,
       eye: local.viewEye, view: local.viewQuat, speed: Math.hypot(local.ms.vx, local.ms.vz),
       moveYaw: Math.atan2(-local.ms.vx, -local.ms.vz), crouch: local.crouchT > 0.5,
       grounded: local.ms.grounded, alive: local.alive, sprint: local.ms.sprinting ? 1 : 0,
       ads: local.ads, reload: local.reloadProgress, recoil: local.recoil,
-      bob: local.bob, sway: local.sway, tuck: local.tuck, throwing: local.throwAnim,
+      bob: local.bob, sway: local.sway, tuck: local.tuck, throwing: local.throwAnim, lean: local.lean,
     };
     this.fpp?.setWeapon(local.weapon); this.tpp?.setWeapon(local.weapon);
     this.fpp?.setVisible(local.alive && !local.thirdPerson && !local.scoped);
@@ -359,13 +369,17 @@ export class Game {
         const me = this.room.state.players.get(this.room.sessionId);
         if (local.alive) mapPlayers.push({
           id: this.room.sessionId, name: me?.name ?? "You", x: local.motion.position.x,
-          y: local.motion.position.y, z: local.motion.position.z, yaw: local.yaw, relation: "self",
+          y: local.motion.position.y, z: local.motion.position.z, yaw: local.yaw, relation: "self", slot: 0,
         });
+        const squad = hud().squad;
         for (const [id, remote] of this.remotes) {
           const player = this.room.state.players.get(id);
           if (!remote.alive || !player?.alive || !player.connected) continue;
+          const relation = mapRelation(id, player.team, this.room.sessionId, me?.team ?? hud().myTeam, this.room.state.mode as GameMode);
+          // Like PUBG, enemies never appear on the map; only hit directions reveal them.
+          if (relation === "enemy") continue;
           mapPlayers.push({ id, name: remote.name, x: remote.pos.x, y: remote.pos.y, z: remote.pos.z, yaw: remote.yaw,
-            relation: mapRelation(id, player.team, this.room.sessionId, me?.team ?? hud().myTeam, this.room.state.mode as GameMode) });
+            relation, slot: squad.find((member) => member.id === id)?.slot });
         }
       }
       let enemyInSight = false;
@@ -388,7 +402,8 @@ export class Game {
         cameraFov: fov, locked: this.input.locked, scoreboard, fps: Math.round(1 / Math.max(this.averageFrameTime, 0.001)),
         ping: Math.round(this.clock.rtt), serverOffset: this.clock.offset,
         killerMarker: local.alive ? null : this.deathCamera.marker(this.camera),
-        mapPlayers,
+        mapPlayers, peek: local.leanSide,
+        threats: hud().threats.some((threat) => now - threat.at >= THREAT_MS) ? hud().threats.filter((threat) => now - threat.at < THREAT_MS) : hud().threats,
       });
     }
   }

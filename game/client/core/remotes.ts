@@ -13,6 +13,7 @@ interface Snap {
   t: number;
   x: number; y: number; z: number;
   yaw: number; pitch: number;
+  lean: number;
   flags: number;
   alive: boolean;
 }
@@ -31,6 +32,7 @@ export class RemotePlayer {
   readonly pos = new THREE.Vector3();
   yaw = 0;
   pitch = 0;
+  lean = 0;
   flags = 0;
   private vel = new THREE.Vector3();
   private reloadT = -1;
@@ -47,10 +49,10 @@ export class RemotePlayer {
     if (last && last.t > t) return;
     if (last && last.t === t) {
       // Same tick, newer data: overwrite.
-      Object.assign(last, { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, flags: p.flags, alive: p.alive });
+      Object.assign(last, { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, lean: p.lean, flags: p.flags, alive: p.alive });
       return;
     }
-    this.snaps.push({ t, x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, flags: p.flags, alive: p.alive });
+    this.snaps.push({ t, x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, lean: p.lean, flags: p.flags, alive: p.alive });
     if (this.snaps.length > 30) this.snaps.shift();
   }
 
@@ -83,7 +85,7 @@ export class RemotePlayer {
 
   /** Pose used for local hit prediction (what we see on screen). */
   pose(): Pose {
-    return { x: this.pos.x, y: this.pos.y, z: this.pos.z, crouch: (this.flags & F_CROUCH) !== 0 };
+    return { x: this.pos.x, y: this.pos.y, z: this.pos.z, crouch: (this.flags & F_CROUCH) !== 0, yaw: this.yaw, lean: this.lean };
   }
 
   update(dt: number, renderTime: number, listener: THREE.Vector3) {
@@ -103,6 +105,7 @@ export class RemotePlayer {
       this.pos.set(first.x, first.y, first.z);
       this.yaw = first.yaw;
       this.pitch = first.pitch;
+      this.lean = first.lean;
       this.flags = first.flags;
       this.alive = first.alive;
     } else if (renderTime >= b.t) {
@@ -120,6 +123,7 @@ export class RemotePlayer {
       } else this.pos.set(last.x, last.y, last.z);
       this.yaw = last.yaw;
       this.pitch = last.pitch;
+      this.lean = last.lean;
       this.flags = last.flags;
       this.alive = last.alive;
     } else {
@@ -133,6 +137,7 @@ export class RemotePlayer {
       );
       this.yaw = src ? src.yaw : a.yaw + wrap(b.yaw - a.yaw) * k;
       this.pitch = src ? src.pitch : a.pitch + (b.pitch - a.pitch) * k;
+      this.lean = src ? src.lean : a.lean + (b.lean - a.lean) * k;
       this.flags = a.flags;
       this.alive = a.alive;
     }
@@ -150,7 +155,7 @@ export class RemotePlayer {
 
     this.rig.update(Math.min(dt, 0.05), {
       x: this.pos.x, y: this.pos.y, z: this.pos.z,
-      yaw: this.yaw, pitch: this.pitch,
+      yaw: this.yaw, pitch: this.pitch, lean: this.alive ? this.lean : 0,
       speed, moveYaw: Math.atan2(-this.vel.x, -this.vel.z),
       crouch: (this.flags & F_CROUCH) !== 0,
       grounded: (this.flags & F_GROUNDED) !== 0 || speed < 0.1,

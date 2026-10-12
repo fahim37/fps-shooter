@@ -24,17 +24,29 @@ export function placementMatrix(p: PlacedPiece, out = new THREE.Matrix4()) {
 
 /**
  * One InstancedMesh per (piece, primitive). Instances are split into spatial chunks so
- * frustum culling works on a map-sized set of pieces.
+ * frustum culling works on a map-sized set of pieces. Prefab buildings (many materials,
+ * thousands of triangles) are not chunked: a city shows most of them at once, and one draw
+ * per material for every copy is far cheaper on the CPU than one per material per chunk.
  */
 export function buildInstancedMeshes(
   pieces: PlacedPiece[],
-  kits: Record<KitName, Kit>,
+  kits: Partial<Record<KitName, Kit>>,
   chunkSize = 32,
 ): THREE.InstancedMesh[] {
   const groups = new Map<string, PlacedPiece[]>();
+  const prefab = new Map<string, boolean>();
+  const isPrefab = (kit: KitName, name: string) => {
+    let v = prefab.get(`${kit}|${name}`);
+    if (v === undefined) {
+      const parts = kits[kit]?.get(name)?.parts ?? [];
+      const tris = parts.reduce((n, part) => n + (part.geometry.index?.count ?? part.geometry.attributes.position.count) / 3, 0);
+      prefab.set(`${kit}|${name}`, (v = parts.length >= 8 && tris > 5000));
+    }
+    return v;
+  };
   for (const p of pieces) {
     const cx = Math.floor(p.x / chunkSize), cz = Math.floor(p.z / chunkSize);
-    const key = `${p.kit}|${p.name}|${cx},${cz}`;
+    const key = `${p.kit}|${p.name}|${isPrefab(p.kit, p.name) ? "all" : `${cx},${cz}`}`;
     let g = groups.get(key);
     if (!g) groups.set(key, (g = []));
     g.push(p);
@@ -43,7 +55,7 @@ export function buildInstancedMeshes(
   const out: THREE.InstancedMesh[] = [];
   for (const [key, list] of groups) {
     const [kitName, name] = key.split("|");
-    const piece = kits[kitName as KitName].get(name);
+    const piece = kits[kitName as KitName]?.get(name);
     if (!piece) {
       console.warn(`missing kit piece ${kitName}/${name}`);
       continue;

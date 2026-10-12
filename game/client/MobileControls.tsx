@@ -7,7 +7,7 @@ import { useMobileLayout, type MobileControlId, type MobileOrientation } from ".
 import styles from "./MobileControls.module.css";
 
 type HeldAction = "fire" | "ads" | "jump" | "grenade";
-type IconName = "fire" | "ads" | "jump" | "crouch" | "sprint" | "reload" | "switch" | "grenade" | "camera" | "scores" | "menu" | "layout";
+type IconName = "fire" | "ads" | "jump" | "crouch" | "sprint" | "reload" | "switch" | "peekLeft" | "peekRight" | "grenade" | "camera" | "scores" | "menu" | "layout";
 type Gesture = { element: HTMLButtonElement; action?: HeldAction; look?: { x: number; y: number } };
 
 const ICON_PATHS: Record<IconName, string> = {
@@ -18,6 +18,8 @@ const ICON_PATHS: Record<IconName, string> = {
     sprint: "M14 3a2 2 0 1 0 4 0 2 2 0 1 0-4 0 M16 7l-5 5 5 3-3 6 M12 11l-5 6H3 M15 8l5 3 M11 7H6 M7 4H3",
     reload: "M19 8a8 8 0 1 0 1 8 M19 3v5h-5 M10 8v8h4V8z",
     switch: "M3 7h17 M16 3l4 4-4 4 M21 17H4 M8 13l-4 4 4 4",
+    peekLeft: "M18 3v18 M15 12H5 M9 8l-4 4 4 4",
+    peekRight: "M6 3v18 M9 12h10 M15 8l4 4-4 4",
     grenade: "M8 5h8v4 M10 3h6l3 4 M8 10a7 7 0 1 0 8 0z M12 11v9 M6 15h12",
     camera: "M3 7h5l2-3h4l2 3h5v13H3z M8 13a4 4 0 1 0 8 0 4 4 0 1 0-8 0",
     scores: "M4 4h16v17H4z M8 8h1 M12 8h5 M8 12h1 M12 12h5 M8 16h1 M12 16h5",
@@ -34,6 +36,7 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
   const input = game.input;
   const scoreboard = useHud((s) => s.scoreboard);
   const editing = useHud((s) => s.customizingControls);
+  const peek = useHud((s) => s.peek);
   const layout = useMobileLayout();
   const [orientation, setOrientation] = useState<MobileOrientation>(() => window.innerWidth > window.innerHeight ? "landscape" : "portrait");
   const [selected, setSelected] = useState<MobileControlId>("joystick");
@@ -257,8 +260,10 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
       <div className={styles.utilities}>
         {button("grenade", "Grenade", styles.utility, "grenade")}
         {button("reload", "Reload", styles.utility, undefined, () => input.press("KeyR"))}
-        {button("switch", "Switch", styles.utility, undefined, () => input.press("KeyQ"))}
+        {button("switch", "Switch", styles.utility, undefined, () => input.press("SwapWeapon"))}
       </div>
+      {button("peekLeft", "Peek left", styles.peekLeft, undefined, () => input.press("PeekLeft"), peek === -1)}
+      {button("peekRight", "Peek right", styles.peekRight, undefined, () => input.press("PeekRight"), peek === 1)}
     </>}
     <div className={styles.toolbar}>
       {!scoreboard && button("camera", "Camera", styles.tool, undefined, () => input.press("KeyV"))}

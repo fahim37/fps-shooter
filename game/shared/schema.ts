@@ -12,6 +12,8 @@ export const PlayerState = schema({
   yaw: t.float32().default(0),
   pitch: t.float32().default(0),
   flags: t.uint8().default(0),
+  /** Peek: -1 full left .. 1 full right. */
+  lean: t.float32().default(0),
   weapon: t.string().default("ar"),
   primary: t.string().default("ar"),
   hp: t.uint8().default(100),
@@ -43,6 +45,8 @@ export const MatchState = schema({
   /** Server clock (ms) at the last simulation tick; stamps each state snapshot for interpolation. */
   serverTime: t.float64().default(0),
   mode: t.string().default("ffa"),
+  /** MapId. The host may change it while the room is waiting. */
+  map: t.string().default("village"),
   queue: t.string().default("quick"),
   roomName: t.string().default(""),
   code: t.string().default(""),

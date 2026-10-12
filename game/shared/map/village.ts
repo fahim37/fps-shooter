@@ -1,4 +1,4 @@
-import type { MapData, PlacedPiece, SpawnPoint } from "./types";
+import type { MapData, MapOverview, PlacedPiece, SpawnPoint } from "./types";
 import { buildHouse, type HouseSpec } from "./house";
 import { rng } from "../rng";
 
@@ -39,6 +39,16 @@ const HOUSES: HouseSpec[] = [
 export const VILLAGE_OVERVIEW = {
   half: MAP_HALF, plaza: PLAZA, road: ROAD,
   buildings: HOUSES.map(({ x, z, sx, sz }) => ({ x, z, sx, sz })),
+};
+
+const overview: MapOverview = {
+  roads: [
+    { x: -MAP_HALF, z: -ROAD, sx: MAP_HALF * 2, sz: ROAD * 2 },
+    { x: -ROAD, z: -MAP_HALF, sx: ROAD * 2, sz: MAP_HALF * 2 },
+  ],
+  plazas: [{ x: -PLAZA, z: -PLAZA, sx: PLAZA * 2, sz: PLAZA * 2 }],
+  buildings: VILLAGE_OVERVIEW.buildings,
+  labels: [{ text: "PLAZA", x: 0, z: 0 }],
 };
 
 type Rect = [number, number, number, number]; // x0, z0, x1, z1
@@ -170,7 +180,7 @@ export function buildVillage(): MapData {
     }
   }
 
-  return { pieces, spawns, half: MAP_HALF };
+  return { id: "village", pieces, spawns, half: MAP_HALF, kits: ["village", "nature", "props"], overview };
 }
 
 let cached: MapData | null = null;

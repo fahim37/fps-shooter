@@ -1,5 +1,6 @@
 import { Mover, newMoveState, type MoveState } from "../game/shared/movement";
 import { lineOfSight } from "../game/shared/physics";
+import { leanOffset } from "../game/shared/lean";
 import { aimDir, lookAt, spreadDir, angleBetween } from "../game/shared/aim";
 import { WEAPONS, currentSpread, fireIntervalMs, type WeaponId } from "../game/shared/weapons";
 import { F_CROUCH, F_ADS, F_SPRINT, F_GROUNDED, F_RELOADING } from "../game/shared/messages";
@@ -160,8 +161,11 @@ export class Bot {
         this.errPitch = (Math.random() * 2 - 1) * e * 0.6;
       }
       const tgt = this.target.st;
-      const aimY = tgt.y + ((tgt.flags & F_CROUCH) ? 0.95 : 1.3) + (Math.random() < 0.15 ? 0.3 : 0);
-      const la = lookAt(eye, [tgt.x, aimY, tgt.z]);
+      const crouched = (tgt.flags & F_CROUCH) !== 0;
+      const aimHeight = (crouched ? 0.95 : 1.3) + (Math.random() < 0.15 ? 0.3 : 0);
+      // Track a peeking target's exposed upper body rather than the hidden hips.
+      const lean = leanOffset(tgt.lean, tgt.yaw, crouched ? 1 : 0, aimHeight);
+      const la = lookAt(eye, [tgt.x + lean[0], tgt.y + aimHeight + lean[1], tgt.z + lean[2]]);
       desiredYaw = la.yaw + this.errYaw;
       desiredPitch = la.pitch + this.errPitch;
     } else if (mx || mz) {
@@ -238,6 +242,7 @@ export class Bot {
       const dot = (dx * facing[0] + dz * facing[2]) / (d || 1);
       if (dot < -0.25 && o !== this.target && d > 6) continue;
       const seen = lineOfSight(RAPIER, this.room.world, eye, [o.st.x, o.st.y + 1.45, o.st.z])
+        || (o.st.lean !== 0 && lineOfSight(RAPIER, this.room.world, eye, this.room.eyePos(o)))
         || lineOfSight(RAPIER, this.room.world, eye, [o.st.x, o.st.y + 0.9, o.st.z]);
       if (!seen) continue;
       const score = d * (o === this.target ? 0.6 : 1);
@@ -256,15 +261,18 @@ export class Bot {
   }
 
   private computePath(from: V3, to: V3): V3[] {
-    const nav = getNav();
+    const nav = getNav(this.room.map.id);
     const res = nav.computePath({ x: from[0], y: from[1], z: from[2] }, { x: to[0], y: to[1], z: to[2] }, { halfExtents: { x: 3, y: 4, z: 3 } });
     if (!res.success || !res.path.length) return [to];
     return res.path.map((p) => [p.x, p.y, p.z] as V3);
   }
 
   private pickRoamGoal(): V3 {
-    const nav = getNav();
-    const r = nav.findRandomPoint();
+    const nav = getNav(this.room.map.id);
+    // Search outward through connected polygons only: solid buildings and their roofs are
+    // separate navmesh islands that a random point anywhere could land on.
+    const { st } = this.p;
+    const r = nav.findRandomPointAroundCircle({ x: st.x, y: st.y, z: st.z }, 70, { halfExtents: { x: 3, y: 4, z: 3 } });
     if (r.success) return [r.randomPoint.x, r.randomPoint.y, r.randomPoint.z];
     return [(Math.random() - 0.5) * 60, 0, (Math.random() - 0.5) * 60];
   }

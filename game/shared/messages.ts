@@ -1,11 +1,14 @@
 import type { WeaponId } from "./weapons";
 import type { GameMode } from "./constants";
 import type { HitPart } from "./hitboxes";
+import type { MapId } from "./map/types";
 
 /** Options passed when creating or joining a room. */
 export interface JoinOptions {
   name: string;
   mode?: GameMode;
+  /** Quick play matches rooms on this map. */
+  map?: MapId;
   /** 0 = male, 1 = female character. */
   char: number;
   /** Preferred team when joining TDM; omitted/0 assigns an available team. */
@@ -21,6 +24,7 @@ export interface JoinOptions {
     /** Custom rooms wait for players to ready up and for the host to start. */
     lobby?: boolean;
     format?: "1v1" | "2v2" | "custom";
+    map?: MapId;
   };
 }
 
@@ -28,6 +32,7 @@ export interface JoinOptions {
 export interface RoomMeta {
   queue: "quick" | "rooms";
   mode: GameMode;
+  map: MapId;
   roomName: string;
   code: string;
   humans: number;
@@ -52,6 +57,8 @@ export interface PoseMsg {
   vx: number; vy: number; vz: number;
   flags: number;
   weapon: WeaponId;
+  /** Peek amount, -1 (left) .. 1 (right). */
+  lean?: number;
   /** Landing impact speed since the last message (fall damage). */
   land?: number;
 }
@@ -115,6 +122,9 @@ export interface HitConfirm {
 
 export interface DamagedEvent {
   from: [number, number, number];
+  /** Session id of the player who dealt the damage; absent for falls and self-inflicted damage. */
+  attacker?: string;
+  kind?: "bullet" | "explosion" | "fall";
   damage: number;
   hp: number;
 }

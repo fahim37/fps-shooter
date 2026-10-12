@@ -65,7 +65,7 @@ export class Input {
       } else {
         this.keys.delete(k);
       }
-      if (["Space", "Tab", "KeyQ", "ControlLeft", "ControlRight"].includes(k) && active) e.preventDefault();
+      if (["Space", "Tab", "KeyQ", "KeyE", "ControlLeft", "ControlRight"].includes(k) && active) e.preventDefault();
       this.updateAxes();
     };
     const kd = (e: KeyboardEvent) => onKey(e, true);

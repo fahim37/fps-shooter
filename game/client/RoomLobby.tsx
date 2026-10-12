@@ -8,20 +8,23 @@ import { startBlockReason } from "../shared/lobby";
 import { RoomInvite } from "./RoomInvite";
 import { SettingsPanel } from "./SettingsPanel";
 import { CharacterShowcase } from "./CharacterShowcase";
+import { MapPicker } from "./MapPicker";
+import { MAPS, mapId } from "../shared/map/maps";
+import type { MapId } from "../shared/map/types";
 
-const GameView = dynamic(() => import("./GameView"), { ssr: false, loading: () => <main className="boot-screen">Loading the village…</main> });
+const GameView = dynamic(() => import("./GameView"), { ssr: false, loading: () => <main className="boot-screen">Loading the match…</main> });
 
 function snapshot(room: GameRoom) {
   const s = room.state;
   return JSON.stringify({
-    phase: s?.code ? s.phase : "", lobby: s?.lobby ?? false, name: s?.roomName ?? "", mode: s?.mode ?? "tdm",
+    phase: s?.code ? s.phase : "", lobby: s?.lobby ?? false, name: s?.roomName ?? "", mode: s?.mode ?? "tdm", map: mapId(s?.map),
     host: s?.hostId ?? "", format: s?.format ?? "custom", maxPlayers: s?.maxPlayers ?? 12,
     botFill: s?.botFill ?? 0, privateRoom: s?.privateRoom ?? false,
     players: s?.players ? [...s.players.entries()].map(([id, p]) => ({ id, name: p.name, char: p.char, emote: p.emote, team: p.team, ready: p.ready, connected: p.connected, bot: p.bot })) : [],
   });
 }
 interface RoomSnapshot {
-  phase: string; lobby: boolean; name: string; mode: GameMode; host: string; format: string;
+  phase: string; lobby: boolean; name: string; mode: GameMode; map: MapId; host: string; format: string;
   maxPlayers: number; botFill: number; privateRoom: boolean;
   players: { id: string; name: string; char: number; emote: string; team: number; ready: boolean; connected: boolean; bot: boolean }[];
 }
@@ -42,7 +45,7 @@ export function ConnectedRoom({ room, onLeave }: { room: GameRoom; onLeave: () =
     const ignore = room.onMessage("*", () => {});
     return () => { room.onDrop.remove(drop); room.onReconnect.remove(reconnect); room.onLeave.remove(leave); room.onError.remove(fail); unsubscribe(); ignore(); };
   }, [room]);
-  if (s.phase && s.phase !== "waiting") return <GameView room={room} onLeave={onLeave} />;
+  if (s.phase && s.phase !== "waiting") return <GameView room={room} map={s.map} onLeave={onLeave} />;
   const me = s.players.find((p) => p.id === room.sessionId);
   const isHost = s.host === room.sessionId;
   const reason = startBlockReason(s, s.players);
@@ -51,7 +54,7 @@ export function ConnectedRoom({ room, onLeave }: { room: GameRoom; onLeave: () =
   const teams = s.mode === "tdm" ? [1, 2] : [0];
   return <main className="waiting-room">
     <header className="lobby-top"><span className="wordmark">H / M</span><button className="text-button" onClick={onLeave}>← Leave room</button></header>
-    <section className="room-heading"><span className="eyebrow">YOUR ROOM · {s.privateRoom ? "INVITE ONLY" : "PUBLIC"}</span><h1>{s.name || "Joining room…"}</h1><p>{s.format === "custom" ? MODE_INFO[s.mode].name : `${s.format} · Team Deathmatch`} <span>·</span> The Village <span>·</span> {s.botFill ? `Practice bots fill to ${s.botFill}` : "Players only · No bots"}</p></section>
+    <section className="room-heading"><span className="eyebrow">YOUR ROOM · {s.privateRoom ? "INVITE ONLY" : "PUBLIC"}</span><h1>{s.name || "Joining room…"}</h1><p>{s.format === "custom" ? MODE_INFO[s.mode].name : `${s.format} · Team Deathmatch`} <span>·</span> {MAPS[s.map].name} <span>·</span> {s.botFill ? `Practice bots fill to ${s.botFill}` : "Players only · No bots"}</p></section>
     <div className="room-lineup">
     <CharacterShowcase players={s.players.filter((p) => !p.bot)} me={room.sessionId} onShowoff={(id) => send("emote", id)} disabled={disabled} />
     <section className="roster-panel" aria-label="Room players">
@@ -78,6 +81,11 @@ export function ConnectedRoom({ room, onLeave }: { room: GameRoom; onLeave: () =
     </div>
     <aside className="room-sidebar">
       <RoomInvite code={room.roomId} />
+      <div className="room-map" aria-live="polite">
+        <span className="eyebrow">MAP · {MAPS[s.map].name.toUpperCase()}</span>
+        <MapPicker value={s.map} onChange={isHost && !disabled ? (id) => send("map", id) : undefined} />
+        <p className="controls-help">{isHost ? "Pick the map. Everyone in the room sees your choice." : "The host picks the map."}</p>
+      </div>
       <div className="room-start" aria-live="polite">
         <span className="eyebrow">{isHost ? "YOU ARE THE HOST" : "GET READY"}</span>
         <h2>{me?.ready ? "You’re ready." : "Ready when you are."}</h2>

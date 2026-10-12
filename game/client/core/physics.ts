@@ -8,9 +8,10 @@ let rapierReady: Promise<void> | null = null;
 /** Builds the local physics world from the same collision data the server uses. */
 export async function loadClientWorld(map: MapData): Promise<{ R: Rapier; world: World }> {
   await (rapierReady ??= RAPIER.init());
-  const kits = {} as Record<KitName, ReturnType<typeof parseCollision>>;
+  const kits: Partial<Record<KitName, ReturnType<typeof parseCollision>>> = {};
+  // Only the collision of kits this map places.
   await Promise.all(
-    (["village", "nature", "props"] as KitName[]).map(async (k) => {
+    map.kits.map(async (k) => {
       kits[k] = parseCollision(k, await loadBinary(`/models/${k}.collision.bin`));
     }),
   );

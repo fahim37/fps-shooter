@@ -3,6 +3,7 @@ import { gameServerUrl, gameServerHttp } from "./endpoint";
 import { ROOM_NAME, type GameMode } from "../../shared/constants";
 import type { JoinOptions } from "../../shared/messages";
 import type { MatchState } from "../../shared/schema";
+import type { MapId } from "../../shared/map/types";
 
 export type GameRoom = Room<unknown, MatchState>;
 
@@ -10,6 +11,7 @@ export interface PublicRoom {
   code: string;
   name: string;
   mode: GameMode;
+  map: MapId;
   humans: number;
   bots: number;
   botFill: number;

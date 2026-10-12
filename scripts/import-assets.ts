@@ -9,6 +9,7 @@ const STAGES: Record<string, () => Promise<void>> = {
   village: () => importKit(KITS.village),
   nature: () => importKit(KITS.nature),
   props: () => importKit(KITS.props),
+  city: () => importKit(KITS.city),
   weapons: importWeapons,
   characters: importCharacters,
 };

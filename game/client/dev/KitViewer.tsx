@@ -62,8 +62,9 @@ export default function KitViewer({ kit, filter, spacing, cam, target }: { kit: 
           <Environment preset="park" />
           <PieceGrid kitName={kit} filter={filter} spacing={spacing} />
         </Suspense>
-        <gridHelper args={[400, 200, "#888", "#aaa"]} position={[0, 0.001, 0]} />
-        <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <gridHelper args={[400, 200, "#888", "#aaa"]} position={[0, -0.159, 0]} />
+        {/* Slightly below 0: city street tiles put their asphalt at y = -0.15. */}
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.16, 0]} receiveShadow>
           <planeGeometry args={[400, 400]} />
           <meshStandardMaterial color={new THREE.Color("#d8d8d0")} />
         </mesh>

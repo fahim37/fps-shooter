@@ -83,7 +83,7 @@ async function main() {
     await page.mouse.down({ button: "right" });
     await page.locator(".scope.enemy-sighted").waitFor();
     await sleep(450);
-    assert.match(await page.locator(".scope-label").innerText(), /OPTIC/);
+    assert.match(await page.locator(".scope-label").innerText(), /SCOPE/);
     await page.screenshot({ path: ".next/combat-scope.png" });
     await page.mouse.down({ button: "left" });
     await sleep(100);

@@ -1,0 +1,119 @@
+.scope {
+  --d: min(86vmin, 96vw);
+  --tube: #040605;
+  --illum: #ff2b1f;
+  --illum-core: #ff8a7d;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  contain: strict;
+  transition: opacity 0.06s linear;
+}
+.x2 { --d: min(80vmin, 92vw); }
+.x6 { --d: min(90vmin, 98vw); }
+.target { --illum: #ff4a3c; --illum-core: #ffd2cb; }
+
+/* Static tube interior around the eyepiece; the moving eyepiece rim always covers its hole. */
+.surround {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, transparent calc(var(--d) * 0.58), var(--tube) calc(var(--d) * 0.6));
+}
+
+.optic {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: var(--d);
+  height: var(--d);
+  animation: scope-in 0.17s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+@keyframes scope-in {
+  from { transform: scale(1.16); }
+}
+
+.reticle {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.halo { fill: none; stroke: #e6f2e8; stroke-opacity: 0.16; }
+.wire { fill: none; stroke: #050807; }
+.dots { fill: #050807; stroke: #e6f2e8; stroke-opacity: 0.18; stroke-width: 1.4; }
+.engraving {
+  font: 600 15px var(--font-geist-mono), monospace;
+  fill: #050807;
+  stroke: #e6f2e8;
+  stroke-opacity: 0.2;
+  stroke-width: 2px;
+  paint-order: stroke;
+}
+.illum { fill: var(--illum); stroke: var(--illum); }
+.illum circle:first-child { fill: var(--illum-core); }
+
+/*
+ * The exit-pupil shadow: lens fringe, rim and tube interior. It drifts with
+ * sway, movement and recoil (see useSightMotion), like a real eyebox.
+ */
+.eyepiece {
+  position: absolute;
+  left: -18%;
+  top: -18%;
+  width: 136%;
+  height: 136%;
+  will-change: transform;
+  background: radial-gradient(circle at 50% 50%,
+    transparent calc(var(--d) * 0.4),
+    rgb(3 8 6 / 0.2) calc(var(--d) * 0.455),
+    rgb(2 6 5 / 0.62) calc(var(--d) * 0.488),
+    rgb(90 160 255 / 0.32) calc(var(--d) * 0.494),
+    rgb(255 120 50 / 0.26) calc(var(--d) * 0.5),
+    #010202 calc(var(--d) * 0.504),
+    #161c19 calc(var(--d) * 0.52),
+    #0a0e0c calc(var(--d) * 0.535),
+    var(--tube) calc(var(--d) * 0.56));
+}
+/* Lens coating tint and a soft reflection, both riding with the eyepiece. */
+.eyepiece::before,
+.eyepiece::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: var(--d);
+  height: var(--d);
+  border-radius: 50%;
+}
+.eyepiece::before {
+  background: radial-gradient(circle at 50% 50%, transparent 58%, rgb(40 90 80 / 0.12) 92%);
+}
+.eyepiece::after {
+  background: radial-gradient(ellipse 46% 30% at 30% 18%, rgb(210 235 255 / 0.07), transparent 70%);
+  box-shadow: inset 0.9vmin 1.2vmin 2.4vmin -1.4vmin rgb(220 240 255 / 0.2);
+}
+
+.label {
+  position: absolute;
+  /* Bottom-right corner of the box lies outside the lens, in the dark tube. */
+  right: 0;
+  bottom: 0;
+  font: 8px var(--font-geist-mono), monospace;
+  letter-spacing: 0.17em;
+  color: #c6d2c8a0;
+  text-align: right;
+  white-space: nowrap;
+}
+.label b {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.07em;
+  color: #e3ece4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .optic { animation: none; }
+}

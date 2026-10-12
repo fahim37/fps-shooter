@@ -5,6 +5,7 @@ import { useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { loadTexture } from "../assets/loaders";
 import { PRESETS, useSettings } from "../settings";
+import type { MapId } from "../../shared/map/types";
 
 const SIZE = 300;
 const TILE = 3.2; // meters per texture repeat
@@ -36,7 +37,17 @@ const GRADE = `
  * Grass ground with macro variation: a large-scale noise blends in forest-floor dirt and
  * breaks up the tiling, which is what makes a flat plane read as terrain.
  */
-export function Ground() {
+export function Ground({ map }: { map: MapId }) {
+  // The city is paved edge to edge with kit tiles; this plane only fills the distance, so it
+  // stays untextured and sits below the asphalt (which is at y = 0) to avoid z-fighting.
+  if (map === "downtown") return <mesh rotation-x={-Math.PI / 2} position-y={-0.06} receiveShadow>
+    <planeGeometry args={[SIZE, SIZE]} />
+    <meshStandardMaterial color="#3d4044" roughness={1} />
+  </mesh>;
+  return <GrassGround />;
+}
+
+function GrassGround() {
   const detail = useSettings((s) => PRESETS[s.quality].terrainDetail);
   const geometry = useMemo(() => {
     const g = new THREE.PlaneGeometry(SIZE, SIZE, 1, 1);

@@ -10,6 +10,7 @@ export const SettingsPanel = memo(function SettingsPanel() {
     <label>ADS SENSITIVITY {s.adsSensitivity.toFixed(1)}<input type="range" min={0.2} max={1.5} step={0.1} value={s.adsSensitivity} onChange={(e) => s.set({ adsSensitivity: Number(e.target.value) })} /></label>
     <label>FIELD OF VIEW {s.fov}°<input type="range" min={60} max={110} value={s.fov} onChange={(e) => s.set({ fov: Number(e.target.value) })} /></label>
     <label className="check-label"><input type="checkbox" checked={s.thirdPerson} onChange={(e) => s.set({ thirdPerson: e.target.checked })} /> Third-person camera</label>
+    <label className="check-label"><input type="checkbox" checked={s.leanToggle} onChange={(e) => s.set({ leanToggle: e.target.checked })} /> Toggle peek (Q / E)</label>
     <label className="check-label"><input type="checkbox" checked={s.showFps} onChange={(e) => s.set({ showFps: e.target.checked })} /> Show performance</label>
     <label className="check-label"><input type="checkbox" checked={s.adaptiveResolution} onChange={(e) => s.set({ adaptiveResolution: e.target.checked })} /> Auto-adjust resolution</label>
     <label className="check-label"><input type="checkbox" checked={s.clearView} onChange={(e) => s.set({ clearView: e.target.checked })} /> Clearer combat view</label>

@@ -1,20 +1,17 @@
 import fs from "node:fs";
 import path from "node:path";
 import RAPIER from "@dimforge/rapier3d-compat";
-import { init as initRecast, NavMeshQuery, type NavMesh } from "recast-navigation";
+import { init as initRecast, NavMeshQuery } from "recast-navigation";
 import { generateSoloNavMesh } from "recast-navigation/generators";
-import { getVillage } from "../game/shared/map/village";
+import { getMap, MAP_IDS } from "../game/shared/map/maps";
 import { buildWorld, mapTriangles, parseCollision, type KitCollision, type World } from "../game/shared/physics";
-import type { KitName, MapData } from "../game/shared/map/types";
+import type { KitName, MapData, MapId } from "../game/shared/map/types";
 
 const MODELS = path.resolve(__dirname, "../public/models");
 
 let ready: Promise<void> | null = null;
-let kits: Record<KitName, KitCollision>;
-let navQuery: NavMeshQuery;
-let navMesh: NavMesh;
-
-export const map: MapData = getVillage();
+const kits: Partial<Record<KitName, KitCollision>> = {};
+const navQueries = new Map<MapId, NavMeshQuery>();
 
 function readKit(kit: KitName): KitCollision {
   const buf = fs.readFileSync(path.join(MODELS, `${kit}.collision.bin`));
@@ -23,34 +20,34 @@ function readKit(kit: KitName): KitCollision {
   return parseCollision(kit, ab);
 }
 
-/** One-time server init: Rapier, collision data and the bot navmesh (shared by all rooms). */
+/** One-time server init: Rapier, collision data and a bot navmesh per map (shared by all rooms). */
 export function initWorldData() {
   return (ready ??= (async () => {
     const t = Date.now();
     await RAPIER.init();
-    kits = { village: readKit("village"), nature: readKit("nature"), props: readKit("props") };
+    for (const id of MAP_IDS) for (const kit of getMap(id).kits) kits[kit] ??= readKit(kit);
     await initRecast();
-    buildNavMesh();
-    console.log(`[world] physics + navmesh ready in ${Date.now() - t} ms`);
+    for (const id of MAP_IDS) navQueries.set(id, buildNavMesh(getMap(id)));
+    console.log(`[world] physics + navmeshes (${MAP_IDS.join(", ")}) ready in ${Date.now() - t} ms`);
   })());
 }
 
 /** A fresh physics world per room (rooms own grenades and bot colliders). */
-export function createRoomWorld(): World {
+export function createRoomWorld(map: MapData): World {
   return buildWorld(RAPIER, map, kits);
 }
 
 export { RAPIER };
 
-export function getNav() {
-  return navQuery;
+export function getNav(map: MapId) {
+  return navQueries.get(map)!;
 }
 
 /**
  * Builds the navmesh from the same collision geometry the players walk on. Agent size
- * matches the player capsule; climb allows stairs and door sills.
+ * matches the player capsule; climb allows stairs, curbs and door sills.
  */
-function buildNavMesh() {
+function buildNavMesh(map: MapData) {
   const positions: number[] = [];
   const indices: number[] = [];
   for (const c of mapTriangles(map, kits)) {
@@ -80,7 +77,6 @@ function buildNavMesh() {
     detailSampleDist: 6,
     detailSampleMaxError: 1,
   });
-  if (!result.success) throw new Error(`navmesh generation failed: ${result.error}`);
-  navMesh = result.navMesh;
-  navQuery = new NavMeshQuery(navMesh);
+  if (!result.success) throw new Error(`navmesh generation failed for ${map.id}: ${result.error}`);
+  return new NavMeshQuery(result.navMesh);
 }

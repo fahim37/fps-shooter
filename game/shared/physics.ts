@@ -3,6 +3,7 @@ import type { KitName, MapData } from "./map/types";
 import villagePieces from "./generated/village-pieces.json";
 import naturePieces from "./generated/nature-pieces.json";
 import propsPieces from "./generated/props-pieces.json";
+import cityPieces from "./generated/city-pieces.json";
 import { GRAVITY } from "./constants";
 
 export type Rapier = typeof RAPIER_NS;
@@ -14,6 +15,7 @@ export const PIECES: Record<KitName, PiecesJson> = {
   village: villagePieces as PiecesJson,
   nature: naturePieces as PiecesJson,
   props: propsPieces as PiecesJson,
+  city: cityPieces as PiecesJson,
 };
 
 export interface KitCollision {
@@ -46,7 +48,7 @@ export const QUERY_WORLD = 0xffff_0001;
  * Builds the static collision world for a map: ground, boundary walls and every placed
  * piece's collision mesh merged into per-chunk trimeshes.
  */
-export function buildWorld(R: Rapier, map: MapData, kits: Record<KitName, KitCollision>, chunkSize = 24): World {
+export function buildWorld(R: Rapier, map: MapData, kits: Partial<Record<KitName, KitCollision>>, chunkSize = 24): World {
   const world = new R.World({ x: 0, y: -GRAVITY, z: 0 });
 
   world.createCollider(R.ColliderDesc.cuboid(400, 0.5, 400).setTranslation(0, -0.5, 0).setCollisionGroups(GROUP_WORLD));
@@ -66,10 +68,11 @@ export function buildWorld(R: Rapier, map: MapData, kits: Record<KitName, KitCol
 }
 
 /** Every placed piece's collision triangles in world space, merged per spatial chunk. */
-export function mapTriangles(map: MapData, kits: Record<KitName, KitCollision>, chunkSize = 24) {
+export function mapTriangles(map: MapData, kits: Partial<Record<KitName, KitCollision>>, chunkSize = 24) {
   const chunks = new Map<string, { pos: number[]; idx: number[] }>();
   for (const p of map.pieces) {
     const kit = kits[p.kit];
+    if (!kit) throw new Error(`map ${map.id} places ${p.kit}/${p.name} but that kit is not loaded`);
     const col = kit.pieces[p.name]?.col;
     if (!col) continue;
     const [v0, vc, i0, ic] = col;

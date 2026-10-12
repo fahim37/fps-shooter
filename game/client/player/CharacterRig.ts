@@ -3,6 +3,7 @@ import { instantiateCharacter, type CharacterTemplate, type CharacterInstance, t
 import { cloneWeapon, FOREGRIP, WEAPON_META } from "../assets/weapons";
 import type { WeaponId } from "../../shared/weapons";
 import { solveTwoBone, setBoneWorldQuaternion, rotateBoneWorld } from "./ik";
+import { LEAN_ANGLE } from "../../shared/lean";
 
 export type RigMode = "fpp" | "tpp";
 
@@ -33,6 +34,8 @@ export interface RigState {
   tuck?: number;
   /** 0..1 grenade throw motion. */
   throwing?: number;
+  /** Peek -1 (left) .. 1 (right). */
+  lean?: number;
 }
 
 interface HandRefs {
@@ -218,6 +221,13 @@ export class CharacterRig {
       rotateBoneWorld(this.inst.bones.get("spine_01")!, _q.setFromAxisAngle(UP, -this.legYaw * 0.6), true);
       rotateBoneWorld(this.inst.bones.get("spine_03")!, _q.setFromAxisAngle(UP, -this.legYaw * 0.4), true);
     }
+    const lean = s.lean ?? 0;
+    if (this.mode === "tpp" && Math.abs(lean) > 1e-3) {
+      // Peek: tilt the torso around the aim axis from the hips, matching the shared hitboxes.
+      _v.set(-Math.sin(s.yaw), 0, -Math.cos(s.yaw));
+      rotateBoneWorld(this.inst.bones.get("spine_01")!, _q.setFromAxisAngle(_v, lean * LEAN_ANGLE * 0.75), true);
+      rotateBoneWorld(this.inst.bones.get("spine_03")!, _q.setFromAxisAngle(_v, lean * LEAN_ANGLE * 0.25), true);
+    }
     this.placeGun(s);
     this.solveArms(s);
   }
@@ -317,7 +327,7 @@ export class CharacterRig {
     } else {
       // Stock in the right shoulder, pointing along the aim.
       const shoulder = _v.setFromMatrixPosition(this.inst.bones.get(pistol ? "neck_01" : "upperarm_r")!.matrixWorld);
-      _e.set(s.pitch + s.recoil * (pistol ? 0.075 : 0.035) - reload * 0.35 - sprint * 0.6, s.yaw + sprint * 0.6, reload * 0.45, "YXZ");
+      _e.set(s.pitch + s.recoil * (pistol ? 0.075 : 0.035) - reload * 0.35 - sprint * 0.6, s.yaw + sprint * 0.6, reload * 0.45 - (s.lean ?? 0) * LEAN_ANGLE * 0.6, "YXZ");
       _q.setFromEuler(_e);
       const fwd = _v2.set(0, 0, -1).applyQuaternion(_q);
       const reach = pistol ? 0.5 : meta.max[2] + 0.02;

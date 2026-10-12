@@ -6,6 +6,10 @@ import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+async function until(check: () => boolean, label: string, timeout = 5000) {
+  const end = Date.now() + timeout;
+  while (!check()) { if (Date.now() > end) throw new Error(`Timed out: ${label}`); await sleep(50); }
+}
 
 async function main() {
   const base = process.argv[2] || "http://localhost:3100";
@@ -32,8 +36,13 @@ async function main() {
     await page.waitForFunction(() => !!document.pointerLockElement);
     const map = page.getByRole("region", { name: "Minimap", exact: true });
     await map.locator('[data-relation="self"]').waitFor();
-    await page.waitForFunction(() => document.querySelectorAll('[data-relation="enemy"]').length === 2 && document.querySelectorAll('[data-relation="ally"]').length === 1);
+    // PUBG-style radar: teammates only, enemies are never plotted.
+    await page.waitForFunction(() => document.querySelectorAll('[data-relation="ally"]').length === 1);
+    const squad = page.getByRole("list", { name: "Squad status", exact: true });
+    await squad.getByRole("listitem").nth(1).waitFor();
+    assert.equal(await squad.getByRole("listitem").count(), 2);
     await sleep(9000);
+    assert.equal(await page.locator('[data-relation="enemy"]').count(), 0, "Enemies must not appear on the minimap");
     const local = await page.locator(".hud-layer").evaluate((element) => {
       type Fiber = { memoizedProps?: { game?: Game }; return?: Fiber };
       const key = Object.keys(element).find((name) => name.startsWith("__reactFiber"))!;
@@ -42,14 +51,35 @@ async function main() {
       const game = fiber.memoizedProps!.game!;
       return { id: game.room.sessionId, x: game.local!.ms.x, y: game.local!.ms.y, z: game.local!.ms.z, yaw: game.local!.yaw };
     });
-    const marker = map.locator(`[data-player-id="${enemy.sessionId}"]`);
-    const before = await marker.getAttribute("transform");
     // The idle peer has ample movement allowance; put it on the player's clear spawn lane.
     const pose = { x: local.x - Math.sin(local.yaw) * 3, y: local.y, z: local.z - Math.cos(local.yaw) * 3,
       yaw: local.yaw + Math.PI, pitch: 0, vx: 0, vy: 0, vz: 0, flags: 8, weapon: "ar" };
     enemy.send("pose", pose);
-    await page.waitForFunction(({ id, old }) => document.querySelector(`[data-player-id="${id}"]`)?.getAttribute("transform") !== old, { id: enemy.sessionId, old: before });
     await sleep(600);
+    // Getting shot reveals only the direction, on the minimap and around the crosshair.
+    const origin = [pose.x, pose.y + 1.62, pose.z];
+    const target = [local.x, local.y + 1.2, local.z];
+    const length = Math.hypot(target[0] - origin[0], target[1] - origin[1], target[2] - origin[2]);
+    enemy.send("fire", { weapon: "ar", shot: 1, viewTime: Date.now(), origin, dirs: [target.map((value, i) => (value - origin[i]) / length)] });
+    await map.locator('[data-threat="bullet"]').waitFor({ timeout: 5000 });
+    assert.equal(await page.locator('[data-relation="enemy"]').count(), 0);
+    await page.screenshot({ path: "out/qa/minimap-threat.png" }).catch(() => {});
+    // Peek right: the camera leans locally and the server replicates the lean to everyone.
+    const leanOf = () => page.locator(".hud-layer").evaluate((element) => {
+      type Fiber = { memoizedProps?: { game?: Game }; return?: Fiber };
+      const key = Object.keys(element).find((name) => name.startsWith("__reactFiber"))!;
+      let fiber = (element as unknown as Record<string, Fiber>)[key];
+      while (fiber && !fiber.memoizedProps?.game) fiber = fiber.return!;
+      return fiber.memoizedProps!.game!.local!.lean;
+    });
+    await page.keyboard.down("KeyE");
+    await sleep(400);
+    assert.ok(await leanOf() > 0.3, "Holding E should peek right");
+    await until(() => (enemy.state.players.get(local.id)?.lean ?? 0) > 0.3, "replicated peek");
+    await page.keyboard.up("KeyE");
+    await sleep(400);
+    assert.equal(await leanOf(), 0, "Releasing E should stand straight");
+    await until(() => enemy.state.players.get(local.id)?.lean === 0, "replicated stand-up");
     const materials = await page.locator(".hud-layer").evaluate((element) => {
       type Fiber = { memoizedProps?: { game?: Game }; return?: Fiber };
       const key = Object.keys(element).find((name) => name.startsWith("__reactFiber"))!;
@@ -91,7 +121,6 @@ async function main() {
     await page.mouse.down();
     await page.getByRole("status", { name: "You eliminated Enemy Scout", exact: true }).waitFor();
     await page.mouse.up();
-    await map.locator(`[data-player-id="${enemy.sessionId}"]`).waitFor({ state: "detached" });
     await page.screenshot({ path: "out/qa/elimination-desktop.png" });
     await page.setViewportSize({ width: 844, height: 390 });
     await page.screenshot({ path: "out/qa/elimination-mobile.png" });
@@ -99,8 +128,9 @@ async function main() {
     const allyId = peers[2].sessionId;
     await peers[2].leave(); peers.pop();
     await map.locator(`[data-player-id="${allyId}"]`).waitFor({ state: "detached" });
+    await squad.waitFor({ state: "detached" });
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ passed: true, checks: ["self/ally/enemy positions", "live remote movement", "death/disconnect clears marker", "clothing-only visibility accent", "natural skin and teammate materials", "desktop and three mobile layouts", "confirmed victim-name banner and expiry"], errors }));
+    console.log(JSON.stringify({ passed: true, checks: ["self/ally positions without enemies", "hit-direction cone", "replicated Q/E peek", "squad health panel", "live remote movement", "death/disconnect clears marker", "clothing-only visibility accent", "natural skin and teammate materials", "desktop and three mobile layouts", "confirmed victim-name banner and expiry"], errors }));
   } catch (error) {
     console.error("Browser errors:", errors);
     console.error((await page.locator("body").innerText()).slice(0, 1800));

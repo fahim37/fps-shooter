@@ -11,6 +11,15 @@ import { ConnectedRoom } from "./RoomLobby";
 import { SettingsPanel } from "./SettingsPanel";
 import { CharacterShowcase } from "./CharacterShowcase";
 import type { ShowoffId } from "../shared/showcase";
+import { MAPS, mapId } from "../shared/map/maps";
+import type { MapId } from "../shared/map/types";
+import { MapPicker } from "./MapPicker";
+
+const MAP_KEY = "hollowmere.map";
+/** Last chosen map, per browser (storage may be unavailable). */
+function savedMap(): MapId {
+  try { return mapId(window.localStorage.getItem(MAP_KEY)); } catch { return mapId(null); }
+}
 
 type PlayTab = "friends" | "quick" | "join";
 type Format = "1v1" | "2v2" | "custom";
@@ -23,6 +32,8 @@ export default function Shooter() {
   const [code, setCode] = useState(() => parseRoomCode(window.location.href));
   const [tab, setTab] = useState<PlayTab>(() => parseRoomCode(window.location.href) ? "join" : "friends");
   const [mode, setMode] = useState<GameMode>("tdm");
+  const [map, setMapState] = useState<MapId>(savedMap);
+  const setMap = (next: MapId) => { setMapState(next); try { window.localStorage.setItem(MAP_KEY, next); } catch { /* not persisted */ } };
   const [format, setFormat] = useState<Format>("1v1");
   const [character, setCharacter] = useState(0);
   const [joinTeam, setJoinTeam] = useState<0 | 1 | 2>(0);
@@ -57,11 +68,11 @@ export default function Shooter() {
     setError(""); audio.unlock();
     const playerName = name.trim().slice(0, 16) || "Ranger";
     useSettings.getState().set({ name: playerName });
-    const opts: JoinOptions = { name: playerName, char: character, mode, ...(kind === "code" ? { team: joinTeam } : {}) };
+    const opts: JoinOptions = { name: playerName, char: character, mode, ...(kind === "code" ? { team: joinTeam } : { map }) };
     try {
       const joined = await (kind === "code" ? joinByCode(parseRoomCode(selectedCode), opts) : kind === "quick" ? quickPlay(opts) : createRoom({
         ...opts, mode: format === "custom" ? mode : "tdm",
-        create: { mode: format === "custom" ? mode : "tdm", format, lobby: true, maxPlayers: format === "1v1" ? 2 : format === "2v2" ? 4 : maxPlayers, bots: format === "custom" ? bots : 0, botSkill: 1, private: privateRoom, roomName: roomName.trim() || `${playerName}'s room` },
+        create: { mode: format === "custom" ? mode : "tdm", map, format, lobby: true, maxPlayers: format === "1v1" ? 2 : format === "2v2" ? 4 : maxPlayers, bots: format === "custom" ? bots : 0, botSkill: 1, private: privateRoom, roomName: roomName.trim() || `${playerName}'s room` },
       }));
       setRoom(joined);
     } catch (e) { setError(joinErrorMessage(e)); }
@@ -79,7 +90,7 @@ export default function Shooter() {
   return <main className="lobby home-lobby">
     <div className="lobby-grain" />
     <header className="lobby-top"><span className="wordmark">H / M <small>HOLLOWMERE</small></span><span className={online ? "status online" : "status"}>{online === null ? "CHECKING SERVER…" : online ? "SERVER ONLINE" : "SERVER OFFLINE"}</span></header>
-    <section className="lobby-intro"><span className="eyebrow">YOUR FRIENDS. YOUR TEAMS. YOUR MATCH.</span><h1>Better<br />with <em>friends</em><span className="title-dot">.</span></h1><p>A village. Two teams. A little friendly rivalry.<br />Create a room, share the invite and play on your terms.</p>
+    <section className="lobby-intro"><span className="eyebrow">YOUR FRIENDS. YOUR TEAMS. YOUR MATCH.</span><h1>Better<br />with <em>friends</em><span className="title-dot">.</span></h1><p>A village and a downtown block. Two teams. A little friendly rivalry.<br />Create a room, share the invite and play on your terms.</p>
       <CharacterShowcase preview players={[{ id: "preview", name: name.trim() || "Ranger", char: character, team: 0, emote }]} me="preview" onShowoff={setEmote} />
       <div className="lobby-steps"><span><b>01</b> Create a room</span><span><b>02</b> Invite your friends</span><span><b>03</b> Ready up & play</span></div>
     </section>
@@ -94,20 +105,23 @@ export default function Shooter() {
             <span className="field-caption">MATCH FORMAT</span>
             <div className="format-options" role="group" aria-label="Match format">{([ ["1v1", "Duel", "2 players"], ["2v2", "Doubles", "4 players"], ["custom", "Custom", "Up to 12"] ] as const).map(([id, label, count]) => <button key={id} className={format === id ? "selected" : ""} aria-pressed={format === id} onClick={() => setFormat(id)}><strong>{id === "custom" ? "Custom" : id}</strong><span>{label}</span><small>{count}</small></button>)}</div>
             <p className="format-note">{format === "custom" ? "Your rules. Choose the mode, room size and optional practice bots." : `${format === "1v1" ? "One friend. One rival." : "Bring three friends and pick your teammate."} Players only. No bots, ever.`}</p>
+            <span className="field-caption">MAP</span>
+            <MapPicker value={map} onChange={setMap} />
+            <p className="format-note">You can still switch maps in the room lobby before the match starts.</p>
             {format === "custom" && <><div className="field-row"><label>MODE<select aria-label="Game mode" value={mode} onChange={(e) => setMode(e.target.value as GameMode)}><option value="tdm">Team Deathmatch</option><option value="ffa">Free for All</option></select></label><label>ROOM SIZE<select value={maxPlayers} onChange={(e) => { const max = Number(e.target.value); setMaxPlayers(max); setBots(Math.min(bots, max)); }}>{[2, 4, 6, 8, 12].map((n) => <option key={n} value={n}>{n} players</option>)}</select></label></div><label>FILL MATCH TO<select value={bots} onChange={(e) => setBots(Number(e.target.value))}><option value={0}>No bots · Players only</option>{[2, 4, 8, 12].filter((n) => n <= maxPlayers).map((n) => <option key={n} value={n}>{n} players · Practice bots fill empty slots</option>)}</select></label></>}
             <div className="field-row room-options"><label>ROOM NAME <span className="optional">OPTIONAL</span><input value={roomName} maxLength={32} placeholder={`${name.trim() || "Ranger"}'s room`} onChange={(e) => setRoomName(e.target.value)} /></label><label className="check-label"><input type="checkbox" checked={privateRoom} onChange={(e) => setPrivateRoom(e.target.checked)} /> Private room<small>Only people with your invite can join.</small></label></div>
             <button className="primary-button" onClick={() => void join("create")}>{busy || `CREATE ${format === "custom" ? "CUSTOM" : format.toUpperCase()} ROOM`}<span>→</span></button><p className="action-help">You’ll enter a room lobby. The match starts when everyone is ready and you press Start.</p>
           </>}
-          {tab === "quick" && <><label>MODE<select aria-label="Game mode" value={mode} onChange={(e) => setMode(e.target.value as GameMode)}><option value="tdm">Team Deathmatch</option><option value="ffa">Free for All</option></select></label><div className="quick-summary"><strong>Public matchmaking</strong><span>Up to 12 players · Practice bots enabled</span><span>Want a match without bots? Choose With friends.</span></div><button className="primary-button" onClick={() => void join("quick")}>{busy || "QUICK PLAY"}<span>→</span></button></>}
+          {tab === "quick" && <><span className="field-caption">MAP</span><MapPicker value={map} onChange={setMap} /><label>MODE<select aria-label="Game mode" value={mode} onChange={(e) => setMode(e.target.value as GameMode)}><option value="tdm">Team Deathmatch</option><option value="ffa">Free for All</option></select></label><div className="quick-summary"><strong>Public matchmaking</strong><span>{MAPS[map].name} · Up to 12 players · Practice bots enabled</span><span>Want a match without bots? Choose With friends.</span></div><button className="primary-button" onClick={() => void join("quick")}>{busy || "QUICK PLAY"}<span>→</span></button></>}
           {tab === "join" && <><label>ROOM CODE OR INVITE LINK<div className="join-code"><input aria-label="Room code" placeholder="e.g. ABC23 or paste an invite" value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && parseRoomCode(code)) void join("code"); }} /><button disabled={!parseRoomCode(code)} onClick={() => void join("code")}>{busy || "JOIN ROOM →"}</button></div></label><p className="action-help">Ask your friend to copy the invite from their room lobby.</p></>}
         </fieldset>
         {busy && <p role="status" className="connection-progress">{busy}</p>}
         {error && <p role="alert" className="error-text">{error}</p>}
       </div>
-      <details className="settings-details"><summary>SETTINGS & CONTROLS</summary><SettingsPanel /><p className="controls-help">WASD move · Mouse aim · Click fire · Right-click ADS · Shift sprint · Space jump · C crouch · R reload · Q switch · Hold G grenade · V camera · Tab scores · Esc pause</p></details>
+      <details className="settings-details"><summary>SETTINGS & CONTROLS</summary><SettingsPanel /><p className="controls-help">WASD move · Mouse aim · Click fire · Right-click ADS · Shift sprint · Space jump · C crouch · Q / E peek · R reload · 1 / 2 or wheel switch · Hold G grenade · V camera · Tab scores · Esc pause</p></details>
     </section>
     <section className="room-browser" aria-label="Public rooms"><div className="browser-heading"><div><span className="eyebrow">FIND YOUR NEXT MATCH</span><h2>Open rooms <span>{visibleRooms.length}</span></h2></div><button className="text-button" disabled={!!busy} onClick={() => setRefreshKey((v) => v + 1)}>↻ Refresh</button></div><div className="browser-tools"><div className="room-filters" role="group" aria-label="Room filters">{([ ["all", "All rooms"], ["humans", "No bots"], ["waiting", "Waiting lobby"] ] as const).map(([id, label]) => <button key={id} aria-pressed={filter === id} className={filter === id ? "selected" : ""} onClick={() => setFilter(id)}>{label}</button>)}</div><label>JOIN TEAM<select aria-label="Team for public rooms" disabled={!!busy} value={joinTeam} onChange={(e) => setJoinTeam(Number(e.target.value) as 0 | 1 | 2)}><option value={0}>Auto assign</option><option value={1}>Blue team</option><option value={2}>Red team</option></select></label><input aria-label="Search rooms" placeholder="Search name or code" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
-      {visibleRooms.length ? visibleRooms.map((r) => <button className="room-row" key={r.code} disabled={!!busy || r.locked || r.humans >= r.max} onClick={() => void join("code", r.code)}><span>{r.name}<small>{r.format === "custom" ? MODE_INFO[r.mode]?.name : r.format} · {r.code} · {r.bots ? `${r.bots} bots` : r.phase === "waiting" ? "Room lobby" : "In progress"}</small></span><span>{r.humans} / {r.max} players <b>{r.locked ? "Unavailable" : "Join →"}</b></span></button>) : <div className="empty-rooms"><strong>{online === false ? "The server is unavailable." : online === null ? "Looking for open rooms…" : rooms.length ? "No rooms match your search." : "Your room could be the first."}</strong><p>{online === false ? "Try refreshing in a moment." : rooms.length ? "Try another filter or search." : "Create a public room to appear here, or invite friends to a private one."}</p></div>}
+      {visibleRooms.length ? visibleRooms.map((r) => <button className="room-row" key={r.code} disabled={!!busy || r.locked || r.humans >= r.max} onClick={() => void join("code", r.code)}><span>{r.name}<small>{MAPS[mapId(r.map)].name} · {r.format === "custom" ? MODE_INFO[r.mode]?.name : r.format} · {r.code} · {r.bots ? `${r.bots} bots` : r.phase === "waiting" ? "Room lobby" : "In progress"}</small></span><span>{r.humans} / {r.max} players <b>{r.locked ? "Unavailable" : "Join →"}</b></span></button>) : <div className="empty-rooms"><strong>{online === false ? "The server is unavailable." : online === null ? "Looking for open rooms…" : rooms.length ? "No rooms match your search." : "Your room could be the first."}</strong><p>{online === false ? "Try refreshing in a moment." : rooms.length ? "Try another filter or search." : "Create a public room to appear here, or invite friends to a private one."}</p></div>}
     </section>
     <footer className="lobby-footer"><span>HOLLOWMERE / FIELD OPERATIONS</span><span>PLAY TOGETHER. MAKE IT A GOOD MATCH.</span></footer>
   </main>;

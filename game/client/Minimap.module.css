@@ -4,5 +4,12 @@
 .map { display: block; width: 100%; aspect-ratio: 1; background: radial-gradient(ellipse, #253730, #182921); }
 .ground { fill: #2b4035; stroke: #8caa914d; stroke-width: .5; }.grid { fill: none; stroke: #a4baa812; stroke-width: .4; }.roads { fill: none; stroke: #6e7967; }.plaza { fill: #7e8470; stroke: #a4b09a; stroke-width: .4; }.building { fill: #b4bfaa; stroke: #e3e6ce; stroke-width: .45; }.north { fill: #eef5d9; font: bold 4px monospace; text-anchor: middle; }.plazaLabel { fill: #283b30; font: bold 3.3px monospace; letter-spacing: .4px; text-anchor: middle; }
 .self { fill: #e5fa8a; stroke: #162212; stroke-width: .8; }.ally { fill: #81c1ff; stroke: #102535; stroke-width: .75; }.enemy { fill: #ff7d70; stroke: #3b1717; stroke-width: .75; }.selfRing { fill: #dcf48b17; stroke: #e5fa8a88; stroke-width: .5; }.height { fill: none; stroke: currentColor; stroke-width: 1; }.enemy .height { color: #ffa397; }.ally .height { color: #a3d2ff; }
-.legend { height: 22px; display: flex; align-items: center; justify-content: space-around; color: #c1cebf; font: 7px monospace; letter-spacing: .05em; }.legend>span { display: inline-flex; align-items: center; gap: 4px; }.legend i { width: 5px; height: 5px; border-radius: 50%; }.selfKey { background: #e5fa8a; }.allyKey { background: #81c1ff; }.enemyKey { background: #ff7d70; }
+.legend { height: 22px; display: flex; align-items: center; justify-content: space-around; color: #c1cebf; font: 7px monospace; letter-spacing: .05em; }.legend>span { display: inline-flex; align-items: center; gap: 4px; }.legend i { width: 5px; height: 5px; border-radius: 50%; }.selfKey { background: #e5fa8a; }.allyKey { background: #81c1ff; }.enemyKey { background: #ff7d70; }.legend .threatKey { width: 7px; height: 6px; border-radius: 0; background: linear-gradient(#ff4a3d00, #ff4a3d); clip-path: polygon(50% 100%, 0 0, 100% 0); }
+.slot { fill: #102012; stroke: none; font: bold 2.6px monospace; text-anchor: middle; pointer-events: none; }
+.threat { transition: opacity .12s linear; pointer-events: none; }.threatTip { fill: none; stroke: #ff6a5c; stroke-width: .9; stroke-linecap: round; stroke-linejoin: round; }
+.threatCone { animation: threatFlash .45s ease-out; }
+@keyframes threatFlash { 0% { fill-opacity: 1; stroke: #ffd2cc; stroke-width: 1.2; } 100% { fill-opacity: 1; stroke: transparent; stroke-width: 0; } }
+@media (prefers-reduced-motion: reduce) { .threatCone { animation: none; } }
 @media (max-width: 800px), (max-height: 550px) { .panel { right: max(12px, env(safe-area-inset-right)); }.heading, .legend { height: 18px; font-size: 6px; }.heading { padding: 0 6px; }.heading small { display: none; }.legend { letter-spacing: 0; }.legend>span { gap: 3px; }.legend i { width: 4px; height: 4px; } }
+
+.road { fill: #6e7967; }

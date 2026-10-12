@@ -1,6 +1,6 @@
 ﻿# Hollowmere
 
-A browser multiplayer shooter built with Next.js, Three.js, Rapier and Colyseus. The village supports first- and third-person play, team deathmatch and free-for-all, bot-filled matches, room codes, five weapons, grenades, respawns and scoreboards.
+A browser multiplayer shooter built with Next.js, Three.js, Rapier and Colyseus. Two maps, Village and Downtown, support first- and third-person play, team deathmatch and free-for-all, bot-filled matches, room codes, five weapons, grenades, respawns and scoreboards.
 
 Play at https://fahimstack.tech/fps. Create a room, then use **Copy invite link** in the match menu. Friends can open that link and press **Join this room**, or paste the link/code into the lobby. Quick play matches the selected game mode. Press Esc during a match to find the invite controls again.
 
@@ -14,6 +14,15 @@ npm run dev
 ```
 
 Open the web URL printed by Next.js (normally http://localhost:3000). The game server listens on port 2567. `npm run dev:web` and `npm run dev:server` run them separately. Models, collision meshes and environment textures are included in `public/`; raw source packs are excluded.
+
+## Maps
+
+- **Village**: timber houses around a market plaza, open lanes and forest edges.
+- **Downtown**: a city crossing with prefab buildings along a 4-lane avenue and cross street, alleys into walled courtyards, and an enterable corner shop with rooftop stairs in each courtyard. The layout is 180° symmetric, so Blue (west) and Red (east) get mirror-image halves.
+
+Pick the map on the lobby's map cards when creating a room or using Quick play (Quick play matches rooms on that map); the choice is remembered in the browser. The room host can switch maps in the waiting room until the match starts, and everyone sees the change. Room listings show each room's map.
+
+Downtown loads only its own 2.7 MB kit (no village, foliage or grass textures). Prefab facades are simplified on import, collide as boxes, and draw once per material for the whole map. On an Intel UHD Graphics 730 at Low (frame cap removed) it measured about 93 FPS versus 59 for the village, and 60 FPS with vsync had a 99th-percentile frame time of 17 ms and no frames over 50 ms while sprinting and turning. World shaders and textures are compiled and uploaded while the deploy menu is open, so turning a corner never stalls on first use (this also removed the village's occasional 67 ms hitches).
 
 ## Controls
 
@@ -55,6 +64,7 @@ npx tsx scripts/dev/rig-test.ts http://localhost:3000
 npx tsx scripts/dev/combat-test.ts http://localhost:3000
 npx tsx scripts/dev/deathcam-test.ts http://localhost:3000
 npx tsx scripts/dev/minimap-test.ts http://localhost:3000
+npx tsx scripts/dev/map-test.ts http://localhost:3000
 npx tsx scripts/dev/graphics-test.ts http://localhost:3000
 npx tsx scripts/dev/mobile-test.ts http://localhost:3000
 ```
@@ -74,6 +84,8 @@ The room state lives in memory. Restarting the game server ends current matches.
 ## Assets
 
 The asset import scripts document the original packs and transformations: Quaternius characters, animation, environment kits and weapons, plus Poly Haven environment textures and HDR skies. `scripts/import-assets.ts` rebuilds optimized assets from the ignored `assets-raw` directory. See the source scripts for pack names and download sources.
+
+Downtown uses the Downtown City MegaKit (Standard, CC0) by Quaternius. Put the unzipped pack at `assets-raw/city` and run `npx tsx scripts/import-assets.ts city`. The importer keeps only the pieces the map places, strips the pack's vertex-color shader masks, opens modular windows and doors (removing glass and fake-interior cards that would hide players), halves normal and ORM maps to 512 px, simplifies the prefab buildings by about 40%, and writes box collision for their bodies. `server/maps.test.ts` checks every map's spawns, floors and bot paths against the real collision data and navmeshes.
 
 Male and female Rangers have animated selection previews and shared lobby showoffs (At ease, Dance, Talk and Spell stance). See [character assets and lobby showoffs](docs/characters.md) for optimization budgets, pack overrides, and validation commands.
 

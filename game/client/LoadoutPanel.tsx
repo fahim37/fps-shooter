@@ -27,8 +27,10 @@ function OpticIcon({ optic }: { optic: OpticId }) {
       <path d="M12 7H28L32 12L34 28H6L8 12Z M10 28L8 33H32L30 28 M6 33H34" />
       <circle cx="20" cy="19" r="1.5" fill="#ff6256" stroke="none" />
     </> : <>
-      <circle cx="20" cy="20" r="14" /><circle cx="20" cy="20" r="2" fill="currentColor" />
-      <path d="M20 6v9 M20 25v9 M6 20h9 M25 20h9" />
+      <circle cx="20" cy="20" r="14" />
+      {optic === "2x" ? <><path d="M6 20h7 M27 20h7 M20 27v7 M20 13v4 M20 23v4 M13 20h4 M23 20h4" /><circle cx="20" cy="20" r="3.4" stroke="#ff6256" strokeWidth="1" /><circle cx="20" cy="20" r="1" fill="#ff6256" stroke="none" /></>
+        : optic === "4x" ? <><path d="M6 20h9 M25 20h9 M20 24v10 M17.5 26h5 M18.5 28.5h3" /><path d="M20 19.5l3 4h-1.2l-1.8-2.4-1.8 2.4H17Z" fill="#ff6256" stroke="none" /></>
+        : <><path d="M6 20h12 M22 20h12 M20 6v12 M20 22v12" strokeWidth="1" /><path d="M6 20h4 M30 20h4 M20 6v4 M20 30v4" strokeWidth="2.6" /><g fill="currentColor" stroke="none">{[14, 26].map((v) => <g key={v}><circle cx={v} cy="20" r="0.9" /><circle cx="20" cy={v} r="0.9" /></g>)}</g><circle cx="20" cy="20" r="0.9" fill="#ff6256" stroke="none" /></>}
     </>}
   </svg>;
 }

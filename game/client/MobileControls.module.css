@@ -71,6 +71,10 @@
 .crouch { position: absolute; right: var(--safe-right); bottom: calc(158px + var(--safe-bottom)); }
 .sprint { --control-size: 49px; position: absolute; left: calc(var(--safe-left) + 171px); bottom: calc(116px + var(--safe-bottom)); }
 .utilities { position: absolute; right: var(--safe-right); bottom: calc(85px + var(--safe-bottom)); display: flex; gap: 13px; }
+.peekLeft, .peekRight { --control-size: 46px; position: absolute; top: calc(29% + 12px); border-color: #e2e9a39c; background: #3b432a2e; }
+.peekLeft { left: calc(var(--safe-left) + 112px); }
+.peekRight { left: calc(var(--safe-left) + 166px); }
+.peekLeft svg, .peekRight svg { width: 23px; height: 23px; }
 .utility { --control-size: 48px; border-color: #f7ae978c; background: #67312f26; }
 .utility svg { width: 25px; height: 25px; }
 .toolbar { position: absolute; top: max(78px, calc(env(safe-area-inset-top) + 64px)); right: calc(var(--safe-right) + 128px); display: flex; gap: 11px; }
@@ -111,6 +115,9 @@
   .button > span { font-size: 7px; }
   .joystick { --control-size: 110px; left: calc(var(--safe-left) + 12px); bottom: calc(82px + var(--safe-bottom)); }
   .leftFire { --control-size: 58px; top: 28%; left: calc(var(--safe-left) + 28px); }
+  .peekLeft, .peekRight { --control-size: 40px; top: calc(28% + 9px); }
+  .peekLeft { left: calc(var(--safe-left) + 98px); }
+  .peekRight { left: calc(var(--safe-left) + 146px); }
   .rightFire { --control-size: 62px; bottom: calc(206px + var(--safe-bottom)); right: calc(var(--safe-right) + 8px); }
   .rightFire svg, .leftFire svg { width: 31px; height: 31px; }
   .ads { bottom: calc(214px + var(--safe-bottom)); right: calc(var(--safe-right) + 89px); }

@@ -1,0 +1,6 @@
+.layer { position: absolute; inset: 0; pointer-events: none; }
+.indicator { position: absolute; left: 50%; top: 50%; width: min(300px, 62vmin); height: min(300px, 62vmin); overflow: visible; transition: opacity .12s linear; filter: drop-shadow(0 0 5px #ff2a1fb0); }
+.arc { fill: none; stroke: #ff4334; stroke-width: 9; stroke-linecap: round; animation: hit .4s ease-out; }
+.tip { fill: none; stroke: #ff6a5c; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+@keyframes hit { from { stroke: #fff0ec; stroke-width: 14; } }
+@media (prefers-reduced-motion: reduce) { .arc { animation: none; } }

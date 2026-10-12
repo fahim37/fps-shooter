@@ -13,6 +13,7 @@ import { ShotCadence } from "./cadence";
 import { RenderMotion } from "./motion";
 import { useLoadout } from "../loadout";
 import { OPTICS, opticFov } from "../../shared/optics";
+import { LEAN_RATE, LEAN_ROLL, clampLean, leanOffset } from "../../shared/lean";
 
 type V3 = [number, number, number];
 
@@ -49,6 +50,10 @@ export class LocalPlayer {
   ads = 0;
   private adsProgress = 0;
   crouchT = 0;
+  /** Peek -1 (left) .. 1 (right), already limited by nearby walls. */
+  lean = 0;
+  /** Side latched by toggle peeking (setting or touch buttons). */
+  private leanLatch = 0;
   grenades = GRENADES_PER_LIFE;
   private cookStart = 0;
   throwAnim = 0;
@@ -120,6 +125,7 @@ export class LocalPlayer {
     this.ads = this.adsProgress = 0;
     this.sendAt = 0;
     this.acc = this.pendingLand = this.landDip = this.crouchT = this.recoil = this.burst = 0;
+    this.lean = this.leanLatch = 0;
     this.cadence.reset();
     this.sprintBlockUntil = this.stepDist = 0;
     this.triggerReleased = true;
@@ -136,6 +142,7 @@ export class LocalPlayer {
 
   die() {
     this.alive = false;
+    this.lean = this.leanLatch = 0;
     this.motion.reset(this.ms);
     this.reloadEnd = 0;
     this.cookStart = 0;
@@ -193,7 +200,7 @@ export class LocalPlayer {
     }
     if (input.consume("Digit1") && this.weapon !== this.primary) this.switchTo(this.primary, now);
     if (input.consume("Digit2") && this.weapon !== "pistol") this.switchTo("pistol", now);
-    if (input.consume("KeyQ") || input.consume("WheelUp") || input.consume("WheelDown")) {
+    if (input.consume("SwapWeapon") || input.consume("WheelUp") || input.consume("WheelDown")) {
       this.switchTo(this.weapon === "pistol" ? this.primary : "pistol", now);
     }
     const def = this.def;
@@ -227,7 +234,7 @@ export class LocalPlayer {
       this.motion.beforeStep(this.ms);
       this.mover.step(this.ms, {
         forward: fwd, right, yaw: this.yaw, jump: input.jump, crouch: input.crouch, sprint: wantsSprint,
-        ads: this.ads, speedMult: def.moveMult,
+        ads: this.ads, speedMult: def.moveMult * (1 - Math.abs(this.lean) * 0.2),
       }, STEP);
     }
     this.motion.sample(this.ms, this.acc / STEP);
@@ -242,6 +249,7 @@ export class LocalPlayer {
     }
     this.landDip = Math.max(0, this.landDip - dt * 0.6);
     this.crouchT += ((input.crouch ? 1 : 0) - this.crouchT) * Math.min(1, dt * 12);
+    this.updateLean(dt, input, s.leanToggle);
 
     // ---- ADS
     const adsTarget = adsHeld && !this.reloading && now > this.switchEnd ? 1 : 0;
@@ -294,16 +302,37 @@ export class LocalPlayer {
     input.endFrame();
   }
 
+  /** PUBG-style peek: hold (or toggle) Q / E. Sprinting stands you back up straight. */
+  private updateLean(dt: number, input: Input, toggle: boolean) {
+    const tap = (code: string, side: number, latch: boolean) => {
+      if (input.consume(code) && latch) this.leanLatch = this.leanLatch === side ? 0 : side;
+    };
+    tap("KeyQ", -1, toggle); tap("KeyE", 1, toggle);
+    tap("PeekLeft", -1, true); tap("PeekRight", 1, true);
+    const held = toggle ? 0 : (input.held("KeyE") ? 1 : 0) - (input.held("KeyQ") ? 1 : 0);
+    if (this.ms.sprinting) this.leanLatch = 0;
+    const target = this.ms.sprinting ? 0 : held || this.leanLatch;
+    const step = LEAN_RATE * dt;
+    this.lean += Math.max(-step, Math.min(step, target - this.lean));
+    // Snap in immediately when a wall closes in; never let the camera poke through.
+    this.lean = clampLean(this.lean, this.ms.x, this.ms.y, this.ms.z, this.yaw, this.crouchT,
+      (origin, dir, distance) => raycastWorld(this.R, this.world, origin, dir, distance)?.distance ?? null);
+  }
+
+  get leanSide() { return this.leanLatch; }
+
   private forwardArr(): V3 {
     return aimDir(this.yaw + this.kickYaw, this.pitch + this.kickPitch);
   }
 
   updateView() {
     const eyeH = EYE_HEIGHT + (CROUCH_EYE_HEIGHT - EYE_HEIGHT) * this.crouchT;
-    this.eye.set(this.ms.x, this.ms.y + eyeH - this.landDip + this.bob.y * 0.4, this.ms.z);
+    const [lx, ly, lz] = leanOffset(this.lean, this.yaw, this.crouchT, eyeH);
+    this.eye.set(this.ms.x + lx, this.ms.y + eyeH + ly - this.landDip + this.bob.y * 0.4, this.ms.z + lz);
     this.viewEye.copy(this.motion.position);
-    this.viewEye.y += eyeH - this.landDip + this.bob.y * 0.4;
-    this.viewQuat.setFromEuler(this.viewEuler.set(this.pitch + this.kickPitch, this.yaw + this.kickYaw, 0));
+    this.viewEye.x += lx; this.viewEye.z += lz;
+    this.viewEye.y += eyeH + ly - this.landDip + this.bob.y * 0.4;
+    this.viewQuat.setFromEuler(this.viewEuler.set(this.pitch + this.kickPitch, this.yaw + this.kickYaw, -this.lean * LEAN_ROLL));
   }
 
   currentFov() {
@@ -444,7 +473,7 @@ export class LocalPlayer {
       x: round(this.ms.x), y: round(this.ms.y), z: round(this.ms.z),
       yaw: round(this.yaw), pitch: round(this.pitch),
       vx: round(this.ms.vx), vy: round(this.ms.vy), vz: round(this.ms.vz),
-      flags, weapon: this.weapon,
+      flags, weapon: this.weapon, lean: round(this.lean),
     };
     if (this.pendingLand > 0) {
       msg.land = round(this.pendingLand);

@@ -64,9 +64,18 @@ export async function mergeAsPieces(files: string[], nameOf: (file: string) => s
   return doc;
 }
 
-export async function compressTextures(doc: Document, size: number, quality = 86) {
+export async function compressTextures(doc: Document, size: number, quality = 86, detailSize = size) {
+  if (detailSize !== size) {
+    // Normal, occlusion and metal/roughness maps first, at their own size.
+    await doc.transform(
+      textureCompress({ encoder: sharp, targetFormat: "webp", resize: [detailSize, detailSize], quality, slots: /^(normal|occlusion|metallicRoughness)Texture$/ }),
+    );
+  }
   await doc.transform(
-    textureCompress({ encoder: sharp, targetFormat: "webp", resize: [size, size], quality }),
+    textureCompress({
+      encoder: sharp, targetFormat: "webp", resize: [size, size], quality,
+      slots: detailSize !== size ? /^(?!(normal|occlusion|metallicRoughness)Texture$)/ : null,
+    }),
   );
 }
 
@@ -110,6 +119,61 @@ export interface CollisionMesh {
  * to a collision mesh. Primitives whose material matches `skipMaterial` are left out.
  */
 export function buildCollision(piece: Node, skipMaterial: RegExp | null, maxError: number): CollisionMesh | null {
+  const tris = pieceTriangles(piece, skipMaterial);
+  if (!tris) return null;
+  return simplifyCollision(tris.positions, tris.indices, maxError);
+}
+
+/**
+ * Collision for a solid prefab building: one box for the main body (measured between
+ * ground-floor and roof-line height, so cornices don't inflate it), plus the real triangles
+ * of anything below `streetHeight` that sticks out of it (entrance stairs, railings).
+ */
+export function buildBoxProxyCollision(piece: Node, skipMaterial: RegExp | null, maxError: number, streetHeight = 4): CollisionMesh | null {
+  const tris = pieceTriangles(piece, skipMaterial);
+  if (!tris) return null;
+  const { positions: p, indices } = tris;
+  let top = -Infinity;
+  for (let i = 1; i < p.length; i += 3) top = Math.max(top, p[i]);
+  const min = [Infinity, 0, Infinity], max = [-Infinity, top, -Infinity];
+  for (let i = 0; i < p.length; i += 3) {
+    if (p[i + 1] < 3 || p[i + 1] > top - 3) continue;
+    min[0] = Math.min(min[0], p[i]); max[0] = Math.max(max[0], p[i]);
+    min[2] = Math.min(min[2], p[i + 2]); max[2] = Math.max(max[2], p[i + 2]);
+  }
+  // Street-level details outside the body (with a margin for sills and pilasters).
+  const pad = 0.4;
+  const outside = (v: number) => p[v * 3] < min[0] - pad || p[v * 3] > max[0] + pad || p[v * 3 + 2] < min[2] - pad || p[v * 3 + 2] > max[2] + pad;
+  const kept: number[] = [];
+  for (let t = 0; t < indices.length; t += 3) {
+    const [a, b, c] = [indices[t], indices[t + 1], indices[t + 2]];
+    if (Math.max(p[a * 3 + 1], p[b * 3 + 1], p[c * 3 + 1]) > streetHeight) continue;
+    if (outside(a) || outside(b) || outside(c)) kept.push(a, b, c);
+  }
+  const extra = kept.length ? simplifyCollision(p, new Uint32Array(kept), maxError) : { positions: new Float32Array(), indices: new Uint32Array() };
+
+  const [x0, y0, z0] = min, [x1, y1, z1] = max;
+  const box = [x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1, x0, y1, z0, x1, y1, z0, x1, y1, z1, x0, y1, z1];
+  // Sides and top, wound outward (the ground closes the bottom).
+  const boxIdx = [0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7, 4, 5, 6, 4, 6, 7];
+  const base = extra.positions.length / 3;
+  return {
+    positions: Float32Array.from([...extra.positions, ...box]),
+    indices: Uint32Array.from([...extra.indices, ...boxIdx.map((i) => i + base)]),
+  };
+}
+
+function simplifyCollision(positions: Float32Array, indices: Uint32Array, maxError: number): CollisionMesh {
+  // Weld coincident vertices first so the simplifier sees connected surfaces.
+  const welded = weldPositions(positions, indices);
+  const [simplified] = MeshoptSimplifier.simplify(
+    welded.indices, welded.positions, 3, 0, maxError, ["ErrorAbsolute", "Permissive"],
+  );
+  return compact(welded.positions, simplified.length >= 3 ? simplified : welded.indices);
+}
+
+/** Every triangle under `piece`, in the piece's local space. */
+function pieceTriangles(piece: Node, skipMaterial: RegExp | null): CollisionMesh | null {
   const pieceInv = invert(piece.getWorldMatrix());
   const positions: number[] = [];
   const indices: number[] = [];
@@ -128,13 +192,7 @@ export function buildCollision(piece: Node, skipMaterial: RegExp | null, maxErro
     }
   });
   if (indices.length === 0) return null;
-
-  // Weld coincident vertices first so the simplifier sees connected surfaces.
-  const welded = weldPositions(new Float32Array(positions), new Uint32Array(indices));
-  const [simplified] = MeshoptSimplifier.simplify(
-    welded.indices, welded.positions, 3, 0, maxError, ["ErrorAbsolute", "Permissive"],
-  );
-  return compact(welded.positions, simplified.length >= 3 ? simplified : welded.indices);
+  return { positions: new Float32Array(positions), indices: new Uint32Array(indices) };
 }
 
 function weldPositions(positions: Float32Array, indices: Uint32Array): CollisionMesh {
