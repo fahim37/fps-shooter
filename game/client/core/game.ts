@@ -126,7 +126,7 @@ export class Game {
       room.onMessage<ShotEvent>("shot", (ev) => this.remoteShot(ev)),
       room.onMessage<HitConfirm>("hit", (ev) => {
         hud().set({ hitmarker: { at: performance.now(), head: ev.part === "head", kill: ev.killed, confirmed: true, damage: ev.damage } });
-        audio.hitmarker(ev.part === "head", ev.killed);
+        if (!ev.killed) audio.hitmarker(ev.part === "head");
         if (ev.point && ev.dir) this.confirmedBlood(ev.point, ev.dir, ev.part === "head");
       }),
       room.onMessage<DamagedEvent>("damaged", (ev) => {
@@ -294,6 +294,7 @@ export class Game {
         streak: ev.streak, at,
       } });
     } else if (ev.killer === this.room.sessionId) {
+      audio.elimination(ev.headshot);
       this.local?.onKillScavenge();
       const previous = hud().elimination;
       hud().set({ elimination: { name: ev.victimInfo?.name ?? victim?.name ?? "Player", weapon: ev.weapon,
@@ -340,7 +341,7 @@ export class Game {
       eye: local.viewEye, view: local.viewQuat, speed: Math.hypot(local.ms.vx, local.ms.vz),
       moveYaw: Math.atan2(-local.ms.vx, -local.ms.vz), crouch: local.crouchT > 0.5,
       grounded: local.ms.grounded, alive: local.alive, sprint: local.ms.sprinting ? 1 : 0,
-      ads: local.ads, reload: local.reloadProgress, recoil: local.recoil,
+      ads: local.ads, optic: local.optic, reload: local.reloadProgress, recoil: local.recoil,
       bob: local.bob, sway: local.sway, tuck: local.tuck, throwing: local.throwAnim, lean: local.lean,
     };
     this.fpp?.setWeapon(local.weapon); this.tpp?.setWeapon(local.weapon);

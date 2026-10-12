@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { clampLean, leanOffset } from "./lean";
+import { clampLean, leanOffset, LEAN_CLEARANCE } from "./lean";
+import { EYE_HEIGHT, CROUCH_EYE_HEIGHT } from "./constants";
 import { hitboxes, rayVsPose } from "./hitboxes";
 import { PoseHistory } from "./lagcomp";
 
 describe("peeking", () => {
   it("tilts toward the character's own right and left for any facing", () => {
     // Facing -Z, right is +X.
-    expect(leanOffset(1, 0, 0, 1.64)[0]).toBeGreaterThan(0.3);
-    expect(leanOffset(-1, 0, 0, 1.64)[0]).toBeLessThan(-0.3);
+    expect(leanOffset(1, 0, 0, 1.64)[0]).toBeGreaterThan(0.42);
+    expect(leanOffset(-1, 0, 0, 1.64)[0]).toBeLessThan(-0.42);
     // Facing +X (yaw -π/2), right is +Z.
     const turned = leanOffset(1, -Math.PI / 2, 0, 1.64);
     expect(turned[2]).toBeGreaterThan(0.3);
@@ -37,6 +38,14 @@ describe("peeking", () => {
     expect(wall).toBeLessThan(1);
     expect(Math.abs(touching)).toBe(0);
     expect(clampLean(0.3, 0, 0, 0, 0, 0, () => 2)).toBe(0.3);
+  });
+
+  it.each([0, 0.5, 1])("preserves wall clearance through crouch blend %s", (crouch) => {
+    const height = EYE_HEIGHT + (CROUCH_EYE_HEIGHT - EYE_HEIGHT) * crouch;
+    for (const distance of [0.25, 0.3, 0.4, 0.5]) {
+      const lean = clampLean(1, 0, 0, 0, 0, crouch, () => distance);
+      expect(leanOffset(lean, 0, crouch, height)[0] + LEAN_CLEARANCE).toBeLessThanOrEqual(distance + 1e-6);
+    }
   });
 
   it("rewinds the peek with the rest of the pose", () => {

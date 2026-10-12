@@ -125,7 +125,9 @@ export class Mover {
 
     if (s.grounded) {
       if (!wasGrounded) s.landSpeed = Math.max(s.landSpeed, -s.vy);
-      s.vy = Math.max(s.vy, -1);
+      // Ground contact cancels gravity. Carrying downward velocity into the next
+      // tick projects it against stair edges and cancels a slow uphill start.
+      s.vy = 0;
       s.airTime = 0;
     } else {
       s.airTime += dt;

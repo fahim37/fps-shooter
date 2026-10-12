@@ -2,10 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
 import { Game } from "./game";
 import { useHud } from "./hud";
+import { audio } from "./audio";
 
-vi.mock("./audio", () => ({ audio: { shot: vi.fn() } }));
+vi.mock("./audio", () => ({ audio: { shot: vi.fn(), elimination: vi.fn() } }));
 
-beforeEach(() => useHud.setState(useHud.getInitialState()));
+beforeEach(() => { useHud.setState(useHud.getInitialState()); vi.clearAllMocks(); });
 
 it("ignores the previous dead snapshot after respawn but accepts later deaths", () => {
   const state = { awaitingSpawnState: true, local: { alive: true, die: vi.fn() } };
@@ -68,6 +69,7 @@ describe("elimination presentation", () => {
     expect(useHud.getState()).toMatchObject({ hp: 0, alive: false, respawnAt: 4400,
       killedBy: { id: "enemy", name: "Actual Killer", hp: 27, distance: 30, headshot: true, streak: 4 } });
     expect(useHud.getState().killfeed[0]).toMatchObject({ killer: "Actual Killer", victim: "Me", localDeath: true, localKill: false });
+    expect(audio.elimination).not.toHaveBeenCalled();
   });
   it("shows fall damage without identifying yourself as the killer and bounds the feed", () => {
     const { state, start } = fixture();
@@ -76,6 +78,7 @@ describe("elimination presentation", () => {
     expect(useHud.getState().killedBy).toMatchObject({ id: "", name: "Fall damage", hp: null, distance: null });
     expect(useHud.getState().killfeed).toHaveLength(5);
     expect(useHud.getState().killfeed[0].localKill).toBe(false);
+    expect(audio.elimination).not.toHaveBeenCalled();
   });
   it("names confirmed victims and groups rapid kills without counting other players' kills", () => {
     const { state } = fixture();
@@ -89,5 +92,12 @@ describe("elimination presentation", () => {
     useHud.setState({ elimination: { ...useHud.getState().elimination!, at: performance.now() - 3000 } });
     onKill.call(state, kill);
     expect(useHud.getState().elimination?.count).toBe(1);
+    expect(audio.elimination).toHaveBeenCalledTimes(3);
+    expect(audio.elimination).toHaveBeenLastCalledWith(true);
+  });
+  it("plays a confirmation for a credited grenade elimination", () => {
+    const { state } = fixture();
+    onKill.call(state, { killer: "me", victim: "enemy", weapon: "grenade", headshot: false, streak: 1 });
+    expect(audio.elimination).toHaveBeenCalledExactlyOnceWith(false);
   });
 });

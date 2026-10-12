@@ -7,9 +7,9 @@ type V3 = [number, number, number];
  * the replicated character pose and the authoritative hitboxes, so a peek exposes exactly
  * what it lets you see. `lean` is -1 (full left) .. 1 (full right).
  */
-export const LEAN_ANGLE = 0.5;
+export const LEAN_ANGLE = 0.68;
 /** Camera roll at full lean; deliberately gentler than the body tilt. */
-export const LEAN_ROLL = 0.16;
+export const LEAN_ROLL = 0.2;
 /** Full lean is reached in 1 / LEAN_RATE seconds. */
 export const LEAN_RATE = 7;
 /** Space kept between a leaning head and the wall beside it. */
@@ -43,5 +43,7 @@ export function clampLean(lean: number, x: number, y: number, z: number, yaw: nu
   const side = Math.sign(lean);
   const hit = cast([x, y + eyeHeight, z], [Math.cos(yaw) * side, 0, -Math.sin(yaw) * side], reach + LEAN_CLEARANCE);
   if (hit === null) return Math.max(-1, Math.min(1, lean));
-  return side * Math.min(Math.abs(lean), 1, Math.max(0, hit - LEAN_CLEARANCE) / reach);
+  const available = Math.min(1, Math.max(0, hit - LEAN_CLEARANCE) / reach);
+  const limit = Math.asin(available * Math.sin(LEAN_ANGLE)) / LEAN_ANGLE;
+  return side * Math.min(Math.abs(lean), 1, limit);
 }

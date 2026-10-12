@@ -34,7 +34,7 @@ function FourTimes({ glow }: { glow: string }) {
     <Wire w={2.2} d={`M90 500H410 M590 500H910 M500 572V880 ${[150, 250, 350, 650, 750, 850].map((x) => `M${x} 490v20`).join(" ")} ${LADDER.map(([y, w]) => `M${500 - w} ${y}h${w * 2}`).join(" ")}`} />
     {LADDER.map(([y, w, label]) => <Engraving key={label} x={500 - w - 12} y={y + 5} anchor="end">{label}</Engraving>)}
     <g className={styles.illum} filter={`url(#${glow})`}>
-      <path d="M500 499L541 556H527L500 519L473 556H459Z" />
+      <path data-reticle="4x-chevron" d="M500 500L513 518H508L500 507L492 518H487Z" />
     </g>
   </>;
 }

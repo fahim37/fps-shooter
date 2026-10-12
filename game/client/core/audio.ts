@@ -253,7 +253,7 @@ export class AudioEngine {
     n.connect(f).connect(g).connect(this.sfx);
   }
 
-  hitmarker(head: boolean, kill: boolean) {
+  hitmarker(head: boolean) {
     const ctx = this.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
@@ -265,17 +265,29 @@ export class AudioEngine {
     o.connect(g).connect(this.sfx);
     o.start(t);
     o.stop(t + 0.08);
-    if (kill) {
-      const o2 = ctx.createOscillator();
-      o2.type = "sine";
-      o2.frequency.setValueAtTime(880, t + 0.06);
-      o2.frequency.exponentialRampToValueAtTime(1320, t + 0.16);
-      const g2 = ctx.createGain();
-      this.env(g2, t + 0.06, 0.22, 0.005, 0.25);
-      o2.connect(g2).connect(this.sfx);
-      o2.start(t + 0.06);
-      o2.stop(t + 0.4);
-    }
+  }
+
+  /** Dry metallic attack and a short resolved interval, reserved for confirmed kills. */
+  elimination(head: boolean) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime + 0.001;
+    this.click(3200, 0.12);
+    const tone = (frequency: number, delay: number, level: number, decay: number, type: OscillatorType) => {
+      const start = t + delay;
+      const osc = ctx.createOscillator();
+      osc.type = type;
+      osc.frequency.value = frequency;
+      const gain = ctx.createGain();
+      this.env(gain, start, level, 0.005, decay);
+      osc.connect(gain).connect(this.sfx);
+      osc.start(start);
+      osc.stop(start + decay + 0.015);
+    };
+    tone(660, 0, 0.19, 0.085, "triangle");
+    tone(990, 0.055, 0.16, 0.19, "sine");
+    tone(1980, 0.055, 0.035, 0.12, "sine");
+    if (head) tone(2640, 0.012, 0.05, 0.1, "sine");
   }
 
   hurt() {

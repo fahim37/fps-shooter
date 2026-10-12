@@ -99,7 +99,10 @@ small { display: block; }
 
 /* Home and shared-room lobby */
 .home-lobby { grid-template-columns: 1fr 1fr; gap: 40px 7%; padding: 28px max(24px,6vw); }
-.wordmark { display: flex; align-items: center; gap: 18px; }
+.wordmark { display: flex; align-items: center; gap: 12px; }
+.wordmark img { width: 44px; height: 48px; object-fit: contain; }
+.brand-name { display: flex; flex-direction: column; gap: 5px; color: #e9f2dc; font-size: clamp(14px, 1.6vw, 19px); font-weight: 800; letter-spacing: .1em; }
+.brand-name small { font-size: 8px; color: var(--accent); letter-spacing: .2em; }
 .wordmark small { color: #ccd3c1; font-size: 10px; font-weight: 500; letter-spacing: .2em; }
 .home-lobby .lobby-intro { align-self: start; padding-top: 28px; }
 .home-lobby .lobby-intro h1 { font-size: clamp(56px,6.2vw,94px); line-height: 1.04; letter-spacing: -.065em; margin: 20px 0; }

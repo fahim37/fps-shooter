@@ -4,6 +4,8 @@ import { cloneWeapon, FOREGRIP, WEAPON_META } from "../assets/weapons";
 import type { WeaponId } from "../../shared/weapons";
 import { solveTwoBone, setBoneWorldQuaternion, rotateBoneWorld } from "./ik";
 import { LEAN_ANGLE } from "../../shared/lean";
+import { DEFAULT_OPTICS, type OpticId } from "../../shared/optics";
+import { createReflexSight } from "./ReflexSight";
 
 export type RigMode = "fpp" | "tpp";
 
@@ -23,6 +25,7 @@ export interface RigState {
   alive: boolean;
   sprint: number;
   ads: number;
+  optic?: OpticId;
   /** -1 when not reloading, else progress 0..1. */
   reload: number;
   /** 0..1 recoil kick, decays externally. */
@@ -107,6 +110,7 @@ export class CharacterRig {
   private refs: HandRefs;
   private gunPivot = new THREE.Object3D();
   private guns = new Map<WeaponId, THREE.Object3D>();
+  private sights = new Map<WeaponId, ReturnType<typeof createReflexSight>>();
   private weapon: WeaponId | null = null;
   private legYaw = 0;
   private dead = false;
@@ -124,8 +128,9 @@ export class CharacterRig {
     readonly mode: RigMode,
   ) {
     this.inst = instantiateCharacter(template, team, beard);
-    this.animationPose = PROCEDURAL_BONES.map((name) => {
-      const bone = this.inst.bones.get(name)!;
+    this.animationPose = [...this.inst.bones.values()].filter((bone) =>
+      PROCEDURAL_BONES.includes(bone.name) || /^(index|middle|ring|pinky|thumb)_0[23]_l$/.test(bone.name),
+    ).map((bone) => {
       return { bone, quaternion: bone.quaternion.clone() };
     });
     this.refs = handRefs(template);
@@ -166,6 +171,9 @@ export class CharacterRig {
     let g = this.guns.get(id);
     if (!g) {
       g = cloneWeapon(this.weaponTemplates, id);
+      const sight = createReflexSight(id);
+      g.add(sight.object);
+      this.sights.set(id, sight);
       if (this.mode === "fpp") g.traverse((o) => { (o as THREE.Mesh).castShadow = false; });
       this.gunPivot.add(g);
       this.guns.set(id, g);
@@ -180,6 +188,9 @@ export class CharacterRig {
   /** Detaches from the scene. Animation state is kept, so a rig can be re-added. */
   dispose() {
     this.object.removeFromParent();
+    for (const sight of this.sights.values()) sight.object.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).geometry.dispose();
+    });
   }
 
   update(dt: number, s: RigState) {
@@ -300,13 +311,16 @@ export class CharacterRig {
     if (!w) return;
     const meta = WEAPON_META[w];
     const pistol = w === "pistol";
+    const sight = this.sights.get(w)!;
+    const reflex = (s.optic ?? DEFAULT_OPTICS[w]) === "red-dot";
+    sight.object.visible = reflex;
     const reload = s.reload >= 0 ? Math.sin(Math.min(1, s.reload) * Math.PI) : 0;
     const sprint = s.sprint * (1 - s.ads);
 
     if (this.mode === "fpp" && s.eye && s.view) {
       // View-space placement: hip at the lower right, ADS lines the sights up with the eye.
       // Eye just above the top of the receiver / rear sight.
-      const sightY = pistol ? meta.max[1] - 0.004 : w === "sniper" ? meta.max[1] - 0.01 : meta.max[1] + 0.004;
+      const sightY = reflex ? sight.height : pistol ? meta.max[1] - 0.004 : w === "sniper" ? meta.max[1] - 0.01 : meta.max[1] + 0.004;
       const hip = pistol ? _v.set(0.13, -0.21, -0.34) : _v.set(0.15, -0.25, -0.3);
       // Keep the stock end just in front of the eye.
       const ads = _v2.set(0, -sightY, pistol ? -0.36 : -(meta.max[2] + 0.07));
@@ -354,7 +368,7 @@ export class CharacterRig {
     _m.multiplyMatrices(gun, this.refs.right);
     _target.setFromMatrixPosition(_m);
     _handQuat.setFromRotationMatrix(_m2.extractRotation(_m));
-    _pole.setFromMatrixPosition(b("upperarm_r").matrixWorld).addScaledVector(bodyLeft, -0.35).addScaledVector(DOWN, 0.65);
+    _pole.setFromMatrixPosition(b("upperarm_r").matrixWorld).addScaledVector(bodyLeft, -0.18).addScaledVector(DOWN, 0.75);
     solveTwoBone(b("upperarm_r"), b("lowerarm_r"), b("hand_r"), _target, _pole, 1, true);
     setBoneWorldQuaternion(b("hand_r"), _handQuat, true);
 
@@ -363,8 +377,11 @@ export class CharacterRig {
     const leftLocal = _leftLocal.copy(this.refs.left);
     if (w !== "pistol") {
       const pos = _v.setFromMatrixPosition(leftLocal);
-      pos.set(pos.x * 0.3 + fg[0], fg[1] - 0.045 - reload * 0.1, fg[2] + reload * 0.2);
-      leftLocal.setPosition(pos);
+      // The source pose cups a pistol with both hands. Rotate the support wrist
+      // across the handguard so the palm cradles it and fingers wrap its side.
+      _handQuat.setFromRotationMatrix(leftLocal).premultiply(_q2.setFromAxisAngle(UP, -Math.PI / 2));
+      pos.set(fg[0] - 0.11, fg[1] + 0.015 - reload * 0.1, fg[2] - 0.03 + reload * 0.2);
+      leftLocal.compose(pos, _handQuat, _s);
     } else if (reload > 0) {
       const pos = _v.setFromMatrixPosition(leftLocal);
       pos.y -= reload * 0.12;
@@ -373,9 +390,22 @@ export class CharacterRig {
     _m.multiplyMatrices(gun, leftLocal);
     _target.setFromMatrixPosition(_m);
     _handQuat.setFromRotationMatrix(_m2.extractRotation(_m));
-    _pole.setFromMatrixPosition(b("upperarm_l").matrixWorld).addScaledVector(bodyLeft, 0.35).addScaledVector(DOWN, 0.65);
+    _pole.setFromMatrixPosition(b("upperarm_l").matrixWorld).addScaledVector(bodyLeft, 0.18).addScaledVector(DOWN, 0.75);
     solveTwoBone(b("upperarm_l"), b("lowerarm_l"), b("hand_l"), _target, _pole, 1, true);
     setBoneWorldQuaternion(b("hand_l"), _handQuat, true);
+    if (w !== "pistol") {
+      // Close the source pistol's open support fingers around the narrower rifle
+      // handguard. Start from the sampled pose every frame, including held clips.
+      for (const finger of ["index", "middle", "ring", "pinky", "thumb"]) {
+        for (const joint of [2, 3]) {
+          const bone = this.inst.bones.get(`${finger}_0${joint}_l`);
+          if (!bone) continue;
+          const curl = finger === "thumb" ? 0.55 : joint === 2 ? 0.45 : 0.3;
+          bone.quaternion.multiply(_q2.setFromAxisAngle(_v.set(1, 0, 0), curl * (1 - reload)));
+        }
+      }
+      b("hand_l").updateMatrixWorld(true);
+    }
   }
 }
 

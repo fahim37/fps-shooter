@@ -1,44 +1,20 @@
 .sight {
-  --size: clamp(150px, 27vmin, 250px);
-  --dot: #ff2a1f;
-  --dot-core: #ffd9d2;
-  width: var(--size);
-  height: calc(var(--size) * 220 / 260);
+  --dot: #ff3026;
+  --dot-core: #ffe1d8;
+  width: 8px;
+  height: 8px;
   pointer-events: none;
   transition: opacity 0.06s linear;
 }
 .sight::after { display: none; }
-.sight > .housing {
-  position: absolute;
-  inset: 0;
-  background: none;
-  box-shadow: none;
-  border-radius: 0;
-  will-change: transform;
-}
-.frame {
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-  animation: raise 0.14s cubic-bezier(0.2, 0.7, 0.3, 1);
-}
-@keyframes raise {
-  from { transform: translateY(14%) scale(1.04); }
-}
-/* Projected dot: hot core, emitter colour ring and a soft bloom. */
 .sight > .dot {
   left: 50%;
   top: 50%;
-  width: 16px;
-  height: 16px;
-  margin: -8px 0 0 -8px;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
   border-radius: 50%;
   box-shadow: none;
-  background: radial-gradient(circle, var(--dot-core) 0 1.4px, var(--dot) 2.4px, rgb(255 40 30 / 0.5) 3.6px, rgb(255 40 30 / 0.14) 5.4px, transparent 8px);
+  background: radial-gradient(circle, var(--dot-core) 0 0.7px, var(--dot) 1.4px, rgb(255 40 30 / 0.3) 2.4px, transparent 4px);
 }
-.target { --dot: #ff3d30; --dot-core: #fff4f1; }
-.target > .dot { transform: scale(1.15); }
-
-@media (prefers-reduced-motion: reduce) {
-  .frame { animation: none; }
-}
+.target { --dot-core: #fff4f1; }

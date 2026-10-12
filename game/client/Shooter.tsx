@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
+import { assetUrl } from "./assets/url";
 import { createRoom, joinByCode, joinErrorMessage, leaveCurrentRoom, listRooms, quickPlay, type GameRoom, type PublicRoom } from "./net/session";
 import { useSettings } from "./settings";
 import { MODE_INFO, type GameMode } from "../shared/constants";
@@ -89,7 +91,10 @@ export default function Shooter() {
   const visibleRooms = rooms.filter((r) => (filter !== "humans" || r.botFill === 0) && (filter !== "waiting" || r.phase === "waiting") && `${r.name} ${r.code} ${r.format}`.toLowerCase().includes(search.toLowerCase()));
   return <main className="lobby home-lobby">
     <div className="lobby-grain" />
-    <header className="lobby-top"><span className="wordmark">H / M <small>HOLLOWMERE</small></span><span className={online ? "status online" : "status"}>{online === null ? "CHECKING SERVER…" : online ? "SERVER ONLINE" : "SERVER OFFLINE"}</span></header>
+    <header className="lobby-top"><span className="wordmark" aria-label="Hollowmere">
+      <Image src={assetUrl("/brand/hollowmere-emblem.png")} alt="" width={48} height={48} unoptimized priority />
+      <span className="brand-name">HOLLOWMERE<small>VILLAGE & CITY COMBAT</small></span>
+    </span><span className={online ? "status online" : "status"}>{online === null ? "CHECKING SERVER…" : online ? "SERVER ONLINE" : "SERVER OFFLINE"}</span></header>
     <section className="lobby-intro"><span className="eyebrow">YOUR FRIENDS. YOUR TEAMS. YOUR MATCH.</span><h1>Better<br />with <em>friends</em><span className="title-dot">.</span></h1><p>A village and a downtown block. Two teams. A little friendly rivalry.<br />Create a room, share the invite and play on your terms.</p>
       <CharacterShowcase preview players={[{ id: "preview", name: name.trim() || "Ranger", char: character, team: 0, emote }]} me="preview" onShowoff={setEmote} />
       <div className="lobby-steps"><span><b>01</b> Create a room</span><span><b>02</b> Invite your friends</span><span><b>03</b> Ready up & play</span></div>
