@@ -82,7 +82,7 @@ export class Mover {
     const len = Math.hypot(wx, wz);
     if (len > 1) { wx /= len; wz /= len; }
 
-    s.sprinting = inp.sprint && inp.forward > 0.5 && !inp.crouch && inp.ads < 0.3 && s.grounded;
+    s.sprinting = inp.sprint && len > 0.12 && inp.forward >= 0 && !inp.crouch && inp.ads < 0.3 && s.grounded;
     let speed = inp.crouch ? CROUCH_SPEED : s.sprinting ? SPRINT_SPEED : WALK_SPEED;
     speed *= 1 - (1 - ADS_SPEED_MULT) * inp.ads;
     speed *= inp.speedMult;
@@ -95,7 +95,7 @@ export class Mover {
         const drop = Math.max(hv - FRICTION * dt * Math.max(hv, 2), 0) / hv;
         if (len < 0.01) { s.vx *= drop; s.vz *= drop; }
       }
-      accelerate(s, targetX, targetZ, GROUND_ACCEL * dt);
+      accelerate(s, targetX, targetZ, GROUND_ACCEL * dt, s.sprinting);
     } else {
       accelerate(s, targetX, targetZ, AIR_ACCEL * dt);
     }
@@ -137,10 +137,19 @@ export class Mover {
   }
 }
 
-function accelerate(s: MoveState, tx: number, tz: number, maxDelta: number) {
+function accelerate(s: MoveState, tx: number, tz: number, maxDelta: number, preserveTurningSpeed = false) {
+  // Blending velocity vectors cuts through a shorter diagonal while steering.
+  // Keep sprint momentum through turns, while allowing braking for a reversal.
+  const speedFloor = preserveTurningSpeed && s.vx * tx + s.vz * tz >= -1e-8
+    ? Math.min(Math.hypot(s.vx, s.vz), Math.hypot(tx, tz)) : 0;
   const dx = tx - s.vx, dz = tz - s.vz;
   const d = Math.hypot(dx, dz);
   if (d <= maxDelta || d === 0) { s.vx = tx; s.vz = tz; return; }
   s.vx += (dx / d) * maxDelta;
   s.vz += (dz / d) * maxDelta;
+  const speed = Math.hypot(s.vx, s.vz);
+  if (speed > 0 && speed < speedFloor) {
+    s.vx *= speedFloor / speed;
+    s.vz *= speedFloor / speed;
+  }
 }

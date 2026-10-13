@@ -257,7 +257,7 @@ export class LocalPlayer {
     }
     this.landDip = Math.max(0, this.landDip - dt * 0.6);
     this.crouchT += ((input.crouch ? 1 : 0) - this.crouchT) * Math.min(1, dt * 12);
-    this.updateLean(dt, input, s.leanToggle, wantsSprint && fwd > 0.5);
+    this.updateLean(dt, input, s.leanToggle, wantsSprint && fwd >= 0 && Math.hypot(fwd, right) > 0.12);
 
     // ---- ADS (peeking raises the sights too)
     const adsTarget = (adsHeld || this.peeking) && !this.reloading && now > this.switchEnd ? 1 : 0;
