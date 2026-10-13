@@ -87,7 +87,7 @@ small { display: block; }
   .hud-bottom strong span { font-size: 13px; }
   .hud-bottom small { font-size: 8px; letter-spacing: .08em; }
   .health { min-width: 100px; }
-  .ammo { margin-right: 64px; }
+  .ammo { margin-left: auto; margin-right: 64px; }
   .ammo > small:first-child { display: none; }
   .match-top { padding: max(14px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) 14px max(24px, env(safe-area-inset-left)); }
   .match-mode { font-size: 10px; max-width: 110px; }

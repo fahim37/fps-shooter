@@ -115,6 +115,25 @@ async function main() {
     await page.waitForTimeout(400);
     assert.equal((await state()).touch, true, "Mobile emulation must activate touch controls");
     await inspectLayout();
+    for (const viewport of [{ width: 844, height: 390 }, { width: 740, height: 360 }, { width: 640, height: 360 }, { width: 568, height: 320 }]) {
+      await page.setViewportSize(viewport);
+      await page.waitForTimeout(180);
+      const circles = await inspectLayout();
+      const health = await page.locator('[data-health-state]').boundingBox();
+      const weapons = await page.getByRole("navigation", { name: "Quick weapons" }).boundingBox();
+      assert.ok(health && weapons);
+      assert.ok(health.width <= 184 && health.height <= 40, `Mobile health must stay compact: ${JSON.stringify(health)}`);
+      assert.ok(weapons.width <= 224 && weapons.height >= 44 && weapons.height <= 46, "Compact guns must retain 44px touch targets");
+      assert.ok(health.y + health.height + 5 <= weapons.y, "Health and weapons must have a clear gap");
+      for (const box of [health, weapons]) {
+        for (const circle of circles) {
+          assert.ok(box.x + box.width <= circle.x || circle.x + circle.width <= box.x || box.y + box.height <= circle.y || circle.y + circle.height <= box.y, `${circle.label} must not overlap the bottom HUD`);
+        }
+      }
+      await page.screenshot({ path: `out/qa/mobile-hud-${viewport.width}.png` });
+    }
+    await page.setViewportSize({ width: 844, height: 390 });
+    await page.waitForTimeout(180);
     await page.screenshot({ path: "out/qa/mobile-landscape.png" });
     console.log("Landscape circles fit the screen");
 
@@ -153,6 +172,56 @@ async function main() {
     await tap(fullscreenOptions.getByRole("button", { name: "Fullscreen", exact: true }));
     await page.waitForFunction(() => !!document.fullscreenElement);
     console.log("Automatic fullscreen entry, exit and manual re-entry passed");
+
+    // Normal forward movement stays manual. Only reaching the target locks sprint.
+    const lockOrigin = await center(controls.getByLabel("Movement joystick", { exact: true }));
+    async function lockSprint() {
+      await down(40, lockOrigin);
+      await move(40, { x: lockOrigin.x, y: lockOrigin.y - 90 });
+      assert.equal((await state()).sprint, true);
+      assert.equal(await action("Stop auto sprint").getAttribute("aria-pressed"), "true");
+    }
+    await down(40, lockOrigin);
+    await move(40, { x: lockOrigin.x, y: lockOrigin.y - 38 });
+    assert.equal((await state()).sprint, false, "Ordinary forward movement must not lock sprint");
+    await up(40);
+    assert.equal((await state()).stick, null);
+    await lockSprint();
+    await up(40);
+    assert.deepEqual((await state()).stick, { x: 0, y: 1 }, "Releasing in the lock must keep running forward");
+    const lockedYaw = (await state()).yaw;
+    await down(41, look);
+    await move(41, { x: look.x + 40, y: look.y });
+    await up(41);
+    assert.ok(Math.abs((await state()).yaw - lockedYaw) > 0.03, "Aim must steer while sprint is locked");
+    await page.screenshot({ path: "out/qa/mobile-sprint-locked.png" });
+    await down(40, lockOrigin);
+    assert.equal((await state()).sprint, false, "Touching movement again must cancel the lock");
+    await move(40, { x: lockOrigin.x + 30, y: lockOrigin.y + 20 });
+    assert.ok((await state()).stick!.x > 0 && (await state()).stick!.y < 0, "Movement must immediately return to manual control");
+    await up(40);
+    await lockSprint();
+    await move(40, lockOrigin);
+    await up(40);
+    assert.equal((await state()).sprint, false, "Dragging back before release must cancel the lock");
+    await lockSprint(); await up(40);
+    await tap(action("Stop auto sprint"));
+    assert.equal((await state()).stick, null);
+    assert.equal((await state()).sprint, false);
+    await lockSprint(); await cancel();
+    assert.equal((await state()).sprint, false, "Touch cancellation must clear a pending sprint lock");
+    assert.equal((await state()).stick, null);
+    await lockSprint(); await up(40);
+    await tap(action("Crouch"));
+    assert.equal((await state()).sprint, false);
+    assert.equal((await state()).stick, null, "Crouching must stop auto movement");
+    await tap(action("Crouch"));
+    await lockSprint(); await up(40);
+    await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+    assert.equal((await state()).sprint, false, "Losing focus must stop released auto sprint");
+    assert.equal((await state()).stick, null);
+    assert.equal(await action("Stop auto sprint").count(), 0);
+    console.log("Forward sprint lock, release, steering, manual takeover, drag-back, stop, crouch and cancellation passed");
 
     const screenButton = await fullscreenOptions.getByRole("button", { name: "Exit fullscreen", exact: true }).boundingBox();
     assert.ok(screenButton && screenButton.x > page.viewportSize()!.width / 2, "Fullscreen must sit on the right side");
@@ -241,10 +310,13 @@ async function main() {
     assert.equal((await state()).grenades, grenadeCount - 1, "Holding then releasing grenade must throw one grenade");
     console.log("Fire reference counting, aim drags, reload, toggles and grenade passed");
 
+    await lockSprint(); await up(40);
     await down(9, fire);
     await tap(action("Scores"));
     await page.locator(".scoreboard").waitFor();
     assert.equal((await state()).fire, false, "Opening scores must release shooting");
+    assert.equal((await state()).sprint, false, "Opening scores must stop auto sprint");
+    assert.equal((await state()).stick, null);
     assert.equal(await action("Close scores").count(), 1);
     assert.equal(await action("Pause").count(), 1);
     assert.equal(await action("Fire").count(), 0, "Gameplay buttons must stay hidden over scores");
@@ -252,10 +324,12 @@ async function main() {
     await action("Close scores").tap();
     await page.locator(".scoreboard").waitFor({ state: "hidden" });
     await controls.getByLabel("Movement joystick", { exact: true }).waitFor();
+    await lockSprint(); await up(40);
     await down(10, fire);
     await tap(action("Pause"));
     await page.getByRole("button", { name: "ENTER MATCH" }).waitFor();
     assert.equal((await state()).fire, false); assert.equal((await state()).stick, null);
+    assert.equal((await state()).sprint, false, "Pausing must stop auto sprint");
     await up(10);
     await page.getByRole("button", { name: "ENTER MATCH" }).tap();
     await controls.waitFor();
@@ -268,10 +342,13 @@ async function main() {
     await page.waitForTimeout(250);
     assert.notEqual(await graphics.innerText(), graphicsBefore, "Graphics must change live on touch");
     assert.equal(await page.locator(".modal-shade").count(), 0, "Changing graphics must keep the match running");
+    await lockSprint(); await up(40);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.getByRole("dialog", { name: "Landscape required" }).waitFor();
     await page.waitForFunction(() => !(window as TestWindow).__mobileTestGame!.input.enabled);
     assert.equal(await controls.count(), 0, "Portrait must hide gameplay controls");
+    assert.equal((await state()).sprint, false, "Rotating must stop auto sprint");
+    assert.equal((await state()).stick, null);
     await page.screenshot({ path: "out/qa/mobile-rotate-prompt.png" });
     await page.setViewportSize({ width: 844, height: 390 });
     await controls.waitFor();
@@ -281,11 +358,14 @@ async function main() {
 
     const landscapeDefault = await center(controls.getByLabel("Movement joystick", { exact: true }));
     const editor = page.getByLabel("Control layout editor", { exact: true });
+    await lockSprint(); await up(40);
     await action("Customize controls").tap();
     await editor.waitFor();
     await page.waitForTimeout(150);
     const editingState = await state();
     assert.equal(editingState.enabled, false, "Control editing must pause gameplay input");
+    assert.equal(editingState.sprint, false, "Editing controls must stop auto sprint");
+    assert.equal(editingState.stick, null);
     const editorStick = controls.locator('[data-control-id="joystick"]');
     const editStart = await center(editorStick);
     assert.ok(Math.abs(editStart.x - landscapeDefault.x) < 1 && Math.abs(editStart.y - landscapeDefault.y) < 1, "The editor must preview the same default positions used during gameplay");
@@ -321,6 +401,8 @@ async function main() {
     assert.ok(saved.controls.landscape.rightFire.size > 1);
     assert.deepEqual(saved.controls.portrait, {}, "Landscape edits must keep other stored layouts independent");
     const savedStick = await center(controls.getByLabel("Movement joystick", { exact: true }));
+    const savedBox = await controls.getByLabel("Movement joystick", { exact: true }).boundingBox();
+    assert.ok(savedBox);
     assert.ok(Math.abs(savedStick.x - movedStick.x) < 2 && Math.abs(savedStick.y - movedStick.y) < 2);
     assert.equal((await state()).enabled, true, "Save & play must resume input");
     console.log("Control positions, individual size and opacity saved on device");
@@ -332,7 +414,7 @@ async function main() {
     const restoredStick = await center(controls.getByLabel("Movement joystick", { exact: true }));
     assert.ok(Math.abs(restoredStick.x - savedStick.x) < 2 && Math.abs(restoredStick.y - savedStick.y) < 2, "A new match must render the saved joystick position");
     const restoredBox = await controls.getByLabel("Movement joystick", { exact: true }).boundingBox();
-    assert.ok(restoredBox && restoredBox.width > 160, "The saved joystick size must be restored");
+    assert.ok(restoredBox && Math.abs(restoredBox.width - savedBox.width) < 1, "The saved joystick size must be restored");
     await action("Customize controls").tap();
     await editor.waitFor();
     await editor.getByRole("button", { name: "Reset layout", exact: true }).tap();

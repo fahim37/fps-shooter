@@ -45,8 +45,10 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
   const [editorCollapsed, setEditorCollapsed] = useState(false);
   const joystick = useRef<HTMLDivElement>(null);
   const knob = useRef<HTMLDivElement>(null);
-  const [stickOrigin, setStickOrigin] = useState<{ x: number; y: number } | null>(null);
+  const [stickOrigin, setStickOrigin] = useState<{ x: number; y: number; radius: number } | null>(null);
   const stick = useRef<{ id: number; x: number; y: number; radius: number } | null>(null);
+  const sprintLock = useRef(false);
+  const [sprintLocked, setSprintLocked] = useState(false);
   const look = useRef<{ id: number; x: number; y: number } | null>(null);
   const gestures = useRef(new Map<number, Gesture>());
   const [sprinting, setSprinting] = useState(false);
@@ -98,6 +100,8 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
       gestures.current.forEach((gesture) => { gesture.element.dataset.pressed = "false"; });
       gestures.current.clear();
       stick.current = look.current = null;
+      sprintLock.current = false;
+      setSprintLocked(false);
       setStickOrigin(null);
       if (knob.current) knob.current.style.transform = "translate(-50%, -50%)";
       setSprinting(false); setCrouching(false);
@@ -164,23 +168,45 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
 
   function moveStick(x: number, y: number) {
     const current = stick.current;
-    if (!current) return;
+    if (!current || !input.enabled) return;
     const dx = x - current.x, dy = y - current.y;
+    // Drag beyond ordinary forward movement to deliberately enter the lock target.
+    const lockY = Math.max(40, current.y - current.radius * 2);
+    if (!sprintLock.current && current.y - y >= current.radius && y <= lockY + 12 && Math.abs(dx) <= current.radius * 0.65) {
+      sprintLock.current = true;
+      setSprintLocked(true);
+      setSprinting(true);
+      setCrouching(false);
+      input.setAction("crouch", false);
+      input.setAction("sprint", true);
+    } else if (sprintLock.current && (-dy < current.radius * 0.8 || Math.abs(dx) > current.radius)) {
+      stopSprintLock();
+    }
     const distance = Math.hypot(dx, dy);
     const scale = distance > current.radius ? current.radius / distance : 1;
     const nx = dx * scale / current.radius, ny = -dy * scale / current.radius;
     const magnitude = Math.hypot(nx, ny);
     const response = magnitude > 0.12 ? (magnitude - 0.12) / (0.88 * magnitude) : 0;
-    input.setStick({ x: nx * response, y: ny * response });
+    input.setStick(sprintLock.current ? { x: 0, y: 1 } : { x: nx * response, y: ny * response });
     if (knob.current) knob.current.style.transform = `translate(calc(-50% + ${dx * scale}px), calc(-50% + ${dy * scale}px))`;
+  }
+
+  function stopSprintLock() {
+    if (!sprintLock.current) return;
+    sprintLock.current = false;
+    setSprintLocked(false);
+    setSprinting(false);
+    input.setAction("sprint", false);
+    input.setStick(null);
   }
 
   function beginStick(e: PointerEvent<HTMLDivElement>) {
     if (stick.current || !input.enabled || !joystick.current) return;
     capture(e);
+    stopSprintLock();
     const radius = joystick.current.getBoundingClientRect().width * 0.34;
     stick.current = { id: e.pointerId, x: e.clientX, y: e.clientY, radius };
-    setStickOrigin({ x: e.clientX, y: e.clientY });
+    setStickOrigin({ x: e.clientX, y: e.clientY, radius });
     // Touching down is neutral; only dragging moves the player.
     moveStick(e.clientX, e.clientY);
   }
@@ -189,7 +215,9 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
     if (stick.current?.id !== e.pointerId) return;
     stick.current = null;
     setStickOrigin(null);
-    input.setStick(null);
+    // Pointer cancellation must stop running; normal release preserves the lock.
+    if (e.type !== "pointerup") stopSprintLock();
+    input.setStick(sprintLock.current ? { x: 0, y: 1 } : null);
     if (knob.current) knob.current.style.transform = "translate(-50%, -50%)";
   }
 
@@ -199,6 +227,8 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
     gestures.current.forEach((gesture) => { gesture.element.dataset.pressed = "false"; });
     gestures.current.clear();
     stick.current = look.current = null;
+    sprintLock.current = false;
+    setSprintLocked(false);
     setStickOrigin(null);
     if (knob.current) knob.current.style.transform = "translate(-50%, -50%)";
     input.hold("Tab", open);
@@ -210,6 +240,8 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
     gestures.current.forEach((gesture) => { gesture.element.dataset.pressed = "false"; });
     gestures.current.clear();
     stick.current = look.current = null;
+    sprintLock.current = false;
+    setSprintLocked(false);
     setStickOrigin(null);
     if (knob.current) knob.current.style.transform = "translate(-50%, -50%)";
     setSprinting(false); setCrouching(false);
@@ -249,14 +281,20 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
         onPointerDown={(e) => { if (editing) beginEdit(e, "joystick"); }}
         onPointerMove={(e) => { if (editing) moveEdit(e); }}
         onPointerUp={endEdit} onPointerCancel={endEdit} onLostPointerCapture={endEdit}>
-        <div className={styles.stickGuides} /><div ref={knob} className={styles.knob} /><span>{editing || stickOrigin ? "MOVE" : "TOUCH LEFT TO MOVE"}</span>
+        <div className={styles.stickGuides} /><div ref={knob} className={styles.knob} /><span>{sprintLocked ? "TOUCH TO STOP" : editing || stickOrigin ? "MOVE" : "TOUCH LEFT TO MOVE"}</span>
       </div>
+      {!editing && (stickOrigin || sprintLocked) && <button type="button" className={styles.sprintLock} aria-label={sprintLocked ? "Stop auto sprint" : "Drag here to lock sprint"} aria-pressed={sprintLocked}
+        style={stickOrigin ? { left: Math.max(24, Math.min(window.innerWidth - 24, stickOrigin.x)), top: Math.max(40, stickOrigin.y - stickOrigin.radius * 2) } : undefined}
+        data-locked={sprintLocked} onPointerDown={(e) => { if (sprintLocked) { capture(e); stopSprintLock(); } }}
+        onClick={(e) => { if (e.detail === 0) stopSprintLock(); }}>
+        <Icon name="sprint" /><span role="status">{sprintLocked ? "AUTO SPRINT · TAP TO STOP" : "↑ LOCK SPRINT"}</span>
+      </button>}
       {button("fire", "Fire", styles.leftFire, "fire", undefined, undefined, false, "leftFire")}
       {button("fire", "Fire / aim", styles.rightFire, "fire", undefined, undefined, true, "rightFire")}
       {button("ads", "Aim", styles.ads, "ads", undefined, undefined, true)}
       {button("jump", "Jump", styles.jump, "jump")}
-      {button("crouch", "Crouch", styles.crouch, undefined, () => { const down = !crouching; setCrouching(down); input.setAction("crouch", down); if (down) { setSprinting(false); input.setAction("sprint", false); } }, crouching)}
-      {button("sprint", "Sprint", styles.sprint, undefined, () => { const down = !sprinting; setSprinting(down); input.setAction("sprint", down); if (down) { setCrouching(false); input.setAction("crouch", false); } }, sprinting)}
+      {button("crouch", "Crouch", styles.crouch, undefined, () => { const down = !crouching; if (down) stopSprintLock(); setCrouching(down); input.setAction("crouch", down); if (down) { setSprinting(false); input.setAction("sprint", false); } }, crouching)}
+      {button("sprint", "Sprint", styles.sprint, undefined, () => { const down = !sprinting; stopSprintLock(); setSprinting(down); input.setAction("sprint", down); if (down) { setCrouching(false); input.setAction("crouch", false); } }, sprinting)}
       <div className={styles.utilities}>
         {button("grenade", "Grenade", styles.utility, "grenade")}
         {button("reload", "Reload", styles.utility, undefined, () => input.press("KeyR"))}

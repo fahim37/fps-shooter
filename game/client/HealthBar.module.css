@@ -12,5 +12,14 @@
 .healing { --health-color: #8cebc5; }
 .healing .status { color: var(--health-color); }
 @media (max-width: 800px), (max-height: 550px) { .panel { width: 220px; padding: 6px 9px; bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }.heading { margin-bottom: 4px; }.heading strong { font-size: 13px; }.track { height: 7px; }.status { font-size: 7px; margin-top: 4px; } }
-@media (pointer: coarse) { .panel { bottom: calc(68px + env(safe-area-inset-bottom, 0px)); width: 220px; } }
+@media (pointer: coarse) {
+  .panel { bottom: calc(58px + env(safe-area-inset-bottom, 0px)); width: 184px; max-width: calc(100% - 32px); padding: 3px 7px; border-radius: 5px; line-height: 1.2; }
+  .heading { gap: 8px; margin-bottom: 2px; line-height: 1.2; }
+  .heading > span { font-size: 7px; letter-spacing: .1em; }
+  .heading b { font-size: 10px; margin-right: 3px; }
+  .heading strong { font-size: 11px; line-height: 1.2; }
+  .heading small { font-size: 7px; }
+  .track { height: 5px; }
+  .status { margin-top: 2px; font-size: 7px; line-height: 1.2; letter-spacing: .02em; }
+}
 @media (prefers-reduced-motion: reduce) { .track i { transition: none; } }

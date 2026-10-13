@@ -61,6 +61,11 @@
 .stickGuides { position: absolute; inset: 25%; border: 1px dashed #ffffff23; border-radius: 50%; pointer-events: none; }
 .knob { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 44%; height: 44%; border: 2px solid #ffffffb8; background: radial-gradient(circle at 35% 30%, #ffffff32, #ffffff13); border-radius: 50%; box-shadow: inset 0 0 0 4px #ffffff09, 0 2px 8px #0003; pointer-events: none; }
 .joystick > span { position: absolute; left: 0; right: 0; bottom: -18px; font: 600 8px system-ui, sans-serif; letter-spacing: .1em; text-align: center; color: #ffffff8a; pointer-events: none; }
+.sprintLock { position: fixed; left: 50%; top: auto; bottom: calc(108px + var(--safe-bottom)); transform: translate(-50%, -50%); display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px dashed #e6ed8790; border-radius: 50%; background: #101d20a6; color: #e6ed87; pointer-events: none; touch-action: none; }
+.sprintLock svg { width: 23px; height: 23px; }
+.sprintLock > span { position: absolute; bottom: calc(100% + 5px); font: 700 8px system-ui, sans-serif; letter-spacing: .04em; white-space: nowrap; text-shadow: 0 1px 3px #000; }
+.sprintLock[data-locked="true"] { border-style: solid; background: #44551ce6; box-shadow: 0 0 14px #d9ed7930; pointer-events: auto; }
+.sprintLock:focus-visible { outline: 2px solid #e6ed87; outline-offset: 4px; }
 
 .leftFire { --control-size: 70px; position: absolute; left: calc(var(--safe-left) + 28px); top: 29%; border-color: #f59b849c; background: #6d252323; }
 .leftFire svg { width: 36px; height: 36px; transform: rotate(35deg); }
@@ -165,6 +170,7 @@
   .jump, .crouch { bottom: calc(125px + var(--safe-bottom)); }
   .utilities { bottom: calc(68px + var(--safe-bottom)); }
   .joystick { bottom: calc(68px + var(--safe-bottom)); }
+  .sprint { bottom: calc(112px + var(--safe-bottom)); }
 }
 
 @media (prefers-reduced-motion: reduce) { .button { transition: none; } }
