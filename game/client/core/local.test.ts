@@ -7,6 +7,7 @@ import { DEFAULT_OPTICS } from "../../shared/optics";
 import { useSettings } from "../settings";
 
 vi.mock("./audio", () => ({ audio: { switchWeapon: vi.fn() } }));
+vi.mock("../../shared/physics", () => ({ raycastWorld: () => null }));
 
 beforeEach(() => {
   useLoadout.setState({ optics: { ...DEFAULT_OPTICS } });
@@ -57,5 +58,35 @@ describe("local loadout", () => {
     useLoadout.getState().equipOptic("ar", "red-dot");
     expect(local.scoped).toBe(false);
     expect(local.currentFov()).toBe(55);
+  });
+});
+
+describe("peeking", () => {
+  const input = (held: string[]) => ({ consume: () => false, held: (code: string) => held.includes(code) });
+  const lean = (local: LocalPlayer, held: string[], sprint = false) =>
+    (local as unknown as { updateLean(dt: number, i: unknown, toggle: boolean, sprint: boolean): void }).updateLean(0.016, input(held), false, sprint);
+  const peeking = (local: LocalPlayer) => (local as unknown as { peeking: boolean }).peeking;
+  const peeker = (lean: number, leanLatch: number) => {
+    const local = player();
+    Object.assign(local, { lean, leanLatch, crouchT: 0, yaw: 0, ms: { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, sprinting: false } });
+    return local;
+  };
+
+  it("aims down sights while a peek is held and stops when released", () => {
+    const local = peeker(0, 0);
+    lean(local, ["KeyE"]);
+    expect(peeking(local)).toBe(true);
+    expect(local.lean).toBeGreaterThan(0);
+    lean(local, []);
+    expect(peeking(local)).toBe(false);
+  });
+
+  it("drops a latched peek when the player asks to sprint, so aiming cannot block the sprint", () => {
+    const local = peeker(1, -1);
+    lean(local, []);
+    expect(peeking(local)).toBe(true);
+    lean(local, [], true);
+    expect(peeking(local)).toBe(false);
+    expect(local.leanSide).toBe(0);
   });
 });

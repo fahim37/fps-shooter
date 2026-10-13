@@ -4,6 +4,7 @@ import { ServerClock } from "../net/clock";
 import { loadCharacters, type CharacterTemplate } from "../assets/characters";
 import { loadWeapons } from "../assets/weapons";
 import { CharacterRig, type RigState } from "../player/CharacterRig";
+import { gripPose } from "../player/grip";
 import { getMap } from "../../shared/map/maps";
 import { raycastWorld, type Rapier, type World } from "../../shared/physics";
 import { INTERP_DELAY_MS, RESPAWN_MS, type GameMode } from "../../shared/constants";
@@ -79,6 +80,10 @@ export class Game {
     hud().set({ loading: 0.35 });
     [this.templates, this.weapons] = await Promise.all([loadCharacters(), loadWeapons()]);
     if (this.disposed) return;
+    // Solve every hand pose behind the loading screen, not on the first weapon switch.
+    const t0 = performance.now();
+    for (const template of this.templates) for (const w of Object.keys(WEAPONS) as WeaponId[]) gripPose(template, w);
+    console.debug(`[game] grip poses solved in ${(performance.now() - t0).toFixed(0)} ms`);
     this.local = new LocalPlayer(this, this.R, this.world);
     this.local.thirdPerson = useSettings.getState().thirdPerson;
     if (this.pendingSpawn) this.spawn(this.pendingSpawn);
@@ -343,6 +348,7 @@ export class Game {
       grounded: local.ms.grounded, alive: local.alive, sprint: local.ms.sprinting ? 1 : 0,
       ads: local.ads, optic: local.optic, reload: local.reloadProgress, recoil: local.recoil,
       bob: local.bob, sway: local.sway, tuck: local.tuck, throwing: local.throwAnim, lean: local.lean,
+      sinceShot: local.sinceShot(now), sinceDraw: local.sinceDraw(now),
     };
     this.fpp?.setWeapon(local.weapon); this.tpp?.setWeapon(local.weapon);
     this.fpp?.setVisible(local.alive && !local.thirdPerson && !local.scoped);

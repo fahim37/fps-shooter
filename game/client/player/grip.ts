@@ -1,11 +1,15 @@
 import * as THREE from "three";
 import { instantiateCharacter, type CharacterTemplate } from "../assets/characters";
+import { SHELL_PORT, WEAPON_PARTS } from "../assets/weapons";
 import type { WeaponId } from "../../shared/weapons";
 
 type V3 = readonly [number, number, number];
 
 /** Rounded box in weapon space (grip at the origin, muzzle toward -Z), pitched about X. */
 interface Part { center: V3; half: V3; round: number; pitch?: number }
+
+/** What a hand pose is attached to: the gun itself, or a piece that moves while handling it. */
+export type HandFrame = "gun" | "mag" | "pump" | "bolt" | "shell";
 
 interface HandGrip {
   /** What the fingers close around. */
@@ -20,29 +24,143 @@ interface HandGrip {
   thumb: V3;
   /** Fixed index curls (knuckle → tip) for a trigger finger instead of wrapping it. */
   trigger?: readonly [number, number, number];
+  frame?: HandFrame;
+}
+
+export type RightPose = "grip" | "bolt";
+export type LeftPose = "support" | "mag" | "charge" | "shell";
+export type HandPoseId = RightPose | LeftPose;
+
+const rotX = (v: V3, a: number): V3 => [v[0], v[1] * Math.cos(a) - v[2] * Math.sin(a), v[1] * Math.sin(a) + v[2] * Math.cos(a)];
+const add = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+
+/** Right hand around a pistol grip, index on the trigger. */
+function pistolGrip(center: V3, half: V3, pitch: number, trigger: readonly [number, number, number] = [0.3, 0.75, 0.35]): HandGrip {
+  return {
+    part: { center, half, round: 0.009, pitch },
+    palm: add(center, rotX([half[0] + 0.015, 0.0035, 0.0153], pitch)),
+    facing: [-1, 0, 0.1],
+    thumbSide: rotX([0, 1, 0], pitch),
+    thumb: [-0.35, 0.25, -1],
+    trigger,
+  };
+}
+
+/** Support hand cradling a handguard (or pump, or forend) from below, thumb along its left side. */
+function cradle(center: V3, half: V3, frame?: HandFrame): HandGrip {
+  return {
+    part: { center, half, round: 0.012 },
+    palm: [-(half[0] + 0.01), center[1] - half[1] - 0.002, center[2] + 0.02],
+    facing: [0.75, 1, 0],
+    thumbSide: [-0.25, 0.1, -1],
+    thumb: [-0.1, 0.05, -1],
+    frame,
+  };
+}
+
+/** Support hand closed around a magazine from its left: fingers over the front, thumb behind. */
+function magGrip(center: V3, half: V3, pitch: number): HandGrip {
+  return {
+    part: { center, half, round: 0.006, pitch },
+    palm: add(center, rotX([-(half[0] + 0.016), -half[1] * 0.35, 0.004], pitch)),
+    facing: [1, 0, 0],
+    thumbSide: rotX([0, 1, 0], pitch),
+    thumb: [0.4, 0.2, 1],
+    frame: "mag",
+  };
 }
 
 /**
- * Hand placements measured against the imported gun meshes: the right hand wraps the pistol
- * grip with the index on the trigger, the support hand cradles the handguard from below with
- * the thumb along its left side. Weapons without an entry keep the aim-pose hands.
+ * Hand placements measured against the imported gun meshes. Each weapon has the firing grip
+ * and support hold, plus the extra holds its reload and cycling animations move through.
  */
-const GRIPS: Partial<Record<WeaponId, { right: HandGrip; left: HandGrip }>> = {
+const GRIPS: Record<WeaponId, { right: Partial<Record<RightPose, HandGrip>> & { grip: HandGrip }; left: Partial<Record<LeftPose, HandGrip>> & { support: HandGrip } }> = {
   ar: {
     right: {
-      part: { center: [0, 0.005, -0.002], half: [0.011, 0.05, 0.02], round: 0.009, pitch: -0.24 },
-      palm: [0.026, 0.012, 0.012],
-      facing: [-1, 0, 0.1],
-      thumbSide: [0, 1, -0.24],
-      thumb: [-0.35, 0.25, -1],
-      trigger: [0.3, 0.75, 0.35],
+      grip: {
+        part: { center: [0, 0.005, -0.002], half: [0.011, 0.05, 0.02], round: 0.009, pitch: -0.24 },
+        palm: [0.026, 0.012, 0.012],
+        facing: [-1, 0, 0.1],
+        thumbSide: [0, 1, -0.24],
+        thumb: [-0.35, 0.25, -1],
+        trigger: [0.3, 0.75, 0.35],
+      },
     },
     left: {
-      part: { center: [0, 0.1, -0.33], half: [0.014, 0.032, 0.075], round: 0.012 },
-      palm: [-0.024, 0.066, -0.31],
-      facing: [0.75, 1, 0],
-      thumbSide: [-0.25, 0.1, -1],
-      thumb: [-0.1, 0.05, -1],
+      support: cradle([0, 0.1, -0.33], [0.014, 0.032, 0.075]),
+      mag: magGrip([0, -0.035, -0.2], [0.013, 0.07, 0.026], 0.42),
+      // Under-hand rack: palm against the right of the receiver, fingers hooked over the handle.
+      charge: {
+        part: { center: [0, 0.1, -0.085], half: [0.016, 0.03, 0.03], round: 0.008 },
+        palm: [0.04, 0.072, -0.085],
+        facing: [-1, 0.25, 0],
+        thumbSide: [0, 0, -1],
+        thumb: [-0.3, 0, -1],
+      },
+    },
+  },
+  smg: {
+    right: { grip: pistolGrip([0, -0.008, 0.005], [0.013, 0.048, 0.019], -0.29) },
+    left: {
+      support: cradle([0, 0.035, -0.23], [0.022, 0.03, 0.06]),
+      mag: magGrip([0, -0.065, -0.131], [0.013, 0.065, 0.022], 0),
+    },
+  },
+  shotgun: {
+    right: {
+      // The stock's wrist: fingers wrap under it, thumb over the top.
+      grip: {
+        part: { center: [0, -0.004, 0.005], half: [0.013, 0.019, 0.04], round: 0.01, pitch: 0.16 },
+        palm: [0.028, -0.004, 0.015],
+        facing: [-1, 0, 0],
+        thumbSide: [0, 0.45, -0.9],
+        thumb: [-0.5, 0.3, -1],
+        trigger: [0.25, 0.6, 0.3],
+      },
+    },
+    left: {
+      support: cradle([0, 0.006, -0.32], [0.015, 0.025, 0.093], "pump"),
+      shell: { ...cradle(SHELL_PORT, [0.011, 0.011, 0.03], "shell"), facing: [0.6, 1, 0] },
+    },
+  },
+  sniper: {
+    right: {
+      grip: pistolGrip([0, -0.035, 0.045], [0.018, 0.04, 0.026], -0.1, [0.22, 0.6, 0.3]),
+      // Hand comes in from the right, fingers hooked around the bolt knob.
+      bolt: {
+        part: { center: [0.044, 0.03, -0.045], half: [0.008, 0.008, 0.008], round: 0.007 },
+        palm: [0.07, 0.04, -0.03],
+        facing: [-1, -0.2, 0],
+        thumbSide: [0, 1, 0.2],
+        thumb: [-0.6, -0.2, -1],
+        frame: "bolt",
+      },
+    },
+    left: {
+      support: cradle([0, 0.022, -0.35], [0.02, 0.017, 0.08]),
+      mag: magGrip([0, -0.006, -0.152], [0.012, 0.018, 0.034], 0),
+    },
+  },
+  pistol: {
+    right: { grip: pistolGrip([0, -0.003, 0.006], [0.016, 0.04, 0.016], -0.42) },
+    left: {
+      // Cup and wrap: the support palm on the left of the grip, fingers over the right hand's.
+      support: {
+        part: { center: [0.004, -0.012, -0.004], half: [0.032, 0.036, 0.03], round: 0.015, pitch: -0.42 },
+        palm: [-0.046, -0.018, 0.006],
+        facing: [1, 0.15, 0],
+        thumbSide: [0, 0.55, -1],
+        thumb: [-0.1, 0.3, -1],
+      },
+      // Palm under the base plate, pushing the magazine up the grip.
+      mag: {
+        part: { center: [0, -0.0063, -0.0029], half: [0.0105, 0.042, 0.012], round: 0.004, pitch: -0.42 },
+        palm: [0, -0.0648, 0.0233],
+        facing: [0, 0.913, -0.408],
+        thumbSide: [-1, 0, 0],
+        thumb: [-0.2, 1, 0],
+        frame: "mag",
+      },
     },
   },
 };
@@ -52,34 +170,30 @@ const FINGERS = ["index", "middle", "ring", "pinky"] as const;
 const MAX_CURL = [1.55, 1.9, 1.35];
 const THUMB_MAX_CURL = [0.6, 0.8];
 const FINGER_RADIUS = 0.0085;
-/** Relaxed support hand while it travels to the magazine, as a fraction of the grip. */
-const RELAXED = 0.35;
 const STEP = 0.06;
 
-export interface FingerPose {
-  name: string;
-  /** Relaxed pose, used when the hand lets go (reload). */
-  open: THREE.Quaternion;
-  closed: THREE.Quaternion;
+export interface HandPose {
+  /** Hand bone transform in its frame's space (weapon space for "gun"). */
+  matrix: THREE.Matrix4;
+  frame: HandFrame;
+  /** Local rotations of `GripPose.fingers[side]`, same order. */
+  fingers: THREE.Quaternion[];
 }
 
 export interface GripPose {
-  /** Hand bone transforms in weapon space. */
-  right: THREE.Matrix4;
-  left: THREE.Matrix4;
-  /** Finger bone local rotations for both hands. */
-  fingers: FingerPose[];
+  /** Finger bone names driven per hand. */
+  fingers: { r: string[]; l: string[] };
+  right: Partial<Record<RightPose, HandPose>> & { grip: HandPose };
+  left: Partial<Record<LeftPose, HandPose>> & { support: HandPose };
 }
 
 const cache = new WeakMap<CharacterTemplate, Map<WeaponId, GripPose>>();
 
-export function gripPose(template: CharacterTemplate, weapon: WeaponId): GripPose | null {
-  const grip = GRIPS[weapon];
-  if (!grip) return null;
+export function gripPose(template: CharacterTemplate, weapon: WeaponId): GripPose {
   let byWeapon = cache.get(template);
   if (!byWeapon) cache.set(template, byWeapon = new Map());
   let pose = byWeapon.get(weapon);
-  if (!pose) byWeapon.set(weapon, pose = solveGrip(template, grip));
+  if (!pose) byWeapon.set(weapon, pose = solveGrips(template, weapon));
   return pose;
 }
 
@@ -91,55 +205,75 @@ const _y = new THREE.Vector3();
 const _z = new THREE.Vector3();
 const AXIS_X = new THREE.Vector3(1, 0, 0);
 
-function solveGrip(template: CharacterTemplate, grip: { right: HandGrip; left: HandGrip }): GripPose {
+/** Seated origin of a frame in weapon space. */
+function frameOrigin(weapon: WeaponId, frame: HandFrame): V3 {
+  if (frame === "gun") return [0, 0, 0];
+  if (frame === "shell") return SHELL_PORT;
+  return WEAPON_PARTS[weapon]![frame]!.pivot;
+}
+
+function solveGrips(template: CharacterTemplate, weapon: WeaponId): GripPose {
   // Solve on a bind-pose copy whose hands are detached, so "world" here is weapon space.
   const inst = instantiateCharacter(template, 0, false);
   inst.root.updateMatrixWorld(true);
-  const fingers: FingerPose[] = [];
-  const hand = (side: "r" | "l", g: HandGrip) => {
+  const spec = GRIPS[weapon];
+  const fingers = { r: [] as string[], l: [] as string[] };
+  const solveSide = <K extends string>(side: "r" | "l", grips: Record<K, HandGrip>) => {
     const bone = inst.bones.get(`hand_${side}`)!;
     const scale = bone.getWorldScale(new THREE.Vector3());
     bone.removeFromParent();
     bone.scale.copy(scale);
-    // Hand frame: +Y along the fingers, +Z toward the thumb, palm facing -X (right) / +X (left).
-    const facing = _v.set(...g.facing).normalize();
-    _x.copy(facing).multiplyScalar(side === "r" ? -1 : 1);
-    _z.set(...g.thumbSide).projectOnPlane(_x).normalize();
-    _y.crossVectors(_z, _x);
-    const basis = new THREE.Matrix4().makeBasis(_x, _y, _z);
-    bone.quaternion.setFromRotationMatrix(basis);
-    // Palm centre: between the wrist and the middle knuckle, on the palm skin.
-    const palm = _v2.set(side === "r" ? -0.02 : 0.02, 0.065, -0.004).multiply(scale).applyQuaternion(bone.quaternion);
-    bone.position.set(...g.palm).sub(palm);
-    bone.updateMatrixWorld(true);
-
-    const sdf = partDistance(g.part);
     const b = (name: string) => inst.bones.get(`${name}_${side}`);
-    const chains: { names: string[]; curls?: readonly number[]; thumb?: boolean }[] = FINGERS.map((f) => ({
-      names: [1, 2, 3, 4].map((j) => j === 4 ? `${f}_04_leaf` : `${f}_0${j}`),
-      curls: f === "index" ? g.trigger : undefined,
-    }));
-    chains.push({ names: ["thumb_01", "thumb_02", "thumb_03", "thumb_04_leaf"], thumb: true });
-    for (const chain of chains) {
-      const found = chain.names.map(b);
-      if (found.some((x) => !x)) continue;
-      const bones = found as THREE.Bone[];
-      const open = bones.slice(0, 3).map((x) => x.quaternion.clone());
-      if (chain.thumb) aimThumb(bones, new THREE.Vector3(...g.thumb).normalize(), g.part);
-      const first = chain.thumb ? 1 : 0;
-      for (let j = first; j < 3; j++) {
-        const fixed = chain.curls?.[j];
-        if (fixed !== undefined) curl(bones[j], fixed);
-        else wrap(bones[j], bones[j + 1], chain.thumb ? THUMB_MAX_CURL[j - 1] : MAX_CURL[j], sdf);
-      }
-      for (let j = 0; j < 3; j++) {
-        const closed = bones[j].quaternion.clone();
-        fingers.push({ name: bones[j].name, closed, open: open[j].slerp(closed, RELAXED) });
-      }
+    const chains: { bones: THREE.Bone[]; trigger: boolean; thumb: boolean }[] = [];
+    for (const f of FINGERS) {
+      const found = [1, 2, 3, 4].map((j) => b(j === 4 ? `${f}_04_leaf` : `${f}_0${j}`));
+      if (found.every(Boolean)) chains.push({ bones: found as THREE.Bone[], trigger: f === "index", thumb: false });
     }
-    return bone.matrixWorld.clone();
+    const thumb = ["thumb_01", "thumb_02", "thumb_03", "thumb_04_leaf"].map(b);
+    if (thumb.every(Boolean)) chains.push({ bones: thumb as THREE.Bone[], trigger: false, thumb: true });
+    const driven = chains.flatMap((c) => c.bones.slice(0, 3));
+    fingers[side] = driven.map((x) => x.name);
+    const bind = driven.map((x) => x.quaternion.clone());
+
+    const poses = {} as Record<K, HandPose>;
+    for (const name of Object.keys(grips) as K[]) {
+      const g = grips[name];
+      driven.forEach((x, i) => x.quaternion.copy(bind[i]));
+      // Hand frame: +Y along the fingers, +Z toward the thumb, palm facing -X (right) / +X (left).
+      const facing = _v.set(...g.facing).normalize();
+      _x.copy(facing).multiplyScalar(side === "r" ? -1 : 1);
+      _z.set(...g.thumbSide).projectOnPlane(_x).normalize();
+      _y.crossVectors(_z, _x);
+      bone.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(_x, _y, _z));
+      // Palm centre: between the wrist and the middle knuckle, on the palm skin.
+      const palm = _v2.set(side === "r" ? -0.02 : 0.02, 0.065, -0.004).multiply(scale).applyQuaternion(bone.quaternion);
+      bone.position.set(...g.palm).sub(palm);
+      bone.updateMatrixWorld(true);
+
+      const sdf = partDistance(g.part);
+      for (const chain of chains) {
+        const bones = chain.bones;
+        if (chain.thumb) aimThumb(bones, new THREE.Vector3(...g.thumb).normalize(), g.part);
+        const first = chain.thumb ? 1 : 0;
+        for (let j = first; j < 3; j++) {
+          const fixed = chain.trigger ? g.trigger?.[j] : undefined;
+          if (fixed !== undefined) curl(bones[j], fixed);
+          else wrap(bones[j], bones[j + 1], chain.thumb ? THUMB_MAX_CURL[j - 1] : MAX_CURL[j], sdf);
+        }
+      }
+      const frame = g.frame ?? "gun";
+      const origin = frameOrigin(weapon, frame);
+      poses[name] = {
+        matrix: new THREE.Matrix4().makeTranslation(-origin[0], -origin[1], -origin[2]).multiply(bone.matrixWorld),
+        frame,
+        fingers: driven.map((x) => x.quaternion.clone()),
+      };
+    }
+    return poses;
   };
-  return { right: hand("r", grip.right), left: hand("l", grip.left), fingers };
+  const right = solveSide("r", spec.right as Record<RightPose, HandGrip>);
+  const left = solveSide("l", spec.left as Record<LeftPose, HandGrip>);
+  return { fingers, right, left };
 }
 
 function curl(bone: THREE.Object3D, angle: number) {

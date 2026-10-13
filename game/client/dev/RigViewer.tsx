@@ -11,7 +11,7 @@ import type { WeaponId } from "../../shared/weapons";
 
 const WEAPONS: WeaponId[] = ["ar", "smg", "shotgun", "sniper", "pistol"];
 
-function Rigs({ pitch, speed, reload, ads }: { pitch: number; speed: number; reload: number; ads: number }) {
+function Rigs({ pitch, speed, reload, ads, shot, draw }: { pitch: number; speed: number; reload: number; ads: number; shot: number; draw: number }) {
   const [male, female] = use(loadCharacters());
   const weapons = use(loadWeapons());
   const rigs = useMemo(() => WEAPONS.flatMap((w) => [male, female].map((template, gender) => {
@@ -30,7 +30,7 @@ function Rigs({ pitch, speed, reload, ads }: { pitch: number; speed: number; rel
     rigs.forEach((r, i) => {
       const s: RigState = {
         x: (Math.floor(i / 2) - 2) * 1.3, y: 0, z: (i % 2) * 1.7, yaw: Math.PI * 0.75, pitch, speed, moveYaw: Math.PI * 0.75,
-        crouch: false, grounded: true, alive: true, sprint: 0, ads, reload, recoil: 0,
+        crouch: false, grounded: true, alive: true, sprint: 0, ads, reload, recoil: 0, sinceShot: shot, sinceDraw: draw,
       };
       r.update(Math.min(dt, 0.05), s);
     });
@@ -40,7 +40,7 @@ function Rigs({ pitch, speed, reload, ads }: { pitch: number; speed: number; rel
 
 const FPP_EYE = new THREE.Vector3(0, 1.62, 0);
 
-function FppRig({ weapon, ads, pitch, reload, orbit }: { weapon: WeaponId; ads: number; pitch: number; reload: number; orbit: boolean }) {
+function FppRig({ weapon, ads, pitch, reload, orbit, shot, draw }: { weapon: WeaponId; ads: number; pitch: number; reload: number; orbit: boolean; shot: number; draw: number }) {
   const [male] = use(loadCharacters());
   const weapons = use(loadWeapons());
   const rig = useMemo(() => {
@@ -50,7 +50,8 @@ function FppRig({ weapon, ads, pitch, reload, orbit }: { weapon: WeaponId; ads: 
   }, [male, weapons, weapon]);
   const { scene, camera } = useThree();
   useEffect(() => {
-    (window as unknown as { __rigs: CharacterRig[] }).__rigs = [rig];
+    (window as unknown as { __rigs: CharacterRig[]; THREE: typeof THREE }).__rigs = [rig];
+    (window as unknown as { THREE: typeof THREE }).THREE = THREE;
     scene.add(rig.object);
     return () => rig.dispose();
   }, [rig, scene]);
@@ -64,13 +65,13 @@ function FppRig({ weapon, ads, pitch, reload, orbit }: { weapon: WeaponId; ads: 
     }
     rig.update(Math.min(dt, 0.05), {
       x: 0, y: 0, z: 0, yaw: 0, pitch, eye: FPP_EYE, view,
-      speed: 0, moveYaw: 0, crouch: false, grounded: true, alive: true, sprint: 0, ads, reload, recoil: 0,
+      speed: 0, moveYaw: 0, crouch: false, grounded: true, alive: true, sprint: 0, ads, reload, recoil: 0, sinceShot: shot, sinceDraw: draw,
     });
   });
   return null;
 }
 
-export default function RigViewer(props: { fpp: boolean; orbit: boolean; weapon: WeaponId; pitch: number; speed: number; reload: number; ads: number; cam: [number, number, number]; target?: [number, number, number] }) {
+export default function RigViewer(props: { fpp: boolean; orbit: boolean; weapon: WeaponId; pitch: number; speed: number; reload: number; ads: number; shot: number; draw: number; cam: [number, number, number]; target?: [number, number, number] }) {
   return (
     <div style={{ position: "fixed", inset: 0 }}>
       <Canvas shadows camera={{ position: props.cam, fov: props.fpp && !props.orbit ? 78 : 40, near: 0.02 }} gl={{ preserveDrawingBuffer: true }}>
@@ -78,7 +79,7 @@ export default function RigViewer(props: { fpp: boolean; orbit: boolean; weapon:
         <directionalLight position={[3, 6, 4]} intensity={2.5} castShadow />
         <Suspense fallback={null}>
           <Environment preset="city" />
-          {props.fpp ? <FppRig weapon={props.weapon} ads={props.ads} pitch={props.pitch} reload={props.reload} orbit={props.orbit} /> : <Rigs {...props} />}
+          {props.fpp ? <FppRig weapon={props.weapon} ads={props.ads} pitch={props.pitch} reload={props.reload} orbit={props.orbit} shot={props.shot} draw={props.draw} /> : <Rigs {...props} />}
         </Suspense>
         <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
           <planeGeometry args={[30, 30]} />

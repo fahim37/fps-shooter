@@ -38,6 +38,9 @@ export class RemotePlayer {
   private reloadT = -1;
   private stepDist = 0;
   recoil = 0;
+  /** Seconds since this player last fired / drew the current gun, for the rig's handling. */
+  private sinceShot = Infinity;
+  private sinceDraw = Infinity;
   readonly head = new THREE.Vector3();
   private readable = false;
 
@@ -70,6 +73,8 @@ export class RemotePlayer {
   setWeapon(w: WeaponId) {
     if (w === this.weapon || !WEAPONS[w]) return;
     this.weapon = w;
+    this.sinceDraw = 0;
+    this.sinceShot = Infinity;
     this.rig?.setWeapon(w);
   }
 
@@ -81,6 +86,7 @@ export class RemotePlayer {
 
   onShot() {
     this.recoil = 1;
+    this.sinceShot = 0;
   }
 
   /** Pose used for local hit prediction (what we see on screen). */
@@ -152,6 +158,8 @@ export class RemotePlayer {
     if (reloading) this.reloadT = this.reloadT < 0 ? 0 : this.reloadT + dt / (WEAPONS[this.weapon].reloadMs / 1000);
     else this.reloadT = -1;
     this.recoil = Math.max(0, this.recoil - dt * 8);
+    this.sinceShot += dt;
+    this.sinceDraw += dt;
 
     this.rig.update(Math.min(dt, 0.05), {
       x: this.pos.x, y: this.pos.y, z: this.pos.z,
@@ -163,7 +171,7 @@ export class RemotePlayer {
       sprint: (this.flags & F_SPRINT) ? 1 : 0,
       ads: (this.flags & F_ADS) ? 1 : 0,
       reload: this.reloadT >= 0 ? Math.min(this.reloadT, 1) : -1,
-      recoil: this.recoil,
+      recoil: this.recoil, sinceShot: this.sinceShot, sinceDraw: this.sinceDraw,
     });
     const headBone = this.rig.inst?.bones.get("Head");
     if (headBone) headBone.getWorldPosition(this.head).y += 0.1;

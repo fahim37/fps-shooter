@@ -41,6 +41,9 @@ export class LocalPlayer {
   reloadStart = 0;
   reloadEnd = 0;
   switchEnd = 0;
+  /** When the current gun was last fired and drawn (performance.now ms), for the rig's handling. */
+  private lastShotAt = -Infinity;
+  private drawAt = 0;
   private cadence = new ShotCadence();
   private shotSeq = 0;
   private pendingShots: { shot: number; weapon: WeaponId }[] = [];
@@ -54,6 +57,8 @@ export class LocalPlayer {
   lean = 0;
   /** Side latched by toggle peeking (setting or touch buttons). */
   private leanLatch = 0;
+  /** A peek is wanted (held or latched): peeking aims down sights. */
+  private peeking = false;
   grenades = GRENADES_PER_LIFE;
   private cookStart = 0;
   throwAnim = 0;
@@ -120,12 +125,15 @@ export class LocalPlayer {
     this.pendingShots = [];
     this.reloadEnd = 0;
     this.switchEnd = performance.now() + 300;
+    this.drawAt = performance.now();
+    this.lastShotAt = -Infinity;
     this.cookStart = 0;
     this.alive = true;
     this.ads = this.adsProgress = 0;
     this.sendAt = 0;
     this.acc = this.pendingLand = this.landDip = this.crouchT = this.recoil = this.burst = 0;
     this.lean = this.leanLatch = 0;
+    this.peeking = false;
     this.cadence.reset();
     this.sprintBlockUntil = this.stepDist = 0;
     this.triggerReleased = true;
@@ -249,10 +257,10 @@ export class LocalPlayer {
     }
     this.landDip = Math.max(0, this.landDip - dt * 0.6);
     this.crouchT += ((input.crouch ? 1 : 0) - this.crouchT) * Math.min(1, dt * 12);
-    this.updateLean(dt, input, s.leanToggle);
+    this.updateLean(dt, input, s.leanToggle, wantsSprint && fwd > 0.5);
 
-    // ---- ADS
-    const adsTarget = adsHeld && !this.reloading && now > this.switchEnd ? 1 : 0;
+    // ---- ADS (peeking raises the sights too)
+    const adsTarget = (adsHeld || this.peeking) && !this.reloading && now > this.switchEnd ? 1 : 0;
     const adsRate = 1000 / def.adsMs;
     this.adsProgress = THREE.MathUtils.clamp(this.adsProgress + Math.sign(adsTarget - this.adsProgress) * adsRate * dt, 0, 1);
     this.ads = THREE.MathUtils.smoothstep(this.adsProgress, 0, 1);
@@ -302,16 +310,21 @@ export class LocalPlayer {
     input.endFrame();
   }
 
-  /** PUBG-style peek: hold (or toggle) Q / E. Sprinting stands you back up straight. */
-  private updateLean(dt: number, input: Input, toggle: boolean) {
+  /**
+   * PUBG-style peek: hold (or toggle) Q / E. Sprinting stands you back up straight; asking to
+   * sprint counts too, since peeking aims and aiming would otherwise block the sprint.
+   */
+  private updateLean(dt: number, input: Input, toggle: boolean, sprintWanted: boolean) {
     const tap = (code: string, side: number, latch: boolean) => {
       if (input.consume(code) && latch) this.leanLatch = this.leanLatch === side ? 0 : side;
     };
     tap("KeyQ", -1, toggle); tap("KeyE", 1, toggle);
     tap("PeekLeft", -1, true); tap("PeekRight", 1, true);
     const held = toggle ? 0 : (input.held("KeyE") ? 1 : 0) - (input.held("KeyQ") ? 1 : 0);
-    if (this.ms.sprinting) this.leanLatch = 0;
-    const target = this.ms.sprinting ? 0 : held || this.leanLatch;
+    const sprinting = this.ms.sprinting || sprintWanted;
+    if (sprinting) this.leanLatch = 0;
+    const target = sprinting ? 0 : held || this.leanLatch;
+    this.peeking = target !== 0;
     const step = LEAN_RATE * dt;
     this.lean += Math.max(-step, Math.min(step, target - this.lean));
     // Snap in immediately when a wall closes in; never let the camera poke through.
@@ -376,6 +389,8 @@ export class LocalPlayer {
     this.weapon = w;
     this.reloadEnd = 0;
     this.switchEnd = now + WEAPONS[w].equipMs;
+    this.drawAt = now;
+    this.lastShotAt = -Infinity;
     this.adsProgress = this.ads = 0;
     this.kickPitch = this.kickYaw = this.burst = 0;
     this.cadence.reset();
@@ -410,6 +425,7 @@ export class LocalPlayer {
     this.triggerReleased = false;
     this.cadence.record(now, interval, def.auto);
     this.sprintBlockUntil = now + 250;
+    this.lastShotAt = now;
     a.mag--;
 
     const eye: V3 = [this.eye.x, this.eye.y, this.eye.z];
@@ -454,6 +470,10 @@ export class LocalPlayer {
     this.game.send("grenade", { origin: [this.eye.x, this.eye.y - 0.1, this.eye.z], dir, cooked });
     audio.grenadeThrow();
   }
+
+  /** Seconds since the last shot / since the current gun was drawn. */
+  sinceShot(now: number) { return (now - this.lastShotAt) / 1000; }
+  sinceDraw(now: number) { return (now - this.drawAt) / 1000; }
 
   get cooking() {
     return this.cookStart > 0;
