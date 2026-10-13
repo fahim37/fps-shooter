@@ -46,7 +46,8 @@ export interface Settings {
   thirdPerson: boolean;
   /** Q/E peek latches on a tap instead of only while held. */
   leanToggle: boolean;
-  showFps: boolean;
+  /** FPS meter in the top-right corner of a match. */
+  fpsMeter: boolean;
   set: (patch: Partial<Omit<Settings, "set">>) => void;
 }
 
@@ -69,7 +70,7 @@ export function sanitizeSettings(value: unknown): Partial<Omit<Settings, "set">>
   const out: Partial<Omit<Settings, "set">> = {};
   if (typeof input.name === "string") out.name = input.name.slice(0, 20);
   if (QUALITY_ORDER.includes(input.quality as Quality)) out.quality = input.quality as Quality;
-  for (const key of ["adaptiveResolution", "clearView", "invertY", "thirdPerson", "leanToggle", "showFps"] as const) {
+  for (const key of ["adaptiveResolution", "clearView", "invertY", "thirdPerson", "leanToggle", "fpsMeter"] as const) {
     if (typeof input[key] === "boolean") out[key] = input[key];
   }
   const ranges = { sensitivity: [0.2, 3], adsSensitivity: [0.2, 1.5], fov: [60, 110], volume: [0, 1] } as const;
@@ -101,7 +102,7 @@ export const useSettings = create<Settings>((set, get) => ({
   invertY: false,
   thirdPerson: false,
   leanToggle: false,
-  showFps: false,
+  fpsMeter: true,
   ...load(),
   set: (patch) => {
     set(patch);

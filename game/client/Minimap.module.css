@@ -13,3 +13,6 @@
 @media (max-width: 800px), (max-height: 550px) { .panel { right: max(12px, env(safe-area-inset-right)); }.heading, .legend { height: 18px; font-size: 6px; }.heading { padding: 0 6px; }.heading small { display: none; }.legend { letter-spacing: 0; }.legend>span { gap: 3px; }.legend i { width: 4px; height: 4px; } }
 
 .road { fill: #6e7967; }
+/* Touch: the right side belongs to the action buttons; a compact map takes the top-left corner. */
+:global(.game-view[data-touch]) .panel { top: max(8px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); right: auto; width: 84px; border-color: #c8d4c130; background: #0e191cc4; }
+:global(.game-view[data-touch]) .heading, :global(.game-view[data-touch]) .legend { display: none; }

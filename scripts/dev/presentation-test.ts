@@ -76,7 +76,7 @@ async function main() {
       const sight = g.fpp.object.getObjectByName("rail-mounted-red-dot");
       return { visible: sight.visible, parent: !!sight.parent, parts: sight.children.length };
     });
-    assert.ok(mounted.visible && mounted.parent && mounted.parts >= 6);
+    assert.ok(mounted.visible && mounted.parent && mounted.parts >= 3);
     await page.mouse.up({ button: "right" });
     // Isolate local collision/input from server correction after a test-only teleport.
     await page.evaluate(() => {

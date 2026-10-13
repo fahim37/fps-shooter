@@ -1,9 +1,9 @@
 .control {
   position: absolute;
   z-index: 6;
-  top: 98px;
+  top: 162px;
   left: 24px;
-  width: 184px;
+  width: 208px;
   display: grid;
   gap: 7px;
   padding: 11px 12px;
@@ -38,6 +38,8 @@
 .touchControl button small { font-size: 6.5px; letter-spacing: .03em; }
 .touchControl button:focus-visible { outline: 2px solid #d9ed79; outline-offset: 3px; }
 .control select:focus-visible, .adaptive input:focus-visible { outline: 2px solid #d9ed79; outline-offset: 3px; }
+/* Below the match stats card. */
+@media (max-width: 800px), (max-height: 550px) { .control { top: 104px; } }
 @media (max-width: 640px) {
   .control { top: auto; bottom: 82px; left: 50%; transform: translateX(-50%); width: 153px; padding: 8px; gap: 5px; }
 }

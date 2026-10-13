@@ -24,6 +24,7 @@ export interface ScoreRow {
   team: number;
   kills: number;
   deaths: number;
+  assists: number;
   score: number;
   ping: number;
   bot: boolean;
@@ -91,11 +92,15 @@ export interface HudState {
   locked: boolean;
   menu: boolean;
   loadoutOpen: boolean;
+  /** How to play overlay (H). */
+  help: boolean;
   customizingControls: boolean;
   scoreboard: boolean;
   touch: boolean;
   mobilePortrait: boolean;
   fps: number;
+  /** Frame rate of the slowest frame in the last second (stutter shows here, not in the average). */
+  fpsLow: number;
   ping: number;
   set: (patch: Partial<HudState>) => void;
 }
@@ -151,11 +156,13 @@ export const useHud = create<HudState>((set) => ({
   locked: false,
   menu: false,
   loadoutOpen: false,
+  help: false,
   customizingControls: false,
   scoreboard: false,
   touch: false,
   mobilePortrait: false,
   fps: 0,
+  fpsLow: 0,
   ping: 0,
   set: (patch) => set(patch),
 }));

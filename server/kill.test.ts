@@ -6,8 +6,8 @@ vi.mock("./world", () => ({ map: {}, RAPIER: {} }));
 vi.mock("./bot", () => ({ Bot: class {}, BOT_NAMES: [] }));
 
 function player(id: string, x: number) {
-  return { id, st: { name: id, team: 1, hp: 40, alive: true, x, y: 0, z: 0, weapon: "ar", kills: 0, deaths: 0, score: 0, streak: 0 },
-    client: { send: vi.fn() }, ammo: {}, lastAttacker: "", reloadingUntil: 0 } as unknown as ServerPlayer;
+  return { id, st: { name: id, team: 1, hp: 40, alive: true, x, y: 0, z: 0, weapon: "ar", kills: 0, deaths: 0, assists: 0, score: 0, streak: 0 },
+    client: { send: vi.fn() }, ammo: {}, lastAttacker: "", damagedBy: new Map(), reloadingUntil: 0 } as unknown as ServerPlayer;
 }
 
 describe("elimination snapshots", () => {
@@ -27,5 +27,30 @@ describe("elimination snapshots", () => {
     MatchRoom.prototype.damage.call(room as unknown as MatchRoom, victim, 100, null, "fall", "body", [0, 0, 0]);
     expect(broadcast.mock.calls[0][1]).toMatchObject({ killer: "Victim", victim: "Victim" });
     expect(broadcast.mock.calls[0][1].killerInfo).toBeUndefined();
+  });
+
+  it("credits an assist to everyone else who hurt the victim recently, but not the killer", () => {
+    const killer = player("Killer", 30), helper = player("Helper", 10), stale = player("Stale", 5), victim = player("Victim", 0);
+    const room = { state: { phase: "live", mode: "ffa" }, players: new Map([killer, helper, stale, victim].map((p) => [p.id, p])), broadcast: vi.fn(), checkScoreLimit: vi.fn() };
+    victim.st.hp = 100;
+    const damage = (from: ServerPlayer, amount: number) => MatchRoom.prototype.damage.call(room as unknown as MatchRoom, victim, amount, from, "ar", "body", [0, 0, 0]);
+    damage(stale, 10);
+    victim.damagedBy.set(stale.id, victim.damagedBy.get(stale.id)! - 11_000);
+    damage(helper, 30);
+    damage(killer, 20);
+    expect(damage(killer, 100)).toBe(true);
+    expect([killer.st.kills, killer.st.assists, helper.st.assists, stale.st.assists]).toEqual([1, 0, 1, 0]);
+    expect(helper.st.score).toBe(50);
+    expect(victim.damagedBy.size).toBe(0);
+  });
+});
+
+describe("player names", () => {
+  it("numbers a duplicate name instead of sharing it", () => {
+    const room = { players: new Map([["a", player("Raven", 0)], ["b", player("raven2", 0)]]) };
+    expect(MatchRoom.prototype.uniqueName.call(room as unknown as MatchRoom, "Raven")).toBe("Raven3");
+    expect(MatchRoom.prototype.uniqueName.call(room as unknown as MatchRoom, "Fox")).toBe("Fox");
+    room.players.set("c", player("SixteenCharName!", 0));
+    expect(MatchRoom.prototype.uniqueName.call(room as unknown as MatchRoom, "SixteenCharName!")).toBe("SixteenCharName2");
   });
 });

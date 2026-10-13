@@ -21,6 +21,7 @@ export const PlayerState = schema({
   protectedUntil: t.float64().default(0),
   kills: t.uint16().default(0),
   deaths: t.uint16().default(0),
+  assists: t.uint16().default(0),
   score: t.uint16().default(0),
   streak: t.uint8().default(0),
   ping: t.uint16().default(0),

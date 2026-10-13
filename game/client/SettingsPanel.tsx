@@ -11,7 +11,7 @@ export const SettingsPanel = memo(function SettingsPanel() {
     <label>FIELD OF VIEW {s.fov}°<input type="range" min={60} max={110} value={s.fov} onChange={(e) => s.set({ fov: Number(e.target.value) })} /></label>
     <label className="check-label"><input type="checkbox" checked={s.thirdPerson} onChange={(e) => s.set({ thirdPerson: e.target.checked })} /> Third-person camera</label>
     <label className="check-label"><input type="checkbox" checked={s.leanToggle} onChange={(e) => s.set({ leanToggle: e.target.checked })} /> Toggle peek (Q / E)</label>
-    <label className="check-label"><input type="checkbox" checked={s.showFps} onChange={(e) => s.set({ showFps: e.target.checked })} /> Show performance</label>
+    <label className="check-label"><input type="checkbox" checked={s.fpsMeter} onChange={(e) => s.set({ fpsMeter: e.target.checked })} /> FPS meter</label>
     <label className="check-label"><input type="checkbox" checked={s.adaptiveResolution} onChange={(e) => s.set({ adaptiveResolution: e.target.checked })} /> Auto-adjust resolution</label>
     <label className="check-label"><input type="checkbox" checked={s.clearView} onChange={(e) => s.set({ clearView: e.target.checked })} /> Clearer combat view</label>
     <p className="controls-help settings-note">Clearer combat view reduces bloom and shadow contrast, and removes darkened screen edges while aiming.</p>

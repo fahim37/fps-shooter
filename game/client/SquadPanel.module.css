@@ -27,12 +27,13 @@
   .body { gap: 2px; }
   .track { height: 3px; }
 }
-.panel.strip { top: max(64px, calc(env(safe-area-inset-top) + 50px)); left: max(12px, env(safe-area-inset-left)); width: auto; display: flex; gap: 3px; }
+/* Beside the compact touch minimap, under the K/D/A row. */
+.panel.strip { top: calc(max(8px, env(safe-area-inset-top)) + 30px); left: calc(max(12px, env(safe-area-inset-left)) + 92px); width: auto; display: flex; gap: 3px; }
 .strip .member { width: 58px; gap: 4px; padding: 2px 5px 3px 3px; }
 .strip .slot { width: 11px; height: 11px; font-size: 7px; }
 .strip .name { font-size: 8px; }
 .strip .name small, .strip .name em { display: none; }
 .strip .body { gap: 2px; }
 .strip .track { height: 3px; }
-.strip .member:nth-child(n + 5) { display: none; }
+.strip .member:nth-child(n + 4) { display: none; }
 @media (prefers-reduced-motion: reduce) { .lag, .fill { transition: none; } .member[data-state="critical"] .fill { animation: none; } }

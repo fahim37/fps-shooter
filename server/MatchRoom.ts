@@ -19,10 +19,15 @@ import { createRoomWorld, RAPIER } from "./world";
 import { getMap, isMapId } from "../game/shared/map/maps";
 import type { MapData } from "../game/shared/map/types";
 import { Bot, BOT_NAMES } from "./bot";
+import { NAME_MAX, randomName } from "../game/shared/names";
 import { startBlockReason } from "../game/shared/lobby";
 import { canShowoff } from "../game/shared/showcase";
 
 type V3 = [number, number, number];
+
+/** Damage dealt this recently before a kill counts as an assist. */
+const ASSIST_WINDOW_MS = 10_000;
+const ASSIST_SCORE = 50;
 
 export interface ServerPlayer {
   id: string;
@@ -35,6 +40,8 @@ export interface ServerPlayer {
   grenades: number;
   lastDamageAt: number;
   lastAttacker: string;
+  /** Who hurt this player during the current life, and when: assists on death. */
+  damagedBy: Map<string, number>;
   respawnAt: number;
   lastPoseAt: number;
   lastEmoteAt: number;
@@ -177,7 +184,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       throw new ServerError(403, "That team is full. Choose the other team or Auto assign.");
     }
     const st = new PlayerState();
-    st.name = sanitizeName(options?.name);
+    st.name = this.uniqueName(sanitizeName(options?.name));
     st.char = options?.char === 1 ? 1 : 0;
     st.team = this.state.mode === "tdm" && (requestedTeam === 1 || requestedTeam === 2) ? requestedTeam : this.pickTeam(true);
     st.ready = this.state.phase !== "waiting";
@@ -232,6 +239,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       grenades: GRENADES_PER_LIFE,
       lastDamageAt: 0,
       lastAttacker: "",
+      damagedBy: new Map(),
       respawnAt: 0,
       lastPoseAt: 0,
       lastEmoteAt: 0,
@@ -329,7 +337,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       this.state.team1 = this.state.team2 = 0;
       this.state.winner = "";
       for (const p of this.players.values()) {
-        p.st.kills = p.st.deaths = p.st.score = p.st.streak = 0;
+        p.st.kills = p.st.deaths = p.st.assists = p.st.score = p.st.streak = 0;
         this.spawn(p);
       }
       this.broadcast("announce", { text: "Match started", sub: MODE_INFO[this.state.mode as GameMode].name });
@@ -522,6 +530,16 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     }
   }
 
+  /** Two players in a room never share a name: a later joiner gets a number appended. */
+  uniqueName(name: string) {
+    const taken = new Set([...this.players.values()].map((p) => p.st.name.toLowerCase()));
+    if (!taken.has(name.toLowerCase())) return name;
+    for (let n = 2; ; n++) {
+      const candidate = `${name.slice(0, NAME_MAX - String(n).length)}${n}`;
+      if (!taken.has(candidate.toLowerCase())) return candidate;
+    }
+  }
+
   canDamage(a: ServerPlayer, b: ServerPlayer) {
     if (this.state.mode === "tdm" && a.st.team === b.st.team) return false;
     return now() >= b.st.protectedUntil;
@@ -533,7 +551,10 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     const hp = Math.max(0, target.st.hp - amount);
     target.st.hp = Math.round(hp);
     target.lastDamageAt = now();
-    if (attacker && attacker !== target) target.lastAttacker = attacker.id;
+    if (attacker && attacker !== target) {
+      target.lastAttacker = attacker.id;
+      target.damagedBy.set(attacker.id, now());
+    }
     target.client?.send("damaged", {
       from, damage: Math.round(amount), hp: target.st.hp,
       attacker: attacker && attacker !== target ? attacker.id : undefined,
@@ -561,6 +582,14 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
         else if (killer.st.team === 2) this.state.team2++;
       }
     }
+    // Everyone else who hurt the victim recently shares the kill as an assist.
+    for (const [id, at] of target.damagedBy) {
+      const helper = this.players.get(id);
+      if (!helper || helper === killer || helper === target || now() - at > ASSIST_WINDOW_MS) continue;
+      helper.st.assists++;
+      helper.st.score += ASSIST_SCORE;
+    }
+    target.damagedBy.clear();
     this.broadcast("kill", {
       killer: killer?.id ?? target.id,
       victim: target.id,
@@ -616,6 +645,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     p.reloadingUntil = 0;
     p.respawnAt = 0;
     p.lastAttacker = "";
+    p.damagedBy.clear();
     p.history.clear();
     p.expectSpawn = { x: sp.x, z: sp.z, until: t + 2500 };
     if (p.bot) p.bot.onSpawn(sp);
@@ -710,8 +740,8 @@ function fullAmmo(): ServerPlayer["ammo"] {
 }
 
 function sanitizeName(n: unknown) {
-  const s = typeof n === "string" ? n.replace(/[^\p{L}\p{N} _\-.]/gu, "").trim().slice(0, 16) : "";
-  return s || `Player${Math.floor(Math.random() * 900 + 100)}`;
+  const s = typeof n === "string" ? n.replace(/[^\p{L}\p{N} _\-.]/gu, "").trim().slice(0, NAME_MAX) : "";
+  return s || randomName();
 }
 
 function finite(...v: unknown[]) {

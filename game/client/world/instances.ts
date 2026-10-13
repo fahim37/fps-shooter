@@ -66,8 +66,10 @@ export function buildInstancedMeshes(
       mesh.instanceMatrix.needsUpdate = true;
       mesh.computeBoundingSphere();
       mesh.computeBoundingBox();
-      // Placements live in instanceMatrix; this mesh's own transform stays fixed.
+      // Placements live in instanceMatrix; this mesh's own transform stays fixed (identity), so
+      // the renderer can skip it when refreshing world matrices every frame.
       mesh.matrixAutoUpdate = false;
+      mesh.matrixWorldAutoUpdate = false;
       mesh.castShadow = !NO_SHADOW.test(name);
       mesh.receiveShadow = true;
       mesh.name = name;

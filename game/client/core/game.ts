@@ -51,6 +51,8 @@ export class Game {
   private pingAt = 0;
   private hudAt = 0;
   private averageFrameTime = 1 / 60;
+  /** Slowest frame of the current / last full second, for the FPS meter. */
+  private worstFrame = { current: 0, last: 1 / 60, elapsed: 0 };
   private killSeq = 0;
   private killer = "";
   private deathCamera = new DeathCamera();
@@ -210,7 +212,7 @@ export class Game {
       roomName: state.roomName,
       squad: buildSquad(state.players.entries(), this.room.sessionId, me?.team ?? 0, state.mode as GameMode),
       players: Array.from(state.players.entries()).map(([id, p]) => ({
-        id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, score: p.score,
+        id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, assists: p.assists ?? 0, score: p.score,
         ping: p.ping, bot: p.bot, alive: p.alive, me: id === this.room.sessionId, connected: p.connected,
       })).sort((a, b) => b.score - a.score || b.kills - a.kills),
     });
@@ -310,11 +312,16 @@ export class Game {
   update(dt: number, viewportHeight: number, pixelRatio = 1) {
     if (this.disposed || !this.local) return;
     this.averageFrameTime += (Math.min(dt, 0.25) - this.averageFrameTime) * (1 - Math.exp(-dt * 2));
+    const worst = this.worstFrame;
+    worst.current = Math.max(worst.current, dt);
+    worst.elapsed += dt;
+    if (worst.elapsed >= 1) { worst.last = worst.current; worst.current = worst.elapsed = 0; }
     dt = Math.min(dt, 0.1);
     const now = performance.now(), local = this.local;
     const portrait = this.input.touch && window.innerHeight > window.innerWidth;
     if (hud().mobilePortrait !== portrait) hud().set({ mobilePortrait: portrait });
     if (this.input.consume("KeyB")) this.openLoadout();
+    if (this.input.consume("KeyH")) hud().set({ help: !hud().help });
     const active = hud().conn === "connected" && !portrait && !hud().menu && !hud().loadoutOpen && !hud().customizingControls && !this.matchEnded && (this.input.locked || this.input.touch);
     this.input.enabled = active;
     if (!active) { this.input.releaseAll(); local.cancelActions(); }
@@ -407,6 +414,7 @@ export class Game {
         thirdPerson: local.thirdPerson, spreadDeg: local.spread, enemyInSight,
         crosshairRadius: Math.min(120, Math.max(3, spreadRadius(local.spread, fov, viewportHeight))),
         cameraFov: fov, locked: this.input.locked, scoreboard, fps: Math.round(1 / Math.max(this.averageFrameTime, 0.001)),
+        fpsLow: Math.round(1 / Math.max(this.worstFrame.last, 0.001)),
         ping: Math.round(this.clock.rtt), serverOffset: this.clock.offset,
         killerMarker: local.alive ? null : this.deathCamera.marker(this.camera),
         mapPlayers, peek: local.leanSide,

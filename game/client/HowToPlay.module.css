@@ -1,0 +1,29 @@
+.shade { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 20px; overflow: auto; background: #09100899; backdrop-filter: blur(3px); pointer-events: auto; text-shadow: none; }
+.panel { width: min(900px, 100%); max-height: calc(100vh - 40px); overflow: auto; padding: 26px 28px 28px; border: 1px solid #81927260; background: #141e16f2; box-shadow: 0 20px 100px #0009; color: #eeeede; }
+.header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.header h2 { margin: 8px 0 0; font-size: 28px; letter-spacing: -.04em; }
+.eyebrow { font: 10px var(--font-geist-mono), monospace; letter-spacing: .18em; color: var(--accent); }
+.close { width: 44px; height: 44px; border: 1px solid #ffffff30; background: transparent; color: #eeeede; font-size: 16px; cursor: pointer; }
+.close:hover { background: #ffffff10; }
+.closeHint { font: 10px var(--font-geist-mono), monospace; letter-spacing: .1em; color: #b9c5ae; }
+.goal { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 20px 0 6px; }
+.goal > div { padding: 12px 14px; border-left: 2px solid var(--accent); background: #d9ed7908; }
+.goal strong { font-size: 13px; }
+.goal p { margin: 5px 0 0; font-size: 12px; line-height: 1.55; color: #b9c5ae; }
+.columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 26px; }
+.group h3 { margin: 18px 0 8px; font: 10px var(--font-geist-mono), monospace; letter-spacing: .18em; color: #97a68b; }
+.group dl { margin: 0; }
+.row { display: grid; grid-template-columns: 112px 1fr; align-items: baseline; gap: 10px; padding: 7px 0; border-bottom: 1px solid #ffffff10; }
+.row dt { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
+.row dt i { margin: 0 3px; font-style: normal; color: #7d8a73; font-size: 10px; }
+.row dd { margin: 0; font-size: 12px; }
+.row dd small { display: block; margin-top: 2px; font-size: 10px; color: #9aa891; }
+.panel kbd { display: inline-block; min-width: 22px; padding: 3px 6px; border: 1px solid #d9ed7955; border-bottom-width: 2px; border-radius: 3px; background: #ffffff08; color: var(--accent); font: 10px var(--font-geist-mono), monospace; text-align: center; white-space: nowrap; }
+.tips { margin: 0; padding-left: 16px; font-size: 12px; line-height: 1.55; color: #c9d3bf; }
+.tips li { margin-bottom: 7px; }
+@media (max-width: 640px) {
+  .panel { padding: 18px 16px 20px; }
+  .header h2 { font-size: 22px; }
+  .goal { grid-template-columns: 1fr; }
+  .row { grid-template-columns: 96px 1fr; }
+}

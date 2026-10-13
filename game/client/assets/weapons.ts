@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { loadGLTF } from "./loaders";
 import type { WeaponId } from "../../shared/weapons";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import meta from "../../shared/generated/weapons-meta.json";
 
 export interface WeaponMeta {
@@ -82,6 +83,7 @@ export function loadWeapons() {
         node.position.set(...spec.pivot);
         child.add(node);
       }
+      mergeFlatMeshes(child, new Set(Object.keys(PARTS[id] ?? {})));
       map.set(id, child);
     }
     return map;
@@ -223,6 +225,74 @@ function extractPart(root: THREE.Object3D, ex: Extract, pivot: V3) {
     group.add(piece);
   }
   return group;
+}
+
+/**
+ * The guns use flat colors, no textures. Their meshes merge into one draw per moving piece, with
+ * each vertex carrying its original color, metalness and roughness: same look, a few draw
+ * calls per gun instead of one per material.
+ */
+let flatMaterial: THREE.MeshStandardMaterial | null = null;
+function gunMaterial() {
+  if (flatMaterial) return flatMaterial;
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 1, roughness: 1 });
+  m.name = "Gun_Flat";
+  m.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nattribute vec2 metalRough;\nvarying vec2 vMetalRough;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvMetalRough = metalRough;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nvarying vec2 vMetalRough;")
+      .replace("#include <roughnessmap_fragment>", "float roughnessFactor = vMetalRough.y;")
+      .replace("#include <metalnessmap_fragment>", "float metalnessFactor = vMetalRough.x;");
+  };
+  m.customProgramCacheKey = () => "gun-flat-v1";
+  return (flatMaterial = m);
+}
+
+function mergeFlatMeshes(root: THREE.Object3D, partNames: Set<string>) {
+  root.updateMatrixWorld(true);
+  const containers: THREE.Object3D[] = [root, ...root.children.filter((c) => partNames.has(c.name))];
+  for (const container of containers) {
+    const meshes: THREE.Mesh[] = [];
+    const collect = (o: THREE.Object3D) => {
+      for (const c of o.children) {
+        if (o === root && partNames.has(c.name)) continue;
+        if ((c as THREE.Mesh).isMesh) meshes.push(c as THREE.Mesh);
+        collect(c);
+      }
+    };
+    collect(container);
+    const flat = meshes.every((m) => {
+      const mat = m.material as THREE.MeshStandardMaterial;
+      return mat.isMeshStandardMaterial && !mat.map && !mat.transparent && m.geometry.getAttribute("normal");
+    });
+    if (meshes.length < 2 || !flat) continue;
+    const toContainer = new THREE.Matrix4().copy(container.matrixWorld).invert();
+    const geometries = meshes.map((m) => {
+      const mat = m.material as THREE.MeshStandardMaterial;
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", m.geometry.getAttribute("position").clone());
+      g.setAttribute("normal", m.geometry.getAttribute("normal").clone());
+      g.setIndex(m.geometry.getIndex()?.clone() ?? null);
+      g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(toContainer, m.matrixWorld));
+      const n = g.getAttribute("position").count;
+      const color = new Float32Array(n * 3), mr = new Float32Array(n * 2);
+      for (let i = 0; i < n; i++) { mat.color.toArray(color, i * 3); mr[i * 2] = mat.metalness; mr[i * 2 + 1] = mat.roughness; }
+      g.setAttribute("color", new THREE.BufferAttribute(color, 3));
+      g.setAttribute("metalRough", new THREE.BufferAttribute(mr, 2));
+      return g;
+    });
+    const indexed = geometries.every((g) => g.index);
+    const merged = mergeGeometries(indexed ? geometries : geometries.map((g) => g.index ? g.toNonIndexed() : g));
+    if (!merged) continue;
+    merged.computeBoundingSphere();
+    const mesh = new THREE.Mesh(merged, gunMaterial());
+    mesh.name = `${container.name}_flat`;
+    mesh.castShadow = mesh.receiveShadow = true;
+    for (const m of meshes) m.removeFromParent();
+    container.add(mesh);
+  }
 }
 
 function norm(v: V3): V3 {

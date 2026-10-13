@@ -1,0 +1,26 @@
+.card { position: absolute; top: 92px; left: max(24px, env(safe-area-inset-left)); width: 208px; margin: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid #d9ed7933; border-radius: 4px; background: #111812c4; pointer-events: none; text-shadow: none; }
+.cell { min-width: 0; display: grid; justify-items: center; gap: 4px; padding: 8px 4px 7px; }
+.cell + .cell { border-left: 1px solid #ffffff12; }
+.cell dt { display: grid; justify-items: center; gap: 3px; }
+.cell svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.cell svg .solid { fill: currentColor; stroke: none; }
+.cell dt span { font: 6.5px var(--font-geist-mono), monospace; letter-spacing: .06em; color: #aebaa2; }
+.cell dd { max-width: 100%; margin: 0; overflow: hidden; text-overflow: ellipsis; font: 600 15px var(--font-geist-mono), monospace; font-variant-numeric: tabular-nums; color: #f1f4e8; }
+.cell[data-stat="kills"] { color: var(--accent); }
+.cell[data-stat="deaths"] { color: #ff8b77; }
+.cell[data-stat="assists"] { color: #79b8ff; }
+.cell[data-stat="ratio"] { color: #e8d48a; }
+@media (max-width: 800px), (max-height: 550px) {
+  .card { top: 56px; left: max(12px, env(safe-area-inset-left)); width: 168px; }
+  .cell { padding: 5px 2px; gap: 2px; }
+  .cell svg { width: 12px; height: 12px; }
+  .cell dt span { font-size: 5.5px; letter-spacing: 0; }
+  .cell dd { font-size: 12px; }
+}
+/* Touch: one slim row beside the compact map, numbers only. */
+:global(.game-view[data-touch]) .card { top: max(8px, env(safe-area-inset-top)); left: calc(max(12px, env(safe-area-inset-left)) + 92px); width: auto; display: flex; border-color: #d9ed7926; background: #111812a8; }
+:global(.game-view[data-touch]) .cell { display: flex; align-items: center; gap: 4px; padding: 4px 7px; }
+:global(.game-view[data-touch]) .cell dt { display: flex; }
+:global(.game-view[data-touch]) .cell dt span { display: none; }
+:global(.game-view[data-touch]) .cell svg { width: 11px; height: 11px; }
+:global(.game-view[data-touch]) .cell dd { font-size: 11px; }

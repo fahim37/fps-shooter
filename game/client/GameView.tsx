@@ -31,6 +31,8 @@ import { Minimap } from "./Minimap";
 import { HealthBar } from "./HealthBar";
 import { SquadPanel } from "./SquadPanel";
 import { DamageIndicator } from "./DamageIndicator";
+import { MatchStats } from "./MatchStats";
+import { HowToPlay } from "./HowToPlay";
 
 class SceneBoundary extends Component<{ children: ReactNode; onLeave: () => void }, { error: string }> {
   state = { error: "" };
@@ -61,7 +63,7 @@ export default function GameView({ room, map: mapId, onLeave }: { room: GameRoom
   const [screenMessage, setScreenMessage] = useState("");
   const fullscreenAttempted = useRef(false);
   useEffect(() => () => { if (game?.input.touch) void exitMobileFullscreen(); }, [game]);
-  return <div className="game-view" onPointerDownCapture={(e) => {
+  return <div className="game-view" data-touch={game?.input.touch || undefined} onPointerDownCapture={(e) => {
     if (!game?.input.touch || !hud().ready || fullscreenAttempted.current || (e.target as HTMLElement).closest('[aria-label="Mobile screen options"], [aria-label="Landscape required"]')) return;
     fullscreenAttempted.current = true;
     void enterMobileFullscreen(e.currentTarget).then(setScreenMessage);
@@ -78,9 +80,19 @@ export default function GameView({ room, map: mapId, onLeave }: { room: GameRoom
   </div>;
 }
 
+/** Frame rate, frame time and the slowest recent frame, colored by how smooth play is. */
+function FpsMeter({ fps, low }: { fps: number; low: number }) {
+  const grade = (v: number) => v >= 55 ? "good" : v >= 30 ? "fair" : "poor";
+  return <span className="fps-meter" data-grade={grade(fps)} title="Frames per second · frame time · slowest frame in the last second">
+    <i aria-hidden="true" /><b>{fps}</b> FPS
+    <small>{(1000 / Math.max(fps, 1)).toFixed(1)} MS</small>
+    <small data-grade={grade(low)}>LOW {low}</small>
+  </span>;
+}
+
 function MatchHud({ game, map, onLeave }: { game: Game | null; map: MapId; onLeave: () => void }) {
   const h = useHud();
-  const showFps = useSettings((s) => s.showFps);
+  const fpsMeter = useSettings((s) => s.fpsMeter);
   const clearView = useSettings((s) => s.clearView);
   const [now, setNow] = useState(0);
   const optic = useLoadout((s) => s.optics[h.weapon]);
@@ -94,9 +106,10 @@ function MatchHud({ game, map, onLeave }: { game: Game | null; map: MapId; onLea
   const winner = h.winner === "draw" ? "Draw" : h.mode === "tdm" ? `${TEAM_NAMES[Number(h.winner) as 1 | 2] ?? ""} team wins` : `${h.players.find((p) => p.id === h.winner)?.name ?? "Player"} wins`;
   return <>
     <div className="hud-layer">
-      <div className="match-top"><span className="match-mode">{MODE_INFO[h.mode].name}<small>{h.code} · {h.phase.toUpperCase()}</small></span><div className="match-score">{h.mode === "tdm" && <b className="blue">{h.team1}</b>}<span>{time}<small>FIRST TO {h.scoreLimit}</small></span>{h.mode === "tdm" && <b className="red">{h.team2}</b>}</div><span className="match-stats">{h.ping} MS{showFps && <small>{h.fps} FPS</small>}</span></div>
+      <div className="match-top"><span className="match-mode">{MODE_INFO[h.mode].name}<small>{h.code} · {h.phase.toUpperCase()}</small></span><div className="match-score">{h.mode === "tdm" && <b className="blue">{h.team1}</b>}<span>{time}<small>FIRST TO {h.scoreLimit}</small></span>{h.mode === "tdm" && <b className="red">{h.team2}</b>}</div><span className="match-stats">{fpsMeter && h.ready && <FpsMeter fps={h.fps} low={h.fpsLow} />}<span className="ping-meter" title="Round-trip time to the game server"><b>{h.ping}</b> MS<small>PING</small></span></span></div>
       <KillFeed h={h} now={now} />
       {h.ready && !paused && !scoreboard && !h.loadoutOpen && !h.customizingControls && h.conn === "connected" && <><Minimap now={now} map={map} /><SquadPanel /></>}
+      {h.ready && h.alive && !paused && !scoreboard && !h.loadoutOpen && !h.customizingControls && h.conn === "connected" && <MatchStats />}
       {h.ready && !paused && !scoreboard && !h.loadoutOpen && <EliminationNotice h={h} now={now} />}
       {h.ready && h.alive && !paused && !scoreboard && <>
         {!clearView && h.ads > 0.1 && !h.scoped && <div className="ads-vignette" style={{ opacity: h.ads * 0.45 }} />}
@@ -108,14 +121,15 @@ function MatchHud({ game, map, onLeave }: { game: Game | null; map: MapId; onLea
         {h.protectedUntil > now + h.serverOffset && <div className="protected">SPAWN PROTECTION</div>}
       </>}
       {h.announce && now - h.announce.at < 3000 && <div className="announcement"><h2>{h.announce.text}</h2><p>{h.announce.sub}</p></div>}
-      {h.alive && <div className="hud-bottom"><div className="hud-hints">WASD MOVE · Q / E PEEK · R RELOAD · G GRENADE<br />V CAMERA · TAB SCORES · ESC PAUSE</div><div className="ammo"><small>{WEAPONS[h.weapon].name} · {h.thirdPerson ? "TPP" : "FPP"}</small><strong>{h.mag}<span> / {h.reserve}</span></strong><small>{h.reloading >= 0 ? `RELOADING ${Math.round(h.reloading * 100)}%` : `${h.grenades} GRENADES`}</small></div></div>}
+      {h.alive && <div className="hud-bottom"><div className="hud-hints">WASD MOVE · Q / E PEEK · R RELOAD · G GRENADE<br />V CAMERA · TAB SCORES · H HELP · ESC PAUSE</div><div className="ammo"><small>{WEAPONS[h.weapon].name} · {h.thirdPerson ? "TPP" : "FPP"}</small><strong>{h.mag}<span> / {h.reserve}</span></strong><small>{h.reloading >= 0 ? `RELOADING ${Math.round(h.reloading * 100)}%` : `${h.grenades} GRENADES`}</small></div></div>}
       {h.ready && h.alive && !paused && !scoreboard && !h.loadoutOpen && !h.customizingControls && <HealthBar h={h} now={now} />}
       {!h.alive && h.ready && !scoreboard && !paused && !h.loadoutOpen && <DeathRecap h={h} now={now} />}
     </div>
     {h.ready && h.alive && !h.mobilePortrait && !paused && !h.loadoutOpen && !scoreboard && !h.customizingControls && h.conn === "connected" && h.phase !== "ended" && game && <WeaponBar game={game} />}
     {h.loadoutOpen && h.ready && !failed && h.conn === "connected" && h.phase !== "ended" && game && <LoadoutPanel game={game} />}
     {h.touch && !h.mobilePortrait && h.ready && (h.alive || h.customizingControls) && !h.menu && !h.loadoutOpen && h.conn === "connected" && h.phase !== "ended" && game && <MobileControls game={game} />}
-    {scoreboard && <div className="scoreboard"><span className="eyebrow">{h.phase === "ended" ? "MATCH COMPLETE" : "FIELD REPORT"}</span><h2>{h.phase === "ended" ? winner : h.roomName}</h2><table><thead><tr><th>PLAYER</th><th>K</th><th>D</th><th>SCORE</th><th>PING</th></tr></thead><tbody>{h.players.map((p) => <tr key={p.id} className={p.me ? "self" : ""}><td><span className={p.team === 1 ? "blue" : p.team === 2 ? "red" : ""}>{p.name}</span>{p.me ? " (YOU)" : p.bot ? " [BOT]" : ""}{!p.connected && " · OFFLINE"}</td><td>{p.kills}</td><td>{p.deaths}</td><td>{p.score}</td><td>{p.bot ? "—" : p.ping}</td></tr>)}</tbody></table>{h.phase === "ended" && <p>Next match in {seconds}s <button onClick={onLeave}>Leave match</button></p>}</div>}
+    {scoreboard && <div className="scoreboard"><span className="eyebrow">{h.phase === "ended" ? "MATCH COMPLETE" : "FIELD REPORT"}</span><h2>{h.phase === "ended" ? winner : h.roomName}</h2><table><thead><tr><th>PLAYER</th><th>K</th><th>D</th><th>A</th><th>SCORE</th><th>PING</th></tr></thead><tbody>{h.players.map((p) => <tr key={p.id} className={p.me ? "self" : ""}><td><span className={p.team === 1 ? "blue" : p.team === 2 ? "red" : ""}>{p.name}</span>{p.me ? " (YOU)" : p.bot ? " [BOT]" : ""}{!p.connected && " · OFFLINE"}</td><td>{p.kills}</td><td>{p.deaths}</td><td>{p.assists}</td><td>{p.score}</td><td>{p.bot ? "—" : p.ping}</td></tr>)}</tbody></table>{h.phase === "ended" && <p>Next match in {seconds}s <button onClick={onLeave}>Leave match</button></p>}</div>}
+    {h.help && h.ready && <HowToPlay touch={h.touch} locked={h.locked && !paused} onClose={() => hud().set({ help: false })} />}
     {(!h.ready || failed || h.conn === "reconnecting" || (paused && !scoreboard)) && <div className="modal-shade"><div className="match-modal">
       <span className="eyebrow">HOLLOWMERE / {h.code}</span>
       <h2>{failed ? "Connection interrupted" : h.conn === "reconnecting" ? "Reconnecting…" : !h.ready ? `Loading ${MAPS[map].name}…` : "Ready to deploy?"}</h2>
@@ -125,9 +139,10 @@ function MatchHud({ game, map, onLeave }: { game: Game | null; map: MapId; onLea
         <button className="primary-button" onClick={() => game?.resume()}>ENTER MATCH <span>↗</span></button>
         {!h.touch && <button className="outline-button" onClick={() => game?.resume(true)}>ENTER FULLSCREEN MATCH</button>}
         {h.touch && <button className="outline-button" onClick={() => { game?.input.releaseAll(); hud().set({ menu: false, customizingControls: true }); }}>CUSTOMIZE TOUCH CONTROLS</button>}
+        <button className="outline-button" onClick={() => hud().set({ help: true })}>HOW TO PLAY · CONTROLS</button>
         {game && <LoadoutPicker game={game} />}
         <details className="settings-details"><summary>GAME SETTINGS & CONTROLS</summary><SettingsPanel /><p className="controls-help">WASD move · Mouse aim · Click fire · Right-click ADS · Shift sprint · Space jump · C crouch · Q / E peek · R reload · 1 / 2 or wheel switch · Hold G grenade · V camera · Tab scores</p></details>
-        <p className="controls-help">WASD to move, mouse to aim, click to shoot. Press Esc to pause and invite friends.</p>
+        <p className="controls-help">WASD to move, mouse to aim, click to shoot. Press H for all controls, Esc to pause and invite friends.</p>
       </>}
       <button className="outline-button" onClick={onLeave}>RETURN TO LOBBY</button>
     </div></div>}

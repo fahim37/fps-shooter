@@ -207,12 +207,9 @@ export class CharacterRig {
     this.object.visible = v;
   }
 
-  /** Detaches from the scene. Animation state is kept, so a rig can be re-added. */
+  /** Detaches from the scene. Animation state is kept, so a rig can be re-added. Sight geometry is shared. */
   dispose() {
     this.object.removeFromParent();
-    for (const sight of this.sights.values()) sight.object.traverse((o) => {
-      if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).geometry.dispose();
-    });
   }
 
   update(dt: number, s: RigState) {
