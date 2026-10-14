@@ -1,4 +1,4 @@
-"""Run as root after installing coturn: python3 deploy/setup-voice.py PUBLIC_IP."""
+"""Run as root after installing coturn: python3 deploy/setup-voice.py PUBLIC_IP [LOCAL_IP]."""
 import grp
 import ipaddress
 import json
@@ -8,6 +8,8 @@ import secrets
 import sys
 
 public_ip = str(ipaddress.IPv4Address(sys.argv[1]))
+bind_ip = str(ipaddress.IPv4Address(sys.argv[2])) if len(sys.argv) > 2 else public_ip
+os.umask(0o077)
 config_dir = Path("/etc/hollowmere")
 config_dir.mkdir(mode=0o700, exist_ok=True)
 voice_file = config_dir / "voice.json"
@@ -23,7 +25,8 @@ if turn_file.exists() and not backup.exists():
     backup.write_bytes(turn_file.read_bytes())
     backup.chmod(0o600)
 turn_file.write_text(f"""listening-port=3478
-listening-ip=0.0.0.0
+listening-ip={bind_ip}
+relay-ip={bind_ip}
 external-ip={public_ip}
 min-port=49160
 max-port=50159
