@@ -18,6 +18,8 @@
 .names > div { flex: 1; min-width: 0; }
 .names strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #f2f6ea; font-size: 15px; letter-spacing: .06em; text-transform: uppercase; text-shadow: 0 1px 6px #000c; }
 .names span { display: block; margin-top: 3px; color: #b8c7ab; font-size: 11px; text-shadow: 0 1px 4px #000c; }
+.showcase[data-lineup-size="4"] .names strong, .showcase[data-lineup-size="5"] .names strong, .showcase[data-lineup-size="6"] .names strong { font-size: clamp(8px, 1.5cqi, 12px); }
+.showcase[data-lineup-size="4"] .names span, .showcase[data-lineup-size="5"] .names span, .showcase[data-lineup-size="6"] .names span { font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .showoffs { position: relative; z-index: 2; flex: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 6px; border-top: 1px solid #ffffff14; background: #0a100cd9; }
 .showoffs button { min-height: 38px; padding: 6px 4px; border: 1px solid #ffffff22; background: #ffffff06; color: #cbd7bf; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .showoffs button:hover:not(:disabled) { border-color: #d9ed7970; }

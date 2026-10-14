@@ -27,7 +27,7 @@ export default function CharacterStage({ players, paused }: { players: ShowcaseP
     let previous = 0;
     const actors = new Map<string, Actor>();
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 30);
+    const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 150);
     const owned: { dispose(): void }[] = [];
     let renderer: THREE.WebGLRenderer;
     try {
@@ -142,7 +142,7 @@ export default function CharacterStage({ players, paused }: { players: ShowcaseP
     };
   }, [roster, retry]);
 
-  return <div className={styles.viewport} data-stage-status={status ? "loading" : "ready"}>
+  return <div className={styles.viewport} data-stage-status={status ? "loading" : "ready"} data-stage-players={players.length}>
     <div className={styles.canvasHost} ref={host} />
     {status && <div className={styles.notice} role="status">{status}{!status.startsWith("Loading") && <button type="button" onClick={() => setRetry((value) => value + 1)}>Retry preview</button>}</div>}
   </div>;

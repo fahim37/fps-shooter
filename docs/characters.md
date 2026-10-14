@@ -14,7 +14,7 @@ The home screen previews the selected body. Waiting rooms replicate each player'
 
 The combined character download is 51% smaller. These are file-size measurements, not an FPS benchmark.
 
-- One lobby renderer, at most two visible characters per page, capped at 30 FPS and 1.25 device pixel ratio.
+- One lobby renderer, up to six visible characters together per page, capped at 30 FPS and 1.25 device pixel ratio. Larger rooms page through groups of six; the camera fits the entire visible lineup, including narrow screens.
 - No world, physics, weapons, HDR environment, postprocessing or shadow maps loaded by the preview.
 - Only the visible character body and `lobby-anims.glb` are requested. Geometry/textures are cached and shared with gameplay; skeletons and mixers are independent.
 - Offscreen and hidden-tab rendering pauses. Reduced-motion preferences freeze animations; Pause motion and Hide preview are also available.

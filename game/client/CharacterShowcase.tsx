@@ -15,12 +15,13 @@ export function CharacterShowcase({ players, me, onShowoff, disabled = false, pr
   const [paused, setPaused] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [lastAt, setLastAt] = useState(0);
-  // Two bodies per page on all screens keeps faces legible and mobile skinning inexpensive.
-  const pages = Math.max(1, Math.ceil(players.length / 2));
+  // A six-player party fits together; larger rooms still have bounded animation cost.
+  const pageSize = 6;
+  const pages = Math.max(1, Math.ceil(players.length / pageSize));
   const current = Math.min(page, pages - 1);
-  const visible = players.slice(current * 2, current * 2 + 2);
+  const visible = players.slice(current * pageSize, current * pageSize + pageSize);
   const selected = players.find((p) => p.id === me)?.emote ?? "idle";
-  return <section className={styles.showcase} aria-label={preview ? "Character preview" : "Lobby character stage"}>
+  return <section className={styles.showcase} data-lineup-size={visible.length} aria-label={preview ? "Character preview" : "Lobby character stage"}>
     {preview && <span className={styles.watermark} aria-hidden="true">{visible[0]?.name}</span>}
     <div className={styles.heading}>
       <span>{preview ? "MEET YOUR RANGER" : "THE LINEUP"}</span>
