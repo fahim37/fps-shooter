@@ -1,22 +1,39 @@
-.showcase { min-width: 0; border: 1px solid #ffffff24; background: #101912; overflow: hidden; }
-.heading { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; gap: 10px; font-size: 11px; letter-spacing: .14em; color: #c8d5b8; }
+.showcase { position: relative; isolation: isolate; container-type: size; display: flex; flex-direction: column; width: 100%; height: 100%; min-width: 0; min-height: 0; border: 1px solid #ffffff1f; background: radial-gradient(ellipse 55% 40% at 50% 86%, #5a7a4a66, transparent 72%), linear-gradient(180deg, #111a14, #1a281f 80%, #121a15); overflow: hidden; }
 .showcase button { cursor: pointer; font: inherit; color: inherit; }
-.heading button,.stageTools button { border: 0; background: transparent; color: #b9c6ab; font-size: 12px; letter-spacing: normal; padding: 6px; }
 .showcase button:focus-visible { outline: 2px solid #d4eea4; outline-offset: -2px; }
 .showcase button:disabled { cursor: default; opacity: .4; }
-.viewport { height: 290px; width: 100%; position: relative; background: radial-gradient(ellipse at 50% 80%,#56754665,transparent 65%), linear-gradient(180deg,#141f19,#1c2b22); }
+/* Big callsign behind the ranger, like an agent-select splash. */
+.watermark { position: absolute; z-index: -1; left: 0; right: 0; top: 30%; overflow: hidden; text-align: center; white-space: nowrap; text-transform: uppercase; font-size: clamp(44px, 16cqi, 170px); font-weight: 900; line-height: 1; letter-spacing: -.03em; color: transparent; -webkit-text-stroke: 1px #d9ed792e; pointer-events: none; user-select: none; }
+.heading { position: absolute; z-index: 2; top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 8px 8px 14px; font: 10px var(--font-geist-mono), monospace; letter-spacing: .16em; color: #c8d5b8; background: linear-gradient(#0c120ecc, transparent); }
+.tools { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+.tools > button, .pager button { min-height: 32px; border: 0; background: transparent; color: #b9c6ab; font-size: 11px; letter-spacing: normal; padding: 4px 8px; }
+.tools > button:hover, .pager button:hover:not(:disabled) { color: var(--accent); }
+.pager { display: flex; align-items: center; gap: 2px; font-size: 11px; letter-spacing: normal; color: #d8e3cc; }
+.viewport { position: relative; flex: 1 1 auto; width: 100%; min-height: 0; }
 .viewport canvas { display: block; }
 .canvasHost { position: absolute; inset: 0; }
-.notice { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 30px; color: #c5cfbe; font-size: 13px; text-align: center; z-index: 1; }
+.notice { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; margin: 0; padding: 30px; color: #c5cfbe; font-size: 13px; text-align: center; z-index: 1; }
 .notice button { padding: 8px 14px; border: 1px solid #789467; background: #23331c; }
-.names { display: flex; padding: 12px 16px 0; text-align: center; gap: 10px; }
-.names>div { flex: 1; min-width: 0; }
-.names strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #edf2e5; font-size: 13px; }
-.names span { display: block; color: #a5b59a; font-size: 11px; margin-top: 4px; }
-.stageTools { display: flex; justify-content: space-between; align-items: center; padding: 5px 14px; font-size: 11px; color: #bbc9ad; }
-.stageTools>div { display: flex; align-items: center; gap: 12px; }
-.showoffs { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 6px; padding: 12px 16px 0; }
-.showoffs button { min-height: 40px; padding: 7px 4px; border: 1px solid #ffffff26; background: #ffffff06; color: #cbd7bf; font-size: 12px; }
+.names { position: absolute; z-index: 2; left: 0; right: 0; bottom: 52px; display: flex; gap: 10px; padding: 0 14px; text-align: center; pointer-events: none; }
+.names > div { flex: 1; min-width: 0; }
+.names strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #f2f6ea; font-size: 15px; letter-spacing: .06em; text-transform: uppercase; text-shadow: 0 1px 6px #000c; }
+.names span { display: block; margin-top: 3px; color: #b8c7ab; font-size: 11px; text-shadow: 0 1px 4px #000c; }
+.showoffs { position: relative; z-index: 2; flex: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 6px; border-top: 1px solid #ffffff14; background: #0a100cd9; }
+.showoffs button { min-height: 38px; padding: 6px 4px; border: 1px solid #ffffff22; background: #ffffff06; color: #cbd7bf; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.showoffs button:hover:not(:disabled) { border-color: #d9ed7970; }
 .showoffs button[aria-pressed="true"] { color: #10200e; background: #c5df9b; border-color: #c5df9b; }
-.help { margin: 10px 16px 16px; color: #9dab91; font-size: 11px; line-height: 1.5; }
-@media(max-width:450px) { .viewport { height: 260px; }.heading { padding: 12px 16px; }.showoffs { gap: 4px; }.showoffs button { font-size: 11px; } }
+/* A squeezed stage keeps just the ranger and the showoff row. */
+@container (max-height: 190px) {
+  .heading, .names, .watermark { display: none; }
+}
+@container (max-width: 380px) {
+  .heading > span { display: none; }
+  .showoffs button { font-size: 11px; }
+}
+@media (max-height: 520px), (max-width: 760px) {
+  .showoffs button { min-height: 34px; padding: 4px 3px; }
+  .names { bottom: 46px; }
+  .names strong { font-size: 13px; }
+  .names span { font-size: 10px; }
+  .tools > button { min-height: 28px; font-size: 10px; padding: 3px 6px; }
+}

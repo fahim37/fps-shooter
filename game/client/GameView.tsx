@@ -15,7 +15,7 @@ import { SkyAndSun } from "./world/SkyAndSun";
 import { Ground } from "./world/Ground";
 import { StaticWorld } from "./world/StaticWorld";
 import { PostFX } from "./world/PostFX";
-import { SettingsPanel } from "./SettingsPanel";
+import { SettingsDialog } from "./SettingsDialog";
 import { RoomInvite } from "./RoomInvite";
 import { GraphicsControl } from "./GraphicsControl";
 import { PerformanceTuner } from "./world/PerformanceTuner";
@@ -96,6 +96,7 @@ function MatchHud({ game, map, onLeave }: { game: Game | null; map: MapId; onLea
   const fpsMeter = useSettings((s) => s.fpsMeter);
   const clearView = useSettings((s) => s.clearView);
   const [now, setNow] = useState(0);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const optic = useLoadout((s) => s.optics[h.weapon]);
   const baseFov = useSettings((s) => s.fov);
   useEffect(() => { const timer = setInterval(() => setNow(performance.now()), 100); return () => clearInterval(timer); }, []);
@@ -132,21 +133,29 @@ function MatchHud({ game, map, onLeave }: { game: Game | null; map: MapId; onLea
     {h.emoteMenu && h.ready && h.alive && !paused && !scoreboard && !h.loadoutOpen && !h.customizingControls && h.conn === "connected" && game && <EmoteMenu game={game} touch={h.touch} />}
     {scoreboard && <div className="scoreboard"><span className="eyebrow">{h.phase === "ended" ? "MATCH COMPLETE" : "FIELD REPORT"}</span><h2>{h.phase === "ended" ? winner : h.roomName}</h2><table><thead><tr><th>PLAYER</th><th>K</th><th>D</th><th>A</th><th>SCORE</th><th>PING</th></tr></thead><tbody>{h.players.map((p) => <tr key={p.id} className={p.me ? "self" : ""}><td><span className={p.team === 1 ? "blue" : p.team === 2 ? "red" : ""}>{p.name}</span>{p.me ? " (YOU)" : p.bot ? " [BOT]" : ""}{!p.connected && " · OFFLINE"}</td><td>{p.kills}</td><td>{p.deaths}</td><td>{p.assists}</td><td>{p.score}</td><td>{p.bot ? "—" : p.ping}</td></tr>)}</tbody></table>{h.phase === "ended" && <p>Next match in {seconds}s <button onClick={onLeave}>Leave match</button></p>}</div>}
     {h.help && h.ready && <HowToPlay touch={h.touch} locked={h.locked && !paused} onClose={() => hud().set({ help: false })} />}
-    {(!h.ready || failed || h.conn === "reconnecting" || (paused && !scoreboard)) && <div className="modal-shade"><div className="match-modal">
-      <span className="eyebrow">HOLLOWMERE / {h.code}</span>
-      <h2>{failed ? "Connection interrupted" : h.conn === "reconnecting" ? "Reconnecting…" : !h.ready ? `Loading ${MAPS[map].name}…` : "Ready to deploy?"}</h2>
-      {failed ? <p role="alert">{h.error}</p> : !h.ready ? <p>Preparing terrain, collision and character rigs.</p> : h.conn === "reconnecting" ? <p>Waiting for the game server.</p> : <>
-        <p>{h.roomName} · {MODE_INFO[h.mode].name} · Room <b>{h.code}</b></p>
-        <RoomInvite code={h.code} />
+    {(!h.ready || failed || h.conn === "reconnecting" || (paused && !scoreboard)) && (h.ready && !failed && h.conn !== "reconnecting" ? <div className="modal-shade"><div className="match-modal deploy-modal">
+      {/* Two columns so everything before deploying fits on one screen. */}
+      <div className="deploy-main">
+        <span className="eyebrow">HOLLOWMERE / {h.code}</span>
+        <h2>Ready to deploy?</h2>
+        <p>{h.roomName} · {MODE_INFO[h.mode].name} · {MAPS[map].name}</p>
         <button className="primary-button" onClick={() => game?.resume()}>ENTER MATCH <span>↗</span></button>
         {!h.touch && <button className="outline-button" onClick={() => game?.resume(true)}>ENTER FULLSCREEN MATCH</button>}
         {h.touch && <button className="outline-button" onClick={() => { game?.input.releaseAll(); hud().set({ menu: false, customizingControls: true }); }}>CUSTOMIZE TOUCH CONTROLS</button>}
-        <button className="outline-button" onClick={() => hud().set({ help: true })}>HOW TO PLAY · CONTROLS</button>
-        {game && <LoadoutPicker game={game} />}
-        <details className="settings-details"><summary>GAME SETTINGS & CONTROLS</summary><SettingsPanel /><p className="controls-help">WASD move · Mouse aim · Click fire · Right-click ADS · Shift sprint · Space jump · Ctrl crouch · Q / E peek · R reload · 1 / 2 or wheel switch · Hold C grenade · V camera · T emote · Tab scores</p></details>
-        <p className="controls-help">WASD to move, mouse to aim, click to shoot. Press H for all controls, Esc to pause and invite friends.</p>
-      </>}
+        <RoomInvite code={h.code} />
+        {!h.touch && <GraphicsControl docked />}
+        <div className="deploy-tools">
+          <button className="outline-button" onClick={() => hud().set({ help: true })}>HOW TO PLAY</button>
+          <button className="outline-button" onClick={() => setSettingsOpen(true)}>SETTINGS</button>
+        </div>
+        <button className="outline-button" onClick={onLeave}>RETURN TO LOBBY</button>
+      </div>
+      {game && <div className="deploy-loadout"><span className="eyebrow">FIELD LOADOUT</span><LoadoutPicker game={game} /></div>}
+    </div>{settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}</div> : <div className="modal-shade"><div className="match-modal">
+      <span className="eyebrow">HOLLOWMERE / {h.code}</span>
+      <h2>{failed ? "Connection interrupted" : h.conn === "reconnecting" ? "Reconnecting…" : `Loading ${MAPS[map].name}…`}</h2>
+      {failed ? <p role="alert">{h.error}</p> : !h.ready ? <p>Preparing terrain, collision and character rigs.</p> : <p>Waiting for the game server.</p>}
       <button className="outline-button" onClick={onLeave}>RETURN TO LOBBY</button>
-    </div></div>}
+    </div></div>)}
   </>;
 }

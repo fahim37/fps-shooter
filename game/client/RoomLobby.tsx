@@ -6,7 +6,8 @@ import type { GameRoom } from "./net/session";
 import { MODE_INFO, type GameMode } from "../shared/constants";
 import { startBlockReason } from "../shared/lobby";
 import { RoomInvite } from "./RoomInvite";
-import { SettingsPanel } from "./SettingsPanel";
+import { LobbyTools, SettingsDialog } from "./SettingsDialog";
+import { HowToPlay } from "./HowToPlay";
 import { CharacterShowcase } from "./CharacterShowcase";
 import { MapPicker } from "./MapPicker";
 import { MAPS, mapId } from "../shared/map/maps";
@@ -28,12 +29,24 @@ interface RoomSnapshot {
   maxPlayers: number; botFill: number; privateRoom: boolean;
   players: { id: string; name: string; char: number; emote: string; team: number; ready: boolean; connected: boolean; bot: boolean }[];
 }
+type Player = RoomSnapshot["players"][number];
+interface Side { key: string; team: number; title: string; players: Player[]; capacity: number }
+
+/** Team Deathmatch puts Blue left and Red right; Free for All splits the slots across both sides. */
+function rosterSides(s: RoomSnapshot): Side[] {
+  const humans = s.players.filter((p) => !p.bot);
+  const half = Math.ceil(s.maxPlayers / 2);
+  if (s.mode === "tdm") return [1, 2].map((team) => ({ key: `team-${team}`, team, title: team === 1 ? "Blue team" : "Red team", players: humans.filter((p) => p.team === team), capacity: half }));
+  return [[0, half], [half, s.maxPlayers]].map(([start, end]) => ({ key: `ffa-${start}`, team: 0, title: end - start === 1 ? `Player ${end}` : `Players ${start + 1}–${end}`, players: humans.slice(start, end), capacity: end - start }));
+}
 
 export function ConnectedRoom({ room, onLeave }: { room: GameRoom; onLeave: () => void }) {
   const value = useSyncExternalStore((notify) => { room.onStateChange(notify); return () => room.onStateChange.remove(notify); }, () => snapshot(room));
   const s = JSON.parse(value) as RoomSnapshot;
   const [error, setError] = useState("");
   const [connection, setConnection] = useState("connected");
+  const [help, setHelp] = useState(false);
+  const [settings, setSettings] = useState(false);
   useEffect(() => {
     const drop = () => setConnection("reconnecting");
     const reconnect = () => { setConnection("connected"); setError(""); };
@@ -51,51 +64,43 @@ export function ConnectedRoom({ room, onLeave }: { room: GameRoom; onLeave: () =
   const reason = startBlockReason(s, s.players);
   const disabled = connection !== "connected" || !me;
   function send(type: string, data: unknown) { setError(""); room.send(type, data); }
-  const teams = s.mode === "tdm" ? [1, 2] : [0];
-  return <main className="waiting-room">
-    <header className="lobby-top"><span className="wordmark">H / M</span><button className="text-button" onClick={onLeave}>← Leave room</button></header>
-    <section className="room-heading"><span className="eyebrow">YOUR ROOM · {s.privateRoom ? "INVITE ONLY" : "PUBLIC"}</span><h1>{s.name || "Joining room…"}</h1><p>{s.format === "custom" ? MODE_INFO[s.mode].name : `${s.format} · Team Deathmatch`} <span>·</span> {MAPS[s.map].name} <span>·</span> {s.botFill ? `Practice bots fill to ${s.botFill}` : "Players only · No bots"}</p></section>
-    <div className="room-lineup">
-    <CharacterShowcase players={s.players.filter((p) => !p.bot)} me={room.sessionId} onShowoff={(id) => send("emote", id)} disabled={disabled} />
-    <section className="roster-panel" aria-label="Room players">
-      <div className="panel-heading"><span>TEAM LINEUP</span><span>{s.players.filter((p) => !p.bot).length} / {s.maxPlayers} PLAYERS</span></div>
-      <div className={`team-grid ${s.mode === "ffa" ? "solo-grid" : ""}`}>
-        {teams.map((team) => {
-          const players = s.players.filter((p) => !p.bot && p.team === team);
-          const capacity = team ? Math.ceil(s.maxPlayers / 2) : s.maxPlayers;
-          return <div key={team} className={`team-column ${team === 1 ? "team-blue" : team === 2 ? "team-red" : ""}`}>
-            <div className="team-heading"><h2>{team === 1 ? "Blue team" : team === 2 ? "Red team" : "Players"}</h2>{!!team && <button className="text-button" disabled={disabled || me?.team === team || players.length >= capacity} onClick={() => send("team", team)}>{me?.team === team ? "Your team" : "Join team"}</button>}</div>
-            {Array.from({ length: capacity }, (_, i) => {
-              const p = players[i];
-              return <div key={p?.id ?? `empty-${i}`} className={`player-slot ${p ? "occupied" : ""}`}>
-                <span className="player-avatar" aria-hidden="true">{p ? p.name.slice(0, 1).toUpperCase() : "+"}</span>
-                <div><strong>{p ? `${p.name}${p.id === room.sessionId ? " (you)" : ""}` : "Open slot"}</strong><small>{p ? p.id === s.host ? "Room host" : "Player" : "Invite a friend to join"}</small></div>
-                {p && <span className={`ready-badge ${p.ready && p.connected ? "is-ready" : ""}`}>{!p.connected ? "Reconnecting" : p.ready ? "Ready" : "Not ready"}</span>}
-              </div>;
-            })}
-          </div>;
-        })}
-      </div>
-      <p className="controls-help">Ready stays on until you cancel it, even when players or teams change. Friends can join after the match starts.</p>
-    </section>
-    </div>
-    <aside className="room-sidebar">
+  const humans = s.players.filter((p) => !p.bot);
+  return <main className="waiting-room" data-mode={s.mode}>
+    <div className="lobby-grain" aria-hidden="true" />
+    <header className="lobby-top room-top">
+      <button type="button" className="text-button leave-button" onClick={onLeave}>← Leave room</button>
+      <section className="room-heading"><span className="eyebrow">{s.privateRoom ? "INVITE ONLY" : "PUBLIC ROOM"} · {humans.length} / {s.maxPlayers} PLAYERS</span><h1>{s.name || "Joining room…"}</h1><p>{s.format === "custom" ? MODE_INFO[s.mode].name : `${s.format} · Team Deathmatch`} <span>·</span> {MAPS[s.map].name} <span>·</span> {s.botFill ? `Bots fill to ${s.botFill}` : "No bots"}</p></section>
+      <div className="top-tools"><LobbyTools onHelp={() => setHelp(true)} onSettings={() => setSettings(true)} /></div>
+    </header>
+
+    {rosterSides(s).map((side, i) => <section key={side.key} className={`room-roster ${i === 0 ? "roster-left" : "roster-right"} ${side.team === 1 ? "team-blue" : side.team === 2 ? "team-red" : "team-solo"}`} aria-label={side.title}>
+      <div className="team-heading"><h2>{side.title}<span>{side.players.length}/{side.capacity}</span></h2>{!!side.team && <button type="button" className="text-button" disabled={disabled || me?.team === side.team || side.players.length >= side.capacity} onClick={() => send("team", side.team)}>{me?.team === side.team ? "Your team" : "Join team"}</button>}</div>
+      <div className="slot-list">{Array.from({ length: side.capacity }, (_, slot) => {
+        const p = side.players[slot];
+        return <div key={p?.id ?? `empty-${slot}`} className={`player-slot ${p ? "occupied" : ""} ${p?.id === room.sessionId ? "is-me" : ""}`}>
+          <span className="player-avatar" aria-hidden="true">{p ? p.name.slice(0, 1).toUpperCase() : "+"}</span>
+          <div><strong>{p ? `${p.name}${p.id === room.sessionId ? " (you)" : ""}` : "Open slot"}</strong><small>{p ? `${p.id === s.host ? "Host · " : ""}${p.char === 1 ? "Female" : "Male"} Ranger` : "Invite a friend"}</small></div>
+          {p && <span className={`ready-badge ${p.ready && p.connected ? "is-ready" : ""}`}>{!p.connected ? "Reconnecting" : p.ready ? "Ready" : "Not ready"}</span>}
+        </div>;
+      })}</div>
+    </section>)}
+
+    <div className="room-stage"><CharacterShowcase players={humans} me={room.sessionId} onShowoff={(id) => send("emote", id)} disabled={disabled} /></div>
+
+    <footer className="room-bar">
       <RoomInvite code={room.roomId} />
       <div className="room-map" aria-live="polite">
-        <span className="eyebrow">MAP · {MAPS[s.map].name.toUpperCase()}</span>
-        <MapPicker value={s.map} onChange={isHost && !disabled ? (id) => send("map", id) : undefined} />
-        <p className="controls-help">{isHost ? "Pick the map. Everyone in the room sees your choice." : "The host picks the map."}</p>
+        <span className="eyebrow">{isHost ? "PICK THE MAP" : "MAP · HOST PICKS"}</span>
+        <MapPicker compact value={s.map} onChange={isHost && !disabled ? (id) => send("map", id) : undefined} />
       </div>
       <div className="room-start" aria-live="polite">
-        <span className="eyebrow">{isHost ? "YOU ARE THE HOST" : "GET READY"}</span>
-        <h2>{me?.ready ? "You’re ready." : "Ready when you are."}</h2>
-        <p>{connection === "closed" ? "Connection closed. Return to the lobby to join again." : connection === "reconnecting" ? "Reconnecting to your room…" : reason || (isHost ? "Everyone is ready. Start the match!" : "Everyone is ready. Waiting for the host to start.")}</p>
-        <button className={me?.ready ? "outline-button" : "primary-button"} disabled={disabled} onClick={() => send("ready", !me?.ready)}>{me?.ready ? "CANCEL READY" : "READY UP"}</button>
-        {isHost && <button className="primary-button" disabled={disabled || !!reason} onClick={() => send("start", {})}>START MATCH <span>→</span></button>}
+        <p className="start-status"><b>{isHost ? "YOU ARE THE HOST" : me?.ready ? "YOU’RE READY" : "GET READY"}</b>{connection === "closed" ? "Connection closed. Leave and join again." : connection === "reconnecting" ? "Reconnecting to your room…" : reason || (isHost ? "Everyone is ready. Start the match!" : "Everyone is ready. Waiting for the host.")}</p>
         {error && <p className="error-text" role="alert">{error}</p>}
+        <button type="button" className={me?.ready ? "outline-button" : "primary-button"} disabled={disabled} onClick={() => send("ready", !me?.ready)}>{me?.ready ? "CANCEL READY" : "READY UP"}</button>
+        {isHost && <button type="button" className="primary-button" disabled={disabled || !!reason} onClick={() => send("start", {})}>START MATCH <span>→</span></button>}
       </div>
-      <details className="settings-details"><summary>SETTINGS & CONTROLS</summary><SettingsPanel /></details>
-    </aside>
-    <footer className="lobby-footer"><span>01 INVITE FRIENDS → 02 READY UP → 03 HOST STARTS</span><span>HOLLOWMERE / FIELD OPERATIONS</span></footer>
+    </footer>
+    {help && <HowToPlay onClose={() => setHelp(false)} touch={window.matchMedia("(pointer: coarse)").matches} />}
+    {settings && <SettingsDialog onClose={() => setSettings(false)} />}
   </main>;
 }

@@ -19,7 +19,7 @@ async function main() {
     await host.goto(url);
     await host.getByText("SERVER ONLINE", { exact: true }).waitFor({ timeout: 60000 });
     await host.locator('[data-stage-status="ready"]').waitFor({ timeout: 60000 });
-    await host.getByLabel("CHARACTER", { exact: true }).selectOption("1");
+    await host.getByRole("radio", { name: "Female Ranger", exact: true }).click();
     await host.locator('[data-stage-status="ready"]').waitFor();
     await host.getByRole("button", { name: "Dance", exact: true }).click();
     await host.waitForTimeout(900);
@@ -71,6 +71,7 @@ async function main() {
     await host.getByLabel("Private room").uncheck();
     await host.getByRole("button", { name: "CREATE 2V2 ROOM" }).click();
     await host.getByRole("button", { name: "READY UP", exact: true }).waitFor();
+    await guest.getByRole("tab", { name: "Join room", exact: true }).click();
     await guest.getByRole("button", { name: "No bots", exact: true }).click();
     await guest.getByRole("button", { name: "Refresh", exact: false }).click();
     await guest.locator(".room-row").filter({ hasText: "Host Ranger's room" }).click();
@@ -83,11 +84,13 @@ async function main() {
     await host.locator('[data-stage-status="ready"]').waitFor();
     await host.screenshot({ path: "out/qa/lobby-mobile.png", fullPage: true });
     assert.ok(await host.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Mobile home should not overflow horizontally");
+    assert.ok(await host.evaluate(() => document.documentElement.scrollHeight <= innerHeight), "Mobile home must fit without page scrolling");
     await host.getByRole("button", { name: "CREATE 2V2 ROOM" }).click();
     await host.getByRole("button", { name: "READY UP", exact: true }).waitFor();
     await host.locator('[data-stage-status="ready"]').waitFor();
     await host.screenshot({ path: "out/qa/room-mobile.png", fullPage: true });
     assert.ok(await host.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Mobile room should not overflow horizontally");
+    assert.ok(await host.evaluate(() => document.documentElement.scrollHeight <= innerHeight), "Mobile room must fit without page scrolling");
     await host.getByRole("button", { name: "Leave room", exact: false }).click();
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ passed: true, checks: ["character selection", "shared showoffs", "no world assets in lobby", "create duel", "invite join", "persistent readiness", "no auto-start", "host start", "enter game", "invalid code", "public 2v2 browser", "mobile layouts"], errors }));

@@ -7,6 +7,7 @@ import styles from "./CharacterShowcase.module.css";
 
 const CharacterStage = dynamic(() => import("./CharacterStage"), { ssr: false, loading: () => <div className={styles.viewport}><p className={styles.notice}>Preparing the stage…</p></div> });
 
+/** Fills its parent: the stage flexes, the showoff row stays fixed. */
 export function CharacterShowcase({ players, me, onShowoff, disabled = false, preview = false }: {
   players: ShowcasePlayer[]; me: string; onShowoff: (id: ShowoffId) => void; disabled?: boolean; preview?: boolean;
 }) {
@@ -20,17 +21,21 @@ export function CharacterShowcase({ players, me, onShowoff, disabled = false, pr
   const visible = players.slice(current * 2, current * 2 + 2);
   const selected = players.find((p) => p.id === me)?.emote ?? "idle";
   return <section className={styles.showcase} aria-label={preview ? "Character preview" : "Lobby character stage"}>
-    <div className={styles.heading}><span>{preview ? "MEET YOUR RANGER" : "THE LINEUP"}</span><button type="button" onClick={() => setHidden(!hidden)}>{hidden ? "Show preview" : "Hide preview"}</button></div>
-    {!hidden && <>
-      <CharacterStage players={visible} paused={paused} />
-      <div className={styles.names}>{visible.map((p) => <div key={p.id}><strong>{p.name}{!preview && p.id === me ? " · You" : ""}</strong><span>{p.char === 1 ? "Female Ranger" : "Male Ranger"} · {SHOWOFFS.find((e) => e.id === p.emote)?.label ?? "At ease"}</span></div>)}</div>
-      <div className={styles.stageTools}><button type="button" onClick={() => setPaused(!paused)} aria-pressed={paused}>{paused ? "Resume motion" : "Pause motion"}</button>{pages > 1 && <div><button type="button" aria-label="Previous players" disabled={current === 0} onClick={() => setPage(current - 1)}>←</button><span>{current + 1} / {pages}</span><button type="button" aria-label="Next players" disabled={current === pages - 1} onClick={() => setPage(current + 1)}>→</button></div>}</div>
-    </>}
-    <div className={styles.showoffs} role="group" aria-label="Showoff animations">{SHOWOFFS.map((emote) => <button type="button" key={emote.id} disabled={disabled} aria-pressed={selected === emote.id} onClick={() => {
+    {preview && <span className={styles.watermark} aria-hidden="true">{visible[0]?.name}</span>}
+    <div className={styles.heading}>
+      <span>{preview ? "MEET YOUR RANGER" : "THE LINEUP"}</span>
+      <div className={styles.tools}>
+        {pages > 1 && !hidden && <span className={styles.pager}><button type="button" aria-label="Previous players" disabled={current === 0} onClick={() => setPage(current - 1)}>←</button>{current + 1} / {pages}<button type="button" aria-label="Next players" disabled={current === pages - 1} onClick={() => setPage(current + 1)}>→</button></span>}
+        {!hidden && <button type="button" onClick={() => setPaused(!paused)} aria-pressed={paused}>{paused ? "Resume motion" : "Pause motion"}</button>}
+        <button type="button" onClick={() => setHidden(!hidden)}>{hidden ? "Show preview" : "Hide preview"}</button>
+      </div>
+    </div>
+    {hidden ? <div className={styles.viewport}><p className={styles.notice}>Preview hidden to save power.</p></div> : <CharacterStage players={visible} paused={paused} />}
+    <div className={styles.names}>{visible.map((p) => <div key={p.id}><strong>{p.name}{!preview && p.id === me ? " · You" : ""}</strong><span>{p.char === 1 ? "Female Ranger" : "Male Ranger"} · {SHOWOFFS.find((e) => e.id === p.emote)?.label ?? "At ease"}</span></div>)}</div>
+    <div className={styles.showoffs} role="group" aria-label="Showoff animations" title={preview ? "Try a move before you join." : "Your showoff is visible to everyone in the room."}>{SHOWOFFS.map((emote) => <button type="button" key={emote.id} disabled={disabled} aria-pressed={selected === emote.id} onClick={() => {
       const now = Date.now();
       if (now - lastAt < SHOWOFF_COOLDOWN_MS) return;
       setLastAt(now); onShowoff(emote.id);
     }}>{emote.label}</button>)}</div>
-    <p className={styles.help}>{preview ? "Choose your character and try a move before you join." : "Your showoff is visible to everyone in the room."}</p>
   </section>;
 }

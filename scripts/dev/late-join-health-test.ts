@@ -36,7 +36,7 @@ async function main() {
     await page.getByRole("button", { name: /^ENTER MATCH/ }).waitFor({ timeout: 90000 });
     await until(() => [...host.state.players.values()].some((p) => p.name === "Ranger" && p.team === 2 && p.alive));
     await page.getByRole("button", { name: "RETURN TO LOBBY" }).click();
-    await page.getByRole("combobox", { name: "Team for public rooms", exact: true }).selectOption("1");
+    await page.getByRole("combobox", { name: "Join team", exact: true }).selectOption("1");
     await page.getByRole("button", { name: /Refresh/ }).click();
     const row = page.locator(".room-row").filter({ hasText: host.state.roomName });
     await row.waitFor(); assert.match(await row.innerText(), /In progress/); assert.equal(await row.isEnabled(), true);

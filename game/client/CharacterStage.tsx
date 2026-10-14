@@ -56,8 +56,9 @@ export default function CharacterStage({ players, paused }: { players: ShowcaseP
       // Frame the full lineup even on narrow phones.
       const halfWidth = Math.max(0.7, members.length * 0.78);
       const distance = Math.max(4.6, halfWidth / (Math.tan(THREE.MathUtils.degToRad(16)) * camera.aspect));
-      camera.position.set(0, 1.35, distance);
-      camera.lookAt(0, 1, 0); camera.updateProjectionMatrix(); dirty = true;
+      // Aim slightly low so the name tag sits on the floor below the feet.
+      camera.position.set(0, 1.22, distance);
+      camera.lookAt(0, 0.86, 0); camera.updateProjectionMatrix(); dirty = true;
     };
     const resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(container); resize();

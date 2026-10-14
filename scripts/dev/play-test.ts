@@ -21,7 +21,7 @@ async function main() {
     const peer = await browser.newPage({ viewport: { width: 960, height: 640 } });
     peer.on("pageerror", (e) => errors.push(e.message));
     await peer.goto(invite);
-    await peer.getByLabel("CALLSIGN").fill("Second Ranger");
+    await peer.getByLabel("CALLSIGN", { exact: true }).fill("Second Ranger");
     await peer.getByRole("button", { name: "JOIN THIS ROOM →", exact: true }).click();
     await peer.getByRole("button", { name: "ENTER MATCH" }).waitFor({ timeout: 90000 });
     console.log("Invite link joined by second player");

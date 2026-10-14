@@ -50,7 +50,7 @@ async function main() {
 
     // 1. Quick play on Downtown: bots fill the match and fight on the city navmesh.
     await page.getByRole("tab", { name: "Quick play" }).click();
-    assert.equal(await page.getByRole("radio").count(), 2, "both maps are offered");
+    assert.equal(await page.getByRole("radiogroup", { name: "Map" }).getByRole("radio").count(), 2, "both maps are offered");
     await page.locator('[data-map="downtown"]').click();
     assert.equal(await page.locator('[data-map="downtown"]').getAttribute("aria-checked"), "true");
     await page.getByRole("button", { name: "QUICK PLAY" }).click();
@@ -64,6 +64,7 @@ async function main() {
     watch(viewer);
     await viewer.goto(url);
     await viewer.getByText("SERVER ONLINE", { exact: true }).waitFor({ timeout: 60000 });
+    await viewer.getByRole("tab", { name: "Join room", exact: true }).click();
     await viewer.locator(".room-row", { hasText: "Downtown" }).first().waitFor({ timeout: 15000 });
     await viewer.close();
     // Move and shoot.
@@ -96,7 +97,7 @@ async function main() {
     const peer = await browser.newPage({ viewport: { width: 1100, height: 700 } });
     watch(peer);
     await peer.goto(invite);
-    await peer.getByLabel("CALLSIGN").fill("Second Ranger");
+    await peer.getByLabel("CALLSIGN", { exact: true }).fill("Second Ranger");
     await peer.getByRole("button", { name: /JOIN ROOM/ }).click();
     await peer.locator(".room-heading", { hasText: "Downtown" }).waitFor({ timeout: 30000 });
     assert.ok(await peer.locator('.room-map [data-map="village"]').isDisabled(), "only the host can change the map");

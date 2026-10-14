@@ -108,8 +108,9 @@ async function main() {
   try {
     await page.goto(base);
     await page.getByText("SERVER ONLINE", { exact: true }).waitFor({ timeout: 60000 });
-    await page.locator(".lobby-panel .settings-details summary").tap();
+    await page.getByRole("button", { name: "Settings", exact: true }).tap();
     await page.getByLabel("QUALITY").selectOption("low");
+    await page.getByRole("button", { name: "Close settings", exact: true }).tap();
     await createMatch();
     await page.waitForFunction(() => (window as TestWindow).__mobileTestGame?.room.state.phase === "live", undefined, { timeout: 20000 });
     await page.waitForTimeout(400);

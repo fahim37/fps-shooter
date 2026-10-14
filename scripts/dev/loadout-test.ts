@@ -31,8 +31,9 @@ async function main() {
       page.on("pageerror", (error) => errors.push(error.message));
       await page.goto(base);
       await page.getByText("SERVER ONLINE", { exact: true }).waitFor({ timeout: 60000 });
-      await page.locator(".lobby-panel .settings-details summary").click();
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
       await page.getByLabel("QUALITY").selectOption("low");
+      await page.getByRole("button", { name: "Close settings", exact: true }).click();
       await page.getByRole("button", { name: /CREATE 1V1 ROOM/ }).click();
       const invite = await page.getByLabel("Invite link", { exact: true }).inputValue();
       peer = await new Client("ws://localhost:2567").joinById(new URL(invite).searchParams.get("room")!, { name: "Loadout QA peer" });
