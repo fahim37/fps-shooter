@@ -44,6 +44,8 @@ export interface RigState {
   /** Seconds since the last shot (pump / bolt cycling) and since the gun was drawn. */
   sinceShot?: number;
   sinceDraw?: number;
+  /** Full-body emote to play instead of holding the gun. */
+  emote?: ClipName | null;
 }
 
 const headCache = new WeakMap<CharacterTemplate, THREE.Vector3>();
@@ -56,6 +58,8 @@ const BOLT_TRAVEL = 0.065;
 /** Where a hand fetching a magazine or shell goes: down and in toward the belt. */
 const POUCH_DROP = 0.3;
 const POUCH_IN = 0.08;
+/** Crossfade (s) into and out of an emote. */
+const EMOTE_FADE = 0.25;
 /** FPP: view-space offset of the hidden body from where the head would put it. */
 const FPP_BODY_HIP = new THREE.Vector3(0, -0.14, -0.23);
 const FPP_BODY_ADS = new THREE.Vector3(0, -0.08, -0.17);
@@ -128,6 +132,7 @@ export class CharacterRig {
   private locoWeights = new Map<ClipName, number>();
   private aim: Record<"n" | "u" | "d", THREE.AnimationAction>;
   private death: THREE.AnimationAction;
+  private emote: { name: ClipName; action: THREE.AnimationAction } | null = null;
   private head: THREE.Vector3;
   private grip: GripPose | null = null;
   private fingers: { r: THREE.Bone[]; l: THREE.Bone[] } = { r: [], l: [] };
@@ -231,6 +236,8 @@ export class CharacterRig {
       if (!this.dead) {
         this.dead = true;
         this.deadTime = 0;
+        this.emote?.action.fadeOut(0.15);
+        this.emote = null;
         for (const a of this.loco.values()) a.fadeOut(0.15);
         for (const a of Object.values(this.aim)) a.fadeOut(0.15);
         this.death.reset().setEffectiveWeight(1).fadeIn(0.1).play();
@@ -250,6 +257,14 @@ export class CharacterRig {
       this.gunPivot.visible = true;
     }
 
+    if (this.updateEmote(s.emote ?? null)) {
+      // The emote owns the whole body; the gun is put away.
+      this.legYaw = 0;
+      this.mixer.update(dt);
+      this.captureAnimationPose();
+      this.placeRoot(s, 0);
+      return;
+    }
     if (this.mode === "tpp") this.updateLocomotion(dt, s);
     this.updateAimLayer(s);
     this.mixer.update(dt);
@@ -278,6 +293,24 @@ export class CharacterRig {
     }
     this.placeGun(s);
     this.solveArms();
+  }
+
+  /** Starts, switches or ends a full-body emote; true while one plays. */
+  private updateEmote(name: ClipName | null) {
+    const clip = name ? this.template.full.get(name) : undefined;
+    const want = clip ? name : null;
+    if (want === (this.emote?.name ?? null)) return !!this.emote;
+    const was = this.emote;
+    was?.action.fadeOut(EMOTE_FADE);
+    this.emote = null;
+    if (clip && want) {
+      this.emote = { name: want, action: this.mixer.clipAction(clip).reset().setEffectiveWeight(1).fadeIn(EMOTE_FADE).play() };
+      if (!was) for (const a of [...this.loco.values(), ...Object.values(this.aim)]) a.fadeOut(EMOTE_FADE);
+    } else {
+      for (const a of [...this.loco.values(), ...Object.values(this.aim)]) a.reset().play();
+    }
+    this.gunPivot.visible = !this.emote;
+    return !!this.emote;
   }
 
   private captureAnimationPose() {

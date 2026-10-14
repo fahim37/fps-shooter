@@ -8,6 +8,7 @@ import type { PlayerState } from "../../shared/schema";
 import type { Pose } from "../../shared/hitboxes";
 import { audio } from "./audio";
 import { setEnemyReadability } from "../assets/readability";
+import { isEmote } from "../../shared/showcase";
 
 interface Snap {
   t: number;
@@ -16,6 +17,7 @@ interface Snap {
   lean: number;
   flags: number;
   alive: boolean;
+  emote: string;
 }
 
 /** One remote player: snapshot buffer, interpolation and its animated character. */
@@ -34,6 +36,7 @@ export class RemotePlayer {
   pitch = 0;
   lean = 0;
   flags = 0;
+  emote = "idle";
   private vel = new THREE.Vector3();
   private reloadT = -1;
   private stepDist = 0;
@@ -52,10 +55,10 @@ export class RemotePlayer {
     if (last && last.t > t) return;
     if (last && last.t === t) {
       // Same tick, newer data: overwrite.
-      Object.assign(last, { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, lean: p.lean, flags: p.flags, alive: p.alive });
+      Object.assign(last, { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, lean: p.lean, flags: p.flags, alive: p.alive, emote: p.emote });
       return;
     }
-    this.snaps.push({ t, x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, lean: p.lean, flags: p.flags, alive: p.alive });
+    this.snaps.push({ t, x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, lean: p.lean, flags: p.flags, alive: p.alive, emote: p.emote });
     if (this.snaps.length > 30) this.snaps.shift();
   }
 
@@ -114,6 +117,7 @@ export class RemotePlayer {
       this.lean = first.lean;
       this.flags = first.flags;
       this.alive = first.alive;
+      this.emote = first.emote;
     } else if (renderTime >= b.t) {
       // Past the newest snapshot: extrapolate briefly, then hold.
       const last = s[s.length - 1];
@@ -132,6 +136,7 @@ export class RemotePlayer {
       this.lean = last.lean;
       this.flags = last.flags;
       this.alive = last.alive;
+      this.emote = last.emote;
     } else {
       const k = (renderTime - a.t) / (b.t - a.t);
       const teleport = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z) > 4 || a.alive !== b.alive;
@@ -146,6 +151,7 @@ export class RemotePlayer {
       this.lean = src ? src.lean : a.lean + (b.lean - a.lean) * k;
       this.flags = a.flags;
       this.alive = a.alive;
+      this.emote = a.emote;
     }
 
     if (dt > 0) {
@@ -172,6 +178,7 @@ export class RemotePlayer {
       ads: (this.flags & F_ADS) ? 1 : 0,
       reload: this.reloadT >= 0 ? Math.min(this.reloadT, 1) : -1,
       recoil: this.recoil, sinceShot: this.sinceShot, sinceDraw: this.sinceDraw,
+      emote: this.alive && isEmote(this.emote) ? this.emote : null,
     });
     const headBone = this.rig.inst?.bones.get("Head");
     if (headBone) headBone.getWorldPosition(this.head).y += 0.1;

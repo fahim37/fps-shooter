@@ -61,6 +61,52 @@ describe("local loadout", () => {
   });
 });
 
+describe("emotes", () => {
+  const emoter = () => {
+    const local = player();
+    Object.assign(local, { emote: null, emoteMenu: false, reloadEnd: 0, cookStart: 0, switchEnd: 0, yaw: 0.5, ms: { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, grounded: true } });
+    return local;
+  };
+
+  it("faces the camera, puts the gun away and tells the server", () => {
+    const local = emoter();
+    local.emoteMenu = true;
+    local.startEmote("dance");
+    expect(local).toMatchObject({ emote: "dance", emoteMenu: false, ads: 0 });
+    expect(local.emoteYaw).toBeCloseTo(0.5 + Math.PI);
+    expect(vi.mocked(local["game"].send)).toHaveBeenLastCalledWith("emote", "dance");
+  });
+
+  it("will not start mid-air, mid-reload or while cooking a grenade", () => {
+    const airborne = (l: LocalPlayer) => { l.ms.grounded = false; };
+    const reloading = (l: LocalPlayer) => { l.reloadEnd = 1000; };
+    const cooking = (l: LocalPlayer) => { Object.assign(l, { cookStart: 1000 }); };
+    for (const setup of [airborne, reloading, cooking]) {
+      const local = emoter();
+      setup(local);
+      local.startEmote("talk");
+      expect(local.emote).toBeNull();
+    }
+  });
+
+  it("draws the gun again before it can fire", () => {
+    const local = emoter();
+    local.startEmote("magic");
+    local.endEmote(5000);
+    expect(local.emote).toBeNull();
+    expect(local.switchEnd).toBeGreaterThanOrEqual(5300);
+    expect(vi.mocked(local["game"].send)).toHaveBeenLastCalledWith("emote", "idle");
+  });
+
+  it("ends on a weapon switch", () => {
+    const local = emoter();
+    local.startEmote("magic");
+    local.switchTo("pistol", 5000);
+    expect(local.emote).toBeNull();
+    expect(vi.mocked(local["game"].send)).toHaveBeenCalledWith("emote", "idle");
+  });
+});
+
 describe("peeking", () => {
   const input = (held: string[]) => ({ consume: () => false, held: (code: string) => held.includes(code) });
   const lean = (local: LocalPlayer, held: string[], sprint = false) =>

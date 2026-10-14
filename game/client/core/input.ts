@@ -240,7 +240,7 @@ export class Input {
     this.right = (k.has("KeyD") || k.has("ArrowRight") ? 1 : 0) - (k.has("KeyA") || k.has("ArrowLeft") ? 1 : 0);
     this.jump = k.has("Space") || this.touchActions.has("jump");
     this.sprint = k.has("ShiftLeft") || k.has("ShiftRight") || this.touchActions.has("sprint");
-    this.crouch = k.has("ControlLeft") || k.has("ControlRight") || k.has("KeyC") || this.touchActions.has("crouch");
+    this.crouch = k.has("ControlLeft") || k.has("ControlRight") || this.touchActions.has("crouch");
   }
 
   /** Axes with the touch stick taking priority when active. */

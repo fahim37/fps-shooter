@@ -44,6 +44,15 @@ describe("browser shortcut suppression", () => {
     input.detach();
   });
 
+  it("leaves C to the grenade instead of crouching", () => {
+    const { input, key } = attachedInput();
+    key("KeyC", false);
+    expect(input.crouch).toBe(false);
+    expect(input.held("KeyC")).toBe(true);
+    expect(input.consume("KeyC")).toBe(true);
+    input.detach();
+  });
+
   it("leaves browser shortcuts available in menus and removes listeners on detach", () => {
     const { input, key } = attachedInput();
     input.enabled = false;

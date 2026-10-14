@@ -21,7 +21,7 @@ import type { MapData } from "../game/shared/map/types";
 import { Bot, BOT_NAMES } from "./bot";
 import { NAME_MAX, randomName } from "../game/shared/names";
 import { startBlockReason } from "../game/shared/lobby";
-import { canShowoff } from "../game/shared/showcase";
+import { canEmote, canShowoff } from "../game/shared/showcase";
 
 type V3 = [number, number, number];
 
@@ -147,9 +147,13 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     this.onMessage("emote", (client, value: unknown) => {
       const p = this.players.get(client.sessionId);
       const at = now();
-      if (!p || !canShowoff(this.state.phase, p.st.connected, value, p.lastEmoteAt, at)) return;
+      if (!p) return;
+      // The waiting room shows off on the lobby stage; in a match the character emotes in the world.
+      if (this.state.phase === "waiting") {
+        if (!canShowoff(this.state.phase, p.st.connected, value, p.lastEmoteAt, at)) return;
+      } else if (!canEmote(p.st.alive, p.st.connected, value, p.lastEmoteAt, at)) return;
       p.st.emote = value as string;
-      p.lastEmoteAt = at;
+      if (value !== "idle") p.lastEmoteAt = at;
     });
     this.onMessage("team", (client, team: unknown) => {
       const p = this.players.get(client.sessionId);
@@ -493,6 +497,8 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     if (p.reloadingUntil && t < p.reloadingUntil - 150) return;
     const ammo = p.ammo[m.weapon];
     if (ammo.mag <= 0) return;
+    // Shooting always ends an emote, even if the client's own cancel was lost.
+    p.st.emote = "idle";
     if (!Array.isArray(m.dirs) || m.dirs.length !== def.pellets || !Array.isArray(m.origin)) return;
     const eye = this.eyePos(p);
     if (!finite(...m.origin) || Math.hypot(m.origin[0] - eye[0], m.origin[1] - eye[1], m.origin[2] - eye[2]) > 2) return;
@@ -584,6 +590,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     if (hp > 0) return false;
 
     target.st.alive = false;
+    target.st.emote = "idle";
     target.st.deaths++;
     target.st.streak = 0;
     target.respawnAt = now() + RESPAWN_MS;
@@ -658,6 +665,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     p.vel = [0, 0, 0];
     p.st.hp = MAX_HEALTH;
     p.st.alive = true;
+    p.st.emote = "idle";
     p.st.flags = 0;
     p.st.lean = 0;
     p.st.weapon = p.st.primary;

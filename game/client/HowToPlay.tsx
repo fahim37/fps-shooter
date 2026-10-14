@@ -11,7 +11,7 @@ const KEYBOARD: { title: string; rows: Row[] }[] = [
     [["WASD"], "Move"],
     [["Shift"], "Sprint", "Hold while moving forward"],
     [["Space"], "Jump"],
-    [["C", "Ctrl"], "Crouch", "Steadier aim, quieter steps"],
+    [["Ctrl"], "Crouch", "Steadier aim, quieter steps"],
     [["Q", "E"], "Peek left / right", "Aims down sights while peeking"],
   ] },
   { title: "COMBAT", rows: [
@@ -19,11 +19,12 @@ const KEYBOARD: { title: string; rows: Row[] }[] = [
     [["Right click"], "Aim down sights"],
     [["R"], "Reload"],
     [["1", "2"], "Primary / sidearm", "Mouse wheel swaps too"],
-    [["G"], "Grenade", "Hold to cook, release to throw"],
+    [["C"], "Grenade", "Hold to cook, release to throw"],
   ] },
   { title: "GAME", rows: [
     [["B"], "Loadout", "Weapon and sights for your next spawn"],
     [["V"], "First / third person"],
+    [["T"], "Emote", "Then 1–4; move or shoot to stop"],
     [["Tab"], "Scoreboard", "Hold"],
     [["F6"], "Graphics quality"],
     [["H"], "How to play", "This guide"],
@@ -44,6 +45,7 @@ const TOUCH: Row[] = [
   [["Switch"], "Primary / sidearm"],
   [["Grenade"], "Grenade", "Hold to cook, release to throw"],
   [["Camera"], "First / third person"],
+  [["Emote"], "Emote", "Pick one; move or shoot to stop"],
   [["Pause"], "Pause", "Invite friends, settings, leave"],
   [["Layout"], "Move and resize buttons"],
 ];

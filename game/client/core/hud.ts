@@ -88,6 +88,9 @@ export interface HudState {
   squad: SquadMember[];
   /** Latched peek side for the touch buttons: -1, 0 or 1. */
   peek: number;
+  /** Emote picker open (T), and the emote playing. */
+  emoteMenu: boolean;
+  emote: string | null;
 
   locked: boolean;
   menu: boolean;
@@ -153,6 +156,8 @@ export const useHud = create<HudState>((set) => ({
   mapPlayers: [],
   squad: [],
   peek: 0,
+  emoteMenu: false,
+  emote: null,
   locked: false,
   menu: false,
   loadoutOpen: false,

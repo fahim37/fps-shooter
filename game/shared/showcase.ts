@@ -17,6 +17,26 @@ export function canShowoff(phase: string, connected: boolean, value: unknown, la
   return phase === "waiting" && connected && isShowoff(value) && now - lastAt >= SHOWOFF_COOLDOWN_MS;
 }
 
+/** Emotes a player can do during a match (T); moving or any combat action ends one. */
+export const EMOTES = [
+  { id: "dance", label: "Dance" },
+  { id: "talk", label: "Talk" },
+  { id: "magic", label: "Spell stance" },
+  { id: "idleFoldArms", label: "Arms folded" },
+] as const;
+
+export type EmoteId = typeof EMOTES[number]["id"];
+
+export function isEmote(value: unknown): value is EmoteId {
+  return EMOTES.some((item) => item.id === value);
+}
+
+/** A living player may start an emote (rate limited) or end theirs ("idle") at any time. */
+export function canEmote(alive: boolean, connected: boolean, value: unknown, lastAt: number, now: number) {
+  if (!alive || !connected) return false;
+  return value === "idle" || isEmote(value) && now - lastAt >= SHOWOFF_COOLDOWN_MS;
+}
+
 export interface ShowcasePlayer {
   id: string;
   name: string;

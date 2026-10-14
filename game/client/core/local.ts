@@ -14,10 +14,13 @@ import { RenderMotion } from "./motion";
 import { useLoadout } from "../loadout";
 import { OPTICS, opticFov } from "../../shared/optics";
 import { LEAN_RATE, LEAN_ROLL, clampLean, leanOffset } from "../../shared/lean";
+import { EMOTES, type EmoteId } from "../../shared/showcase";
 
 type V3 = [number, number, number];
 
 const SEND_INTERVAL = 1000 / 30;
+/** After an emote the gun is drawn again before it can fire. */
+const EMOTE_DRAW_MS = 300;
 const STEP = 1 / 120;
 
 /** Paved surfaces (roads, plaza) for footstep sounds. */
@@ -61,6 +64,11 @@ export class LocalPlayer {
   private peeking = false;
   grenades = GRENADES_PER_LIFE;
   private cookStart = 0;
+  /** Emote being played: the camera pulls out to third person and the gun is put away. */
+  emote: EmoteId | null = null;
+  /** Which way the body faces while emoting; the camera stays free to orbit it. */
+  emoteYaw = 0;
+  emoteMenu = false;
   throwAnim = 0;
   alive = false;
   thirdPerson = false;
@@ -134,6 +142,8 @@ export class LocalPlayer {
     this.acc = this.pendingLand = this.landDip = this.crouchT = this.recoil = this.burst = 0;
     this.lean = this.leanLatch = 0;
     this.peeking = false;
+    this.emote = null;
+    this.emoteMenu = false;
     this.cadence.reset();
     this.sprintBlockUntil = this.stepDist = 0;
     this.triggerReleased = true;
@@ -150,6 +160,8 @@ export class LocalPlayer {
 
   die() {
     this.alive = false;
+    this.emote = null;
+    this.emoteMenu = false;
     this.lean = this.leanLatch = 0;
     this.motion.reset(this.ms);
     this.reloadEnd = 0;
@@ -160,6 +172,7 @@ export class LocalPlayer {
     // Opening a menu or editing the HUD must not turn a held grenade into a throw.
     this.cookStart = 0;
     this.triggerReleased = true;
+    this.emoteMenu = false;
   }
 
   onKillScavenge() {
@@ -201,6 +214,16 @@ export class LocalPlayer {
       return;
     }
 
+    // ---- emotes: T opens the menu and a number picks one; moving or any action ends it.
+    if (input.consume("KeyT") || input.consume("EmoteMenu")) this.emoteMenu = !this.emoteMenu;
+    if (this.emoteMenu) {
+      EMOTES.forEach((emote, i) => {
+        if (input.consume(`Digit${i + 1}`) || input.consume(`Emote${i + 1}`)) this.startEmote(emote.id);
+      });
+    }
+    const [fwd, right] = input.axes();
+    if (this.emote && (fwd || right || input.jump || input.crouch || input.fire || input.ads || !this.ms.grounded)) this.endEmote(now);
+
     // ---- actions
     if (input.consume("KeyV")) {
       this.thirdPerson = !this.thirdPerson;
@@ -214,9 +237,13 @@ export class LocalPlayer {
     const def = this.def;
     if (input.consume("KeyR")) this.startReload(now);
 
-    // Grenade: hold G to cook, release to throw.
-    if (input.consume("KeyG") && this.grenades > 0 && !this.cookStart) this.cookStart = now;
-    if (this.cookStart && (!input.held("KeyG") && !input.held("TouchGrenade") || now - this.cookStart > GRENADE.fuseMs - 300)) {
+    // Grenade: hold C (or G) to cook, release to throw.
+    const cook = input.consume("KeyC") || input.consume("KeyG");
+    if (cook && this.grenades > 0 && !this.cookStart) {
+      this.endEmote(now);
+      this.cookStart = now;
+    }
+    if (this.cookStart && (!input.held("KeyC") && !input.held("KeyG") && !input.held("TouchGrenade") || now - this.cookStart > GRENADE.fuseMs - 300)) {
       this.throwGrenade(now);
     }
     this.throwAnim = Math.max(0, this.throwAnim - dt * 3);
@@ -231,7 +258,6 @@ export class LocalPlayer {
     }
 
     // ---- movement (fixed substeps for stable collision)
-    const [fwd, right] = input.axes();
     const wasSprinting = this.ms.sprinting;
     const wantsSprint = input.sprint && now > this.sprintBlockUntil && !input.fire && !input.ads;
     const adsHeld = input.ads;
@@ -328,6 +354,7 @@ export class LocalPlayer {
     if (sprinting) this.leanLatch = 0;
     const target = sprinting ? 0 : held || this.leanLatch;
     this.peeking = target !== 0;
+    if (this.peeking) this.endEmote(performance.now());
     const step = LEAN_RATE * dt;
     this.lean += Math.max(-step, Math.min(step, target - this.lean));
     // Snap in immediately when a wall closes in; never let the camera poke through.
@@ -363,21 +390,22 @@ export class LocalPlayer {
 
   /** Where the camera sits and looks (FPP eye, or over-the-shoulder in TPP). */
   camera(cam: THREE.PerspectiveCamera, dt: number, eye = this.viewEye) {
-    if (!this.thirdPerson || this.scoped) {
+    if (!this.thirdPerson && !this.emote || this.scoped) {
       cam.position.copy(eye);
       cam.quaternion.copy(this.viewQuat);
       return;
     }
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(this.viewQuat);
     const rightV = new THREE.Vector3(1, 0, 0).applyQuaternion(this.viewQuat);
-    const pivot = eye.clone().addScaledVector(rightV, 0.55 - this.ads * 0.1);
+    // An emote is framed from straight behind the camera's orbit, a little further out.
+    const pivot = eye.clone().addScaledVector(rightV, this.emote ? 0 : 0.55 - this.ads * 0.1);
     pivot.y += 0.12;
     const shoulder = pivot.clone().sub(eye);
     const shoulderLength = shoulder.length();
     shoulder.normalize();
     const shoulderHit = raycastWorld(this.R, this.world, eye.toArray() as V3, shoulder.toArray() as V3, shoulderLength + 0.15);
     if (shoulderHit) pivot.copy(eye).addScaledVector(shoulder, Math.max(0, shoulderHit.distance - 0.15));
-    const want = 2.6 - this.ads * 1.2;
+    const want = this.emote ? 3.2 : 2.6 - this.ads * 1.2;
     const back = fwd.clone().negate();
     const hit = raycastWorld(this.R, this.world, [pivot.x, pivot.y, pivot.z], [back.x, back.y, back.z], want + 0.3);
     const allowed = hit ? Math.max(0, hit.distance - 0.3) : want;
@@ -389,6 +417,7 @@ export class LocalPlayer {
 
   switchTo(w: WeaponId, now: number) {
     if (!this.alive || (w !== this.primary && w !== "pistol") || w === this.weapon) return;
+    this.endEmote(now);
     this.weapon = w;
     this.reloadEnd = 0;
     this.switchEnd = now + WEAPONS[w].equipMs;
@@ -404,6 +433,7 @@ export class LocalPlayer {
   startReload(now: number) {
     const a = this.ammo[this.weapon];
     if (this.reloading || a.mag >= this.def.mag || a.reserve <= 0 || now < this.switchEnd) return;
+    this.endEmote(now);
     this.reloadStart = now;
     this.reloadEnd = now + this.def.reloadMs;
     this.sendPose();
@@ -474,6 +504,25 @@ export class LocalPlayer {
     audio.grenadeThrow();
   }
 
+  /** Plays an emote while standing on the ground; the character turns to face the camera. */
+  startEmote(id: EmoteId) {
+    this.emoteMenu = false;
+    if (!this.alive || !this.ms.grounded || this.reloading || this.cookStart || id === this.emote) return;
+    if (!this.emote) this.emoteYaw = this.yaw + Math.PI;
+    this.emote = id;
+    this.adsProgress = this.ads = 0;
+    this.game.send("emote", id);
+  }
+
+  /** Stops an emote and brings the gun back up. */
+  endEmote(now: number) {
+    if (!this.emote) return;
+    this.emote = null;
+    this.drawAt = now;
+    this.switchEnd = Math.max(this.switchEnd, now + EMOTE_DRAW_MS);
+    this.game.send("emote", "idle");
+  }
+
   /** Seconds since the last shot / since the current gun was drawn. */
   sinceShot(now: number) { return (now - this.lastShotAt) / 1000; }
   sinceDraw(now: number) { return (now - this.drawAt) / 1000; }
@@ -494,7 +543,7 @@ export class LocalPlayer {
       | (this.ms.grounded ? F_GROUNDED : 0) | (this.reloading ? F_RELOADING : 0);
     const msg: PoseMsg = {
       x: round(this.ms.x), y: round(this.ms.y), z: round(this.ms.z),
-      yaw: round(this.yaw), pitch: round(this.pitch),
+      yaw: round(this.emote ? this.emoteYaw : this.yaw), pitch: round(this.pitch),
       vx: round(this.ms.vx), vy: round(this.ms.vy), vz: round(this.ms.vz),
       flags, weapon: this.weapon, lean: round(this.lean),
     };

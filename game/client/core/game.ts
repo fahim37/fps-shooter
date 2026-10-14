@@ -355,11 +355,13 @@ export class Game {
       grounded: local.ms.grounded, alive: local.alive, sprint: local.ms.sprinting ? 1 : 0,
       ads: local.ads, optic: local.optic, reload: local.reloadProgress, recoil: local.recoil,
       bob: local.bob, sway: local.sway, tuck: local.tuck, throwing: local.throwAnim, lean: local.lean,
-      sinceShot: local.sinceShot(now), sinceDraw: local.sinceDraw(now),
+      sinceShot: local.sinceShot(now), sinceDraw: local.sinceDraw(now), emote: local.emote,
     };
+    if (local.emote) s.yaw = local.emoteYaw;
     this.fpp?.setWeapon(local.weapon); this.tpp?.setWeapon(local.weapon);
-    this.fpp?.setVisible(local.alive && !local.thirdPerson && !local.scoped);
-    this.tpp?.setVisible((local.thirdPerson && !local.scoped) || !local.alive);
+    // Emoting pulls the camera out so you can see yourself.
+    this.fpp?.setVisible(local.alive && !local.thirdPerson && !local.emote && !local.scoped);
+    this.tpp?.setVisible(((local.thirdPerson || !!local.emote) && !local.scoped) || !local.alive);
     if (this.fpp?.object.visible) this.fpp.update(dt, s);
     if (this.tpp?.object.visible) this.tpp.update(dt, s);
     this.room.state.grenades?.forEach((g, id) => {
@@ -417,7 +419,7 @@ export class Game {
         fpsLow: Math.round(1 / Math.max(this.worstFrame.last, 0.001)),
         ping: Math.round(this.clock.rtt), serverOffset: this.clock.offset,
         killerMarker: local.alive ? null : this.deathCamera.marker(this.camera),
-        mapPlayers, peek: local.leanSide,
+        mapPlayers, peek: local.leanSide, emoteMenu: local.emoteMenu && local.alive, emote: local.emote,
         threats: hud().threats.some((threat) => now - threat.at >= THREAT_MS) ? hud().threats.filter((threat) => now - threat.at < THREAT_MS) : hud().threats,
       });
     }

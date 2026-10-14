@@ -47,9 +47,13 @@ export function loadCharacters() {
     loadGLTF("/models/char_male.glb"),
     loadGLTF("/models/char_female.glb"),
     loadGLTF("/models/anims.glb"),
-  ]).then(([male, female, anims]) => {
+    // Emotes reuse the lobby's showoff clips (usually cached from the lobby already).
+    loadGLTF("/models/lobby-anims.glb"),
+  ]).then(([male, female, anims, lobby]) => {
     const animPelvis = findBone(anims.scene, "pelvis")!.position.clone();
-    return [makeTemplate(male.scene, anims.animations, animPelvis), makeTemplate(female.scene, anims.animations, animPelvis)];
+    const names = new Set(anims.animations.map((clip) => clip.name));
+    const clips = [...anims.animations, ...lobby.animations.filter((clip) => !names.has(clip.name))];
+    return [makeTemplate(male.scene, clips, animPelvis), makeTemplate(female.scene, clips, animPelvis)];
   }));
 }
 

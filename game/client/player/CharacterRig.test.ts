@@ -29,7 +29,7 @@ function template(): CharacterTemplate {
     const hand = add(lower, `hand_${side}`, 0, -0.24);
     add(hand, `middle_01_${side}`, 0, -0.07);
   }
-  const names: ClipName[] = ["idle", "walk", "jog", "sprint", "crouchIdle", "crouchWalk", "jumpLoop", "aimNeutral", "aimUp", "aimDown", "death"];
+  const names: ClipName[] = ["idle", "walk", "jog", "sprint", "crouchIdle", "crouchWalk", "jumpLoop", "aimNeutral", "aimUp", "aimDown", "death", "dance"];
   const full = new Map<ClipName, THREE.AnimationClip>();
   const lower = new Map<ClipName, THREE.AnimationClip>();
   const upper = new Map<ClipName, THREE.AnimationClip>();
@@ -83,6 +83,28 @@ describe("character shooting pose", () => {
       expect(q.angleTo(bone.quaternion.clone().normalize()), `${bone.name} should not accumulate rotation`).toBeLessThan(1e-5);
     }
     expect(muzzle.distanceTo(rig.muzzle)).toBeLessThan(1e-6);
+    rig.dispose();
+  });
+
+  it("puts the gun away for an emote, holds it steadily and takes the gun back up after", () => {
+    const rig = new CharacterRig(template(), new Map([["ar", new THREE.Group()]]), 1, false, "tpp");
+    rig.setWeapon("ar");
+    const gun = (rig as unknown as { gunPivot: THREE.Object3D }).gunPivot;
+    const state: RigState = {
+      x: 0, y: 0, z: 0, yaw: 0, pitch: 0, speed: 0, moveYaw: 0,
+      crouch: false, grounded: true, alive: true, sprint: 0, ads: 0, reload: -1, recoil: 0, emote: "dance",
+    };
+    for (let frame = 0; frame < 60; frame++) rig.update(1 / 60, state);
+    expect(gun.visible).toBe(false);
+    rig.update(0, state);
+    const pose = [...rig.inst.bones.values()].map((bone) => ({ bone, q: bone.quaternion.clone() }));
+    for (let frame = 0; frame < 60; frame++) rig.update(0, state);
+    for (const { bone, q } of pose) expect(q.angleTo(bone.quaternion), `${bone.name} drifts while emoting`).toBeLessThan(1e-5);
+    // A clip the body does not have is ignored rather than freezing the rig.
+    rig.update(1 / 60, { ...state, emote: "talk" });
+    expect(gun.visible).toBe(true);
+    rig.update(1 / 60, { ...state, emote: null });
+    expect(gun.visible).toBe(true);
     rig.dispose();
   });
 });
