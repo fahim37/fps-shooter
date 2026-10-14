@@ -40,6 +40,7 @@ async function main() {
     await page.locator('[data-stage-players="1"][data-stage-status="ready"]').waitFor();
     assert.ok((await stage.innerText()).toLowerCase().includes("seventh ranger"));
     await seventh.leave();
+    peers.pop();
     await page.locator('[data-stage-players="6"][data-stage-status="ready"]').waitFor();
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ passed: true, checks: ["six characters together", "all six names", "mobile fits", "larger-room pagination", "roster shrinks safely"] }));
