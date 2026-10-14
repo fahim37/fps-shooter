@@ -49,7 +49,10 @@ export class VoiceClient {
       });
     }), room.onMessage<RTCIceServer[]>("voice:config", (servers) => {
       this.config = { iceServers: servers };
-      for (const peer of this.peers.values()) peer.pc.setConfiguration(this.config);
+      for (const peer of this.peers.values()) {
+        peer.pc.setConfiguration(this.config);
+        if (peer.pc.connectionState === "new" || peer.pc.connectionState === "failed") peer.pc.restartIce();
+      }
     }));
     const sync = () => this.syncPeers();
     const drop = () => { this.leave(false); this.patch({ error: "Voice disconnected. Rejoin voice after reconnecting." }); };
@@ -123,6 +126,9 @@ export class VoiceClient {
 
   private syncPeers() {
     if (!this.state.enabled || !this.stream) return;
+    // Other players' updates can arrive while our join is in flight. Our own membership
+    // is the server's acknowledgement, sent after our temporary TURN configuration.
+    if (!this.state.members.some((member) => member.id === this.room.sessionId)) return;
     const me = this.room.state.players.get(this.room.sessionId);
     const members = this.state.members.filter((m) => m.id !== this.room.sessionId && this.room.state.players.get(m.id)?.connected);
     for (const [id] of this.peers) if (!members.some((m) => m.id === id)) this.removePeer(id);

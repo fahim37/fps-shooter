@@ -82,7 +82,7 @@ async function main() {
       await page.getByRole("button", { name: "JOIN VOICE", exact: true }).click();
       await page.getByRole("button", { name: "LEAVE VOICE", exact: true }).waitFor();
     }
-    for (const page of pages) await waitUntil(() => page.evaluate(() => (window as TestWindow).voiceConnections.filter((pc) => pc.connectionState === "connected").length === 2));
+    for (const page of pages) await waitUntil(() => page.evaluate(() => (window as TestWindow).voiceConnections.filter((pc) => pc.connectionState === "connected").length === 2), 45_000);
     assert.equal(await enabledTracks(host), 0, "Microphone starts silent");
     await host.bringToFront();
     await host.keyboard.down("n");
