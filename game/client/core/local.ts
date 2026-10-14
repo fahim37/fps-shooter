@@ -304,7 +304,10 @@ export class LocalPlayer {
 
     // ---- network
     if (now >= this.sendAt) {
-      this.sendAt = now + SEND_INTERVAL;
+      // Keep to the schedule rather than restarting it from this frame: frame-aligned
+      // restarts stretch some gaps to three frames and drop the rate well under 30 Hz.
+      this.sendAt += SEND_INTERVAL;
+      if (this.sendAt <= now) this.sendAt = now + SEND_INTERVAL;
       this.sendPose();
     }
     input.endFrame();

@@ -44,6 +44,8 @@ export interface ServerPlayer {
   damagedBy: Map<string, number>;
   respawnAt: number;
   lastPoseAt: number;
+  /** Where the client last reported being; `st` carries it forward between poses. */
+  pose: V3;
   lastEmoteAt: number;
   /** After a server spawn, ignore client poses until one arrives near this point. */
   expectSpawn: { x: number; z: number; until: number } | null;
@@ -67,6 +69,8 @@ function makeCode() {
 }
 
 const now = () => Date.now();
+/** Longest a reported pose is carried forward on its velocity while the next one is late. */
+const POSE_CARRY_MS = 50;
 
 export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   state = new MatchState();
@@ -242,6 +246,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       damagedBy: new Map(),
       respawnAt: 0,
       lastPoseAt: 0,
+      pose: [st.x, st.y, st.z],
       lastEmoteAt: 0,
       expectSpawn: null,
       vel: [0, 0, 0],
@@ -388,6 +393,8 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
           p.st.hp = Math.min(MAX_HEALTH, p.st.hp + (REGEN_PER_SEC * TICK_MS) / 1000);
         }
         if (p.reloadingUntil && t >= p.reloadingUntil) this.finishReload(p);
+        // Nothing to carry until the client has reported a pose.
+        if (!p.bot && !p.expectSpawn && p.lastPoseAt) this.carryPose(p, t);
         p.history.push(t, this.livePose(p));
       } else if (p.respawnAt && t >= p.respawnAt) {
         this.spawn(p);
@@ -409,9 +416,9 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     } else {
       // Speed check: allow sprint speed with generous slack for jitter and lag bursts.
       const dt = Math.max(0.05, (t - p.lastPoseAt) / 1000);
-      const dist = Math.hypot(m.x - p.st.x, m.z - p.st.z);
+      const dist = Math.hypot(m.x - p.pose[0], m.z - p.pose[2]);
       if (dist > SPRINT_SPEED * dt * 1.6 + 1.2) {
-        client.send("correct", { x: p.st.x, y: p.st.y, z: p.st.z });
+        client.send("correct", { x: p.pose[0], y: p.pose[1], z: p.pose[2] });
         return;
       }
       p.lastPoseAt = t;
@@ -420,6 +427,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     p.st.x = clamp(m.x, -h, h);
     p.st.y = clamp(m.y, -2, 40);
     p.st.z = clamp(m.z, -h, h);
+    p.pose = [p.st.x, p.st.y, p.st.z];
     p.st.yaw = m.yaw;
     p.st.pitch = clamp(m.pitch, -1.55, 1.55);
     p.st.flags = m.flags & 0xff;
@@ -436,6 +444,18 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     if (m.land && m.land > FALL_DAMAGE_MIN_SPEED) {
       this.damage(p, (m.land - FALL_DAMAGE_MIN_SPEED) * 11, null, "fall", "body", [p.st.x, p.st.y + 3, p.st.z]);
     }
+  }
+
+  /**
+   * Client poses arrive frame-paced, out of step with our ticks: a tick that got none would
+   * freeze a running player on everyone's screen for a frame, and the next would jump ahead.
+   * Carry the last pose forward on its velocity to where the player is by now.
+   */
+  private carryPose(p: ServerPlayer, t: number) {
+    const ahead = Math.min(Math.max(0, t - p.lastPoseAt), POSE_CARRY_MS) / 1000;
+    const h = this.map.half;
+    p.st.x = clamp(p.pose[0] + p.vel[0] * ahead, -h, h);
+    p.st.z = clamp(p.pose[2] + p.vel[2] * ahead, -h, h);
   }
 
   eyePos(p: ServerPlayer): V3 {
@@ -634,6 +654,8 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     const sp = this.pickSpawn(p);
     const t = now();
     p.st.x = sp.x; p.st.y = sp.y; p.st.z = sp.z; p.st.yaw = sp.yaw; p.st.pitch = 0;
+    p.pose = [sp.x, sp.y, sp.z];
+    p.vel = [0, 0, 0];
     p.st.hp = MAX_HEALTH;
     p.st.alive = true;
     p.st.flags = 0;

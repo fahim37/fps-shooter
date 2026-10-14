@@ -113,7 +113,50 @@ describe.each([30, 60, 120])("sprint steering at %i Hz", (rate) => {
     expect(speed(state)).toBeCloseTo(SPRINT_SPEED * 0.85, 5);
     const kcc = (mover as unknown as { kcc: RAPIER.KinematicCharacterController }).kcc;
     vi.mocked(kcc.computedMovement).mockReturnValue({ x: 0, y: 0, z: 0 });
+    touching(kcc, { x: 0, y: 0, z: 1 });
     mover.step(state, input, 1 / rate);
     expect(speed(state)).toBe(0);
   });
+
+  it("keeps sprint momentum when the floor alone cuts a step short", () => {
+    input.forward = 1;
+    run();
+    const kcc = (mover as unknown as { kcc: RAPIER.KinematicCharacterController }).kcc;
+    // Rapier sometimes stops a step dead on flat floor when the move carries gravity's pull.
+    vi.mocked(kcc.computeColliderMovement).mockImplementation((_collider, desired) => {
+      movementOverride = desired.y < 0 ? { x: 0, y: 0, z: 0 } : { ...desired, y: 0 };
+    });
+    vi.mocked(kcc.computedMovement).mockImplementation(() => movementOverride);
+    touching(kcc, { x: 0, y: 1, z: 0 });
+    const z = state.z;
+    mover.step(state, input, 1 / rate);
+    expect(speed(state)).toBeCloseTo(SPRINT_SPEED, 5);
+    expect(z - state.z).toBeCloseTo(SPRINT_SPEED / rate, 5);
+  });
+
+  it("carries a sprint through a short drop instead of slowing to a walk", () => {
+    input.forward = 1;
+    run();
+    const kcc = (mover as unknown as { kcc: RAPIER.KinematicCharacterController }).kcc;
+    vi.mocked(kcc.computedGrounded).mockReturnValue(false);
+    for (let i = 0; i < rate / 5; i++) {
+      mover.step(state, input, 1 / rate);
+      expect(state.sprinting).toBe(true);
+      expect(speed(state)).toBeCloseTo(SPRINT_SPEED, 5);
+    }
+    // Sprint cannot start in the air.
+    input.sprint = false;
+    mover.step(state, input, 1 / rate);
+    input.sprint = true;
+    mover.step(state, input, 1 / rate);
+    expect(state.sprinting).toBe(false);
+  });
 });
+
+let movementOverride = { x: 0, y: 0, z: 0 };
+
+/** Reports one contact with the given normal for the last computed move. */
+function touching(kcc: RAPIER.KinematicCharacterController, normal1: { x: number; y: number; z: number }) {
+  vi.spyOn(kcc, "numComputedCollisions").mockReturnValue(1);
+  vi.spyOn(kcc, "computedCollision").mockReturnValue({ normal1 } as RAPIER.CharacterCollision);
+}

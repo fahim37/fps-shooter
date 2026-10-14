@@ -38,6 +38,9 @@ export function newMoveState(x: number, y: number, z: number): MoveState {
 
 const HALF = PLAYER_HEIGHT / 2 - PLAYER_RADIUS;
 const CENTER = PLAYER_HEIGHT / 2;
+const MAX_SLOPE = (50 * Math.PI) / 180;
+/** Contact normals at least this upright are floor (the climbable slope limit). */
+const WALKABLE_NORMAL_Y = Math.cos(MAX_SLOPE) - 1e-3;
 
 /**
  * Kinematic character movement on top of Rapier's character controller. Shared by the
@@ -53,7 +56,7 @@ export class Mover {
     );
     this.kcc = world.createCharacterController(0.02);
     this.kcc.setUp({ x: 0, y: 1, z: 0 });
-    this.kcc.setMaxSlopeClimbAngle((50 * Math.PI) / 180);
+    this.kcc.setMaxSlopeClimbAngle(MAX_SLOPE);
     this.kcc.setMinSlopeSlideAngle((60 * Math.PI) / 180);
     this.kcc.enableAutostep(0.42, 0.15, false);
     this.kcc.enableSnapToGround(0.35);
@@ -82,7 +85,9 @@ export class Mover {
     const len = Math.hypot(wx, wz);
     if (len > 1) { wx /= len; wz /= len; }
 
-    s.sprinting = inp.sprint && len > 0.12 && inp.forward >= 0 && !inp.crouch && inp.ads < 0.3 && s.grounded;
+    // A sprint starts on the ground but carries through the air: dropping off a curb or
+    // jumping must not fall back to walking speed and then have to build the sprint again.
+    s.sprinting = inp.sprint && len > 0.12 && inp.forward >= 0 && !inp.crouch && inp.ads < 0.3 && (s.grounded || s.sprinting);
     let speed = inp.crouch ? CROUCH_SPEED : s.sprinting ? SPRINT_SPEED : WALK_SPEED;
     speed *= 1 - (1 - ADS_SPEED_MULT) * inp.ads;
     speed *= inp.speedMult;
@@ -110,16 +115,28 @@ export class Mover {
     const desired = { x: s.vx * dt, y: s.vy * dt, z: s.vz * dt };
     this.collider.setTranslation({ x: s.x, y: s.y + CENTER, z: s.z });
     this.kcc.computeColliderMovement(this.collider, desired, this.R.QueryFilterFlags.EXCLUDE_SENSORS, QUERY_WORLD);
-    const m = this.kcc.computedMovement();
+    let m = this.kcc.computedMovement();
     const wasGrounded = s.grounded;
     s.grounded = this.kcc.computedGrounded();
+    let wall = this.touchedWall();
+    if (wasGrounded && !wall && desired.y <= 0 && Math.hypot(m.x, m.z) < Math.hypot(desired.x, desired.z) * 0.5) {
+      // Rapier now and then stops a step dead on flat floor when it carries gravity's small
+      // downward pull, instead of sliding along it; the same move made level goes through.
+      this.kcc.computeColliderMovement(this.collider, { x: desired.x, y: 0, z: desired.z }, this.R.QueryFilterFlags.EXCLUDE_SENSORS, QUERY_WORLD);
+      m = this.kcc.computedMovement();
+      s.grounded ||= this.kcc.computedGrounded();
+      wall = this.touchedWall();
+    }
 
     s.x += m.x; s.y += m.y; s.z += m.z;
     this.collider.setTranslation({ x: s.x, y: s.y + CENTER, z: s.z });
 
-    // Blocked horizontally: bleed velocity so we don't keep pushing into walls.
-    if (Math.abs(m.x) < Math.abs(desired.x) - 1e-4) s.vx = m.x / dt;
-    if (Math.abs(m.z) < Math.abs(desired.z) - 1e-4) s.vz = m.z / dt;
+    // Blocked horizontally: bleed velocity so we don't keep pushing into walls. Only a wall
+    // can block; a step cut short by the floor alone must not throw away a sprint's momentum.
+    if (wall) {
+      if (Math.abs(m.x) < Math.abs(desired.x) - 1e-4) s.vx = m.x / dt;
+      if (Math.abs(m.z) < Math.abs(desired.z) - 1e-4) s.vz = m.z / dt;
+    }
     // Bumped a ceiling.
     if (s.vy > 0 && m.y < desired.y - 1e-4) s.vy = 0;
 
@@ -134,6 +151,15 @@ export class Mover {
     }
     // Safety net: never fall out of the world.
     if (s.y < -20) this.teleport(s, 0, 2, 0);
+  }
+
+  /** Whether the last move hit anything too steep to walk on. */
+  private touchedWall() {
+    for (let i = this.kcc.numComputedCollisions() - 1; i >= 0; i--) {
+      const hit = this.kcc.computedCollision(i);
+      if (hit && hit.normal1.y < WALKABLE_NORMAL_Y) return true;
+    }
+    return false;
   }
 }
 
