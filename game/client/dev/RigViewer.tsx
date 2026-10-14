@@ -71,10 +71,10 @@ function FppRig({ weapon, ads, pitch, reload, orbit, shot, draw }: { weapon: Wea
   return null;
 }
 
-export default function RigViewer(props: { fpp: boolean; orbit: boolean; weapon: WeaponId; pitch: number; speed: number; reload: number; ads: number; shot: number; draw: number; cam: [number, number, number]; target?: [number, number, number] }) {
+export default function RigViewer(props: { fpp: boolean; orbit: boolean; weapon: WeaponId; pitch: number; speed: number; reload: number; ads: number; shot: number; draw: number; fov: number; cam: [number, number, number]; target?: [number, number, number] }) {
   return (
     <div style={{ position: "fixed", inset: 0 }}>
-      <Canvas shadows camera={{ position: props.cam, fov: props.fpp && !props.orbit ? 78 : 40, near: 0.02 }} gl={{ preserveDrawingBuffer: true }}>
+      <Canvas shadows camera={{ position: props.cam, fov: props.fpp && !props.orbit ? props.fov : 40, near: 0.02 }} gl={{ preserveDrawingBuffer: true }}>
         <color attach="background" args={["#9aa6ad"]} />
         <directionalLight position={[3, 6, 4]} intensity={2.5} castShadow />
         <Suspense fallback={null}>

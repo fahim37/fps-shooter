@@ -49,7 +49,7 @@ export interface RigState {
 const headCache = new WeakMap<CharacterTemplate, THREE.Vector3>();
 const LOCO: ClipName[] = ["idle", "walk", "jog", "sprint", "crouchIdle", "crouchWalk", "jumpLoop"];
 const FPP_VISIBLE = /Arms/;
-const PROCEDURAL_BONES = ["spine_01", "spine_03", "upperarm_r", "lowerarm_r", "hand_r", "upperarm_l", "lowerarm_l", "hand_l"];
+const PROCEDURAL_BONES = ["spine_01", "spine_03", "neck_01", "clavicle_r", "upperarm_r", "lowerarm_r", "hand_r", "clavicle_l", "upperarm_l", "lowerarm_l", "hand_l"];
 /** Bolt handle lift (rad) and travel (m) at full open. */
 const BOLT_LIFT = 1.15;
 const BOLT_TRAVEL = 0.065;
@@ -57,8 +57,8 @@ const BOLT_TRAVEL = 0.065;
 const POUCH_DROP = 0.3;
 const POUCH_IN = 0.08;
 /** FPP: view-space offset of the hidden body from where the head would put it. */
-const FPP_BODY_HIP = new THREE.Vector3(0, -0.14, -0.3);
-const FPP_BODY_ADS = new THREE.Vector3(0, -0.04, -0.17);
+const FPP_BODY_HIP = new THREE.Vector3(0, -0.14, -0.23);
+const FPP_BODY_ADS = new THREE.Vector3(0, -0.08, -0.17);
 
 const _m = new THREE.Matrix4();
 const _m2 = new THREE.Matrix4();
@@ -84,6 +84,16 @@ const _scale = new THREE.Vector3();
 const _handTarget = new THREE.Matrix4();
 /** Share of the wrist's roll taken by the forearm; there are no twist bones to spread it. */
 const FOREARM_ROLL = 0.75;
+/** Longest wrist reach, as a share of the arm, that still leaves the elbow softly bent (~135°). */
+const COMFORT_REACH = 0.92;
+/** A pistol is pushed out on nearly straight arms (~155°). */
+const PISTOL_REACH = 0.97;
+/** How far (rad) the clavicle may swing to carry the shoulder after a far hand. */
+const MAX_SHRUG = 0.42;
+/** Long-gun stance: chest turned right of the aim (rad) so the support shoulder leads. */
+const RIFLE_STANCE = 0.28;
+/** TPP: the butt sits in the shoulder pocket, this far in from the shoulder joint. */
+const STOCK_POCKET = 0.05;
 
 /** Head position in the aim pose, model space: the FPP body hangs from it behind the camera. */
 function headRef(template: CharacterTemplate) {
@@ -128,6 +138,7 @@ export class CharacterRig {
   private sights = new Map<WeaponId, ReturnType<typeof createReflexSight>>();
   private weapon: WeaponId | null = null;
   private legYaw = 0;
+  private stance = 0;
   private dead = false;
   private deadTime = 0;
   private animationPose: { bone: THREE.Bone; quaternion: THREE.Quaternion }[];
@@ -246,10 +257,17 @@ export class CharacterRig {
 
     this.placeRoot(s, this.mode === "tpp" ? this.legYaw : 0);
     this.object.updateMatrixWorld(true);
-    if (this.mode === "tpp" && Math.abs(this.legYaw) > 1e-3) {
+    // Long guns are shot bladed: the chest turns right so the support arm can reach the
+    // handguard with a bent elbow, and the head turns back onto the aim.
+    const stance = this.weapon && this.weapon !== "pistol" ? RIFLE_STANCE : 0;
+    this.stance += (stance - this.stance) * Math.min(1, dt * 10);
+    const legYaw = this.mode === "tpp" ? this.legYaw : 0;
+    if (Math.abs(legYaw) > 1e-3 || this.stance > 1e-4) {
       // Legs face the movement direction; turn the torso back onto the aim.
-      rotateBoneWorld(this.inst.bones.get("spine_01")!, _q.setFromAxisAngle(UP, -this.legYaw * 0.6), true);
-      rotateBoneWorld(this.inst.bones.get("spine_03")!, _q.setFromAxisAngle(UP, -this.legYaw * 0.4), true);
+      rotateBoneWorld(this.inst.bones.get("spine_01")!, _q.setFromAxisAngle(UP, -legYaw * 0.6 - this.stance * 0.4), true);
+      rotateBoneWorld(this.inst.bones.get("spine_03")!, _q.setFromAxisAngle(UP, -legYaw * 0.4 - this.stance * 0.6), true);
+      const neck = this.inst.bones.get("neck_01");
+      if (neck && this.stance > 1e-4) rotateBoneWorld(neck, _q.setFromAxisAngle(UP, this.stance), true);
     }
     const lean = s.lean ?? 0;
     if (this.mode === "tpp" && Math.abs(lean) > 1e-3) {
@@ -364,13 +382,13 @@ export class CharacterRig {
       _e.set(s.pitch + s.recoil * (pistol ? 0.075 : 0.035) + hPitch * 0.5 - sprint * 0.6, s.yaw + sprint * 0.6 + hYaw, hRoll - (s.lean ?? 0) * LEAN_ANGLE * 0.6, "YXZ");
       _q.setFromEuler(_e);
       const fwd = _v2.set(0, 0, -1).applyQuaternion(_q);
-      const reach = pistol ? 0.5 : meta.max[2] + 0.02;
+      const reach = pistol ? 0.43 : meta.max[2] + 0.02;
       shoulder.addScaledVector(fwd, reach - s.recoil * 0.015);
       shoulder.y += (pistol ? -0.06 : -0.035) + s.ads * 0.03 - sprint * 0.12;
       // Handling lifts the gun into the first-person view; seen from outside, the same move
       // brings it down and in to the chest.
       const lift = Math.max(0, hy) * 1.5;
-      shoulder.add(_v2.set(hx + (pistol ? 0.02 : 0), Math.min(0, hy) - lift, hz + lift).applyAxisAngle(UP, s.yaw));
+      shoulder.add(_v2.set(hx + (pistol ? 0.02 : -STOCK_POCKET), Math.min(0, hy) - lift, hz + lift).applyAxisAngle(UP, s.yaw));
       this.gunPivot.position.copy(shoulder);
       this.gunPivot.quaternion.copy(_q);
     }
@@ -410,11 +428,12 @@ export class CharacterRig {
     const b = (n: string) => this.inst.bones.get(n)!;
     const h = this.handling;
     const bodyLeft = _bodyLeft.set(1, 0, 0).applyQuaternion(this.body.quaternion); // model +X is the character's left
+    const comfort = w === "pistol" ? PISTOL_REACH : COMFORT_REACH;
 
     _pole.setFromMatrixPosition(b("upperarm_r").matrixWorld).addScaledVector(bodyLeft, -0.18).addScaledVector(DOWN, 0.75);
-    this.placeHand("r", this.handTarget(h.right, grip.right, bodyLeft), _pole);
+    this.placeHand("r", this.handTarget(h.right, grip.right, bodyLeft), _pole, comfort);
     _pole.setFromMatrixPosition(b("upperarm_l").matrixWorld).addScaledVector(bodyLeft, 0.06).addScaledVector(DOWN, 0.75);
-    this.placeHand("l", this.handTarget(h.left, grip.left, bodyLeft), _pole);
+    this.placeHand("l", this.handTarget(h.left, grip.left, bodyLeft), _pole, comfort);
 
     // Fingers are written absolutely each frame, so held clips cannot accumulate them.
     this.poseFingers(this.fingers.r, h.right, grip.right);
@@ -474,12 +493,14 @@ export class CharacterRig {
   }
 
   /** Two-bone IK to a hand transform, rolling the forearm with the wrist so the skin doesn't pinch. */
-  private placeHand(side: "r" | "l", target: THREE.Matrix4, pole: THREE.Vector3) {
+  private placeHand(side: "r" | "l", target: THREE.Matrix4, pole: THREE.Vector3, comfort: number) {
     const upper = this.inst.bones.get(`upperarm_${side}`)!;
     const lower = this.inst.bones.get(`lowerarm_${side}`)!;
     const hand = this.inst.bones.get(`hand_${side}`)!;
     _target.setFromMatrixPosition(target);
     _handQuat.setFromRotationMatrix(_m2.extractRotation(target));
+    const clavicle = this.inst.bones.get(`clavicle_${side}`);
+    if (clavicle) this.reachShoulder(clavicle, upper, lower, hand, _target, comfort);
     solveTwoBone(upper, lower, hand, _target, pole, 1, true);
     _forearm.subVectors(_v.setFromMatrixPosition(hand.matrixWorld), _v2.setFromMatrixPosition(lower.matrixWorld)).normalize();
     // Twist of the wanted wrist rotation about the forearm, relative to where it is now.
@@ -492,6 +513,29 @@ export class CharacterRig {
       rotateBoneWorld(lower, _q.identity().slerp(_twist, FOREARM_ROLL), true);
     }
     setBoneWorldQuaternion(hand, _handQuat, true);
+  }
+
+  /**
+   * A hand reaching past a comfortable bend brings its shoulder along, as the shoulder blade
+   * does, so the elbow never locks straight. Swings the clavicle toward the target just enough.
+   */
+  private reachShoulder(clavicle: THREE.Bone, upper: THREE.Bone, lower: THREE.Bone, hand: THREE.Bone, target: THREE.Vector3, share: number) {
+    const root = _ta.setFromMatrixPosition(clavicle.matrixWorld);
+    const shoulder = _tb.setFromMatrixPosition(upper.matrixWorld);
+    const elbow = _v.setFromMatrixPosition(lower.matrixWorld);
+    const comfort = (shoulder.distanceTo(elbow) + elbow.distanceTo(_v2.setFromMatrixPosition(hand.matrixWorld))) * share;
+    if (shoulder.distanceTo(target) <= comfort) return;
+    const bone = shoulder.sub(root);
+    const toTarget = _v.subVectors(target, root);
+    const c = bone.length(), d = toTarget.length();
+    // Swinging by `a` leaves (full - a) between the clavicle and the target; keep the swing
+    // that puts the shoulder exactly at comfortable reach.
+    const full = bone.angleTo(toTarget);
+    const rest = Math.acos(THREE.MathUtils.clamp((d * d + c * c - comfort * comfort) / (2 * d * c), -1, 1));
+    const swing = Math.min(full - rest, MAX_SHRUG);
+    const axis = _v2.crossVectors(bone, toTarget);
+    if (swing <= 0 || axis.lengthSq() < 1e-10) return;
+    rotateBoneWorld(clavicle, _q.setFromAxisAngle(axis.normalize(), swing), true);
   }
 }
 

@@ -137,7 +137,7 @@ const GRIPS: Record<WeaponId, { right: Partial<Record<RightPose, HandGrip>> & { 
       },
     },
     left: {
-      support: cradle([0, 0.022, -0.35], [0.02, 0.017, 0.08]),
+      support: cradle([0, 0.022, -0.31], [0.02, 0.017, 0.08]),
       mag: magGrip([0, -0.006, -0.152], [0.012, 0.018, 0.034], 0),
     },
   },
