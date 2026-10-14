@@ -22,6 +22,7 @@ import { Bot, BOT_NAMES } from "./bot";
 import { NAME_MAX, randomName } from "../game/shared/names";
 import { startBlockReason } from "../game/shared/lobby";
 import { canEmote, canShowoff } from "../game/shared/showcase";
+import { VoiceRelay, voiceIceServers } from "./voice";
 
 type V3 = [number, number, number];
 
@@ -85,6 +86,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   private botTarget = 0;
   botSkill: 0 | 1 | 2 = 1;
   private botSeq = 0;
+  private voice?: VoiceRelay;
 
   onCreate(options: JoinOptions) {
     const c = options.create ?? { mode: options.mode ?? "tdm", map: options.map, maxPlayers: MAX_PLAYERS, bots: 8, botSkill: 1 as const, private: false, roomName: "" };
@@ -113,6 +115,19 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
 
     this.world = createRoomWorld(this.map);
     this.world.timestep = TICK_MS / 1000;
+
+    this.voice = new VoiceRelay({
+      available: (id) => {
+        const p = this.players.get(id);
+        return !!p && !p.bot && p.st.connected && this.state.phase !== "waiting";
+      },
+      mode: () => this.state.mode,
+      send: (id, type, data) => this.players.get(id)?.client?.send(type, data),
+      broadcast: (type, data) => this.broadcast(type, data),
+      iceServers: voiceIceServers,
+    });
+    this.onMessage("voice:state", (client, value: unknown) => this.voice?.state(client.sessionId, value));
+    this.onMessage("voice:signal", (client, value: unknown) => this.voice?.signal(client.sessionId, value));
 
     this.onMessage("pose", (client, m: PoseMsg) => this.onPose(client, m));
     this.onMessage("fire", (client, m: FireMsg) => {
@@ -206,6 +221,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   }
 
   async onDrop(client: Client) {
+    this.voice?.remove(client.sessionId);
     const p = this.players.get(client.sessionId);
     if (p) p.st.connected = false;
     try {
@@ -225,6 +241,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   }
 
   onLeave(client: Client) {
+    this.voice?.remove(client.sessionId);
     this.players.delete(client.sessionId);
     this.state.players.delete(client.sessionId);
     if (this.state.hostId === client.sessionId) this.state.hostId = this.humans()[0]?.id ?? "";

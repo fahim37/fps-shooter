@@ -1,0 +1,16 @@
+.voice { position: absolute; z-index: 4; top: 78px; left: 24px; max-width: min(310px, calc(100vw - 48px)); color: #e2ebda; font: 11px var(--font-geist-mono), monospace; }
+.bar, .actions { display: flex; gap: 6px; }
+.voice button { border: 1px solid #ffffff40; background: #111c16ed; color: #d9ed79; padding: 9px 10px; font: inherit; }
+.voice button:hover:not(:disabled), .voice button[aria-pressed=true] { background: #344c22; }
+.voice button.talking { background: #d9ed79; color: #17210e; }
+.bar button { touch-action: none; user-select: none; }
+.panel { display: grid; gap: 10px; max-height: min(500px, calc(100dvh - 140px)); overflow: auto; margin-top: 7px; padding: 14px; background: #101b16f5; border: 1px solid #ffffff30; }
+.panel p { margin: 0; color: #b6c5ab; font-size: 10px; line-height: 1.5; }
+.panel label { display: grid; gap: 6px; font-size: 10px; }
+.panel select { color: #e2ebda; background: #1b291e; padding: 8px; }
+.panel input { width: 100%; }
+.member { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.member span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.member button { padding: 5px 8px; }
+.speakers { max-width: 280px; padding: 6px 8px; margin: 6px 0 0; background: #111c16dc; color: #d9ed79; line-height: 1.5; }
+@media (pointer: coarse), (max-width: 700px) { .voice { top: 72px; left: 10px; max-width: min(290px, calc(100vw - 20px)); font-size: 10px; } .voice button { padding: 9px 7px; } .panel { max-height: calc(100dvh - 130px); } }

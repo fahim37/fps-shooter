@@ -231,7 +231,10 @@ small { display: block; }
 .player-slot.is-me { background: linear-gradient(90deg, #d9ed7918, #ffffff02); }
 .player-avatar { display: grid; place-items: center; flex: none; width: 34px; height: 34px; background: #d9ed790b; border: 1px solid #d9ed7930; color: var(--accent); font: 15px var(--font-geist-mono), monospace; }
 .player-slot:not(.occupied) .player-avatar { color: #7d8a73; border-style: dashed; background: transparent; }
-.player-slot > div { flex: 1; min-width: 0; }
+.player-slot > div, .player-slot > .player-details { flex: 1; min-width: 0; }
+.open-slot { width: 100%; background: transparent; color: inherit; font: inherit; text-align: left; }
+.open-slot:hover:not(:disabled) { border-color: var(--accent); background: #d9ed7910; }
+.open-slot:disabled { opacity: 1; }
 .player-slot strong { display: block; font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .player-slot:not(.occupied) strong { color: #8f9d86; font-weight: 400; }
 .player-slot small { margin-top: 3px; color: #87977b; font-size: 10px; }

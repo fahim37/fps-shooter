@@ -34,6 +34,7 @@ import { SquadPanel } from "./SquadPanel";
 import { DamageIndicator } from "./DamageIndicator";
 import { MatchStats } from "./MatchStats";
 import { HowToPlay } from "./HowToPlay";
+import { VoiceChat } from "./VoiceChat";
 
 class SceneBoundary extends Component<{ children: ReactNode; onLeave: () => void }, { error: string }> {
   state = { error: "" };
@@ -76,6 +77,7 @@ export default function GameView({ room, map: mapId, onLeave }: { room: GameRoom
       </Canvas>
       <MatchHud game={game} map={map.id} onLeave={onLeave} />
       <GraphicsControl />
+      <VoiceChat room={room} />
       {game?.input.touch && <MobileScreen message={screenMessage} setMessage={setScreenMessage} onLeave={onLeave} />}
     </SceneBoundary>
   </div>;

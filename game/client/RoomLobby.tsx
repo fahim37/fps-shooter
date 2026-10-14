@@ -73,17 +73,25 @@ export function ConnectedRoom({ room, onLeave }: { room: GameRoom; onLeave: () =
       <div className="top-tools"><LobbyTools onHelp={() => setHelp(true)} onSettings={() => setSettings(true)} /></div>
     </header>
 
-    {rosterSides(s).map((side, i) => <section key={side.key} className={`room-roster ${i === 0 ? "roster-left" : "roster-right"} ${side.team === 1 ? "team-blue" : side.team === 2 ? "team-red" : "team-solo"}`} aria-label={side.title}>
-      <div className="team-heading"><h2>{side.title}<span>{side.players.length}/{side.capacity}</span></h2>{!!side.team && <button type="button" className="text-button" disabled={disabled || me?.team === side.team || side.players.length >= side.capacity} onClick={() => send("team", side.team)}>{me?.team === side.team ? "Your team" : "Join team"}</button>}</div>
+    {rosterSides(s).map((side, i) => {
+      const canJoin = !!side.team && !disabled && me?.team !== side.team && side.players.length < side.capacity;
+      const joinTeam = () => send("team", side.team);
+      return <section key={side.key} className={`room-roster ${i === 0 ? "roster-left" : "roster-right"} ${side.team === 1 ? "team-blue" : side.team === 2 ? "team-red" : "team-solo"}`} aria-label={side.title}>
+      <div className="team-heading"><h2>{side.title}<span>{side.players.length}/{side.capacity}</span></h2>{!!side.team && <button type="button" className="text-button" disabled={!canJoin} onClick={joinTeam}>{me?.team === side.team ? "Your team" : "Join team"}</button>}</div>
       <div className="slot-list">{Array.from({ length: side.capacity }, (_, slot) => {
         const p = side.players[slot];
+        if (!p && side.team) return <button key={`empty-${slot}`} type="button" className="player-slot open-slot" disabled={!canJoin} onClick={joinTeam} aria-label={`Join ${side.title}, open slot ${slot + 1}`}>
+          <span className="player-avatar" aria-hidden="true">+</span>
+          <span className="player-details"><strong>Open slot</strong><small>{me?.team === side.team ? "Invite a friend" : "Click to join team"}</small></span>
+        </button>;
         return <div key={p?.id ?? `empty-${slot}`} className={`player-slot ${p ? "occupied" : ""} ${p?.id === room.sessionId ? "is-me" : ""}`}>
           <span className="player-avatar" aria-hidden="true">{p ? p.name.slice(0, 1).toUpperCase() : "+"}</span>
           <div><strong>{p ? `${p.name}${p.id === room.sessionId ? " (you)" : ""}` : "Open slot"}</strong><small>{p ? `${p.id === s.host ? "Host · " : ""}${p.char === 1 ? "Female" : "Male"} Ranger` : "Invite a friend"}</small></div>
           {p && <span className={`ready-badge ${p.ready && p.connected ? "is-ready" : ""}`}>{!p.connected ? "Reconnecting" : p.ready ? "Ready" : "Not ready"}</span>}
         </div>;
       })}</div>
-    </section>)}
+    </section>;
+    })}
 
     <div className="room-stage"><CharacterShowcase players={humans} me={room.sessionId} onShowoff={(id) => send("emote", id)} disabled={disabled} /></div>
 

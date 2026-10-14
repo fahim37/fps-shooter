@@ -31,7 +31,7 @@ export const SPAWN_PROTECTION_MS = 2000;
 export const GRENADES_PER_LIFE = 2;
 export const FALL_DAMAGE_MIN_SPEED = 13;
 
-export const MAX_PLAYERS = 12;
+export const MAX_PLAYERS = 20;
 export const ROOM_NAME = "match";
 
 export type GameMode = "ffa" | "tdm";

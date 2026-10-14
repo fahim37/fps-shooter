@@ -21,6 +21,15 @@ describe("room start requirements", () => {
   it("allows smaller balanced custom matches", () => {
     expect(startBlockReason({ ...duel, format: "custom", maxPlayers: 12 }, [player(1), player(2)])).toBe("");
   });
+  it.each([[4, 5], [3, 6], [1, 2], [10, 10]])("allows a ready %iv%i custom match with empty seats", (blue, red) => {
+    const roster = [...Array.from({ length: blue }, () => player(1)), ...Array.from({ length: red }, () => player(2))];
+    expect(startBlockReason({ ...duel, format: "custom", maxPlayers: 20 }, roster)).toBe("");
+    roster[0].ready = false;
+    expect(startBlockReason({ ...duel, format: "custom", maxPlayers: 20 }, roster)).toContain("ready up");
+  });
+  it("requires an opponent in custom team matches without bots", () => {
+    expect(startBlockReason({ ...duel, format: "custom", maxPlayers: 20 }, [player(1), player(1)])).toContain("each team");
+  });
   it("lets a solo player start only with practice bots enabled", () => {
     expect(startBlockReason({ ...duel, format: "custom", mode: "ffa" }, [player(0)])).toContain("another player");
     expect(startBlockReason({ ...duel, format: "custom", botFill: 4 }, [player(1)])).toBe("");

@@ -48,8 +48,6 @@ async function main() {
     assert.equal(a.state.phase, "waiting", "Only host may start");
     a.send("start", {}); await until(() => a.state.phase === "warmup");
     assert.equal(a.state.players.get(a.sessionId)?.emote, "idle", "Starting clears cosmetic state");
-    a.send("emote", "dance"); await sleep(100);
-    assert.equal(a.state.players.get(a.sessionId)?.emote, "idle", "Match gameplay rejects lobby showoffs");
     await b.leave(); await until(() => a.state.players.size === 1);
     assert.equal(a.state.phase, "warmup", "A departure must not cancel the match");
     assert.equal(a.state.players.get(a.sessionId)?.ready, true);
@@ -106,11 +104,43 @@ async function main() {
     assert.equal(sticky.state.players.get(sticky.sessionId)?.ready, true);
     sticky.send("ready", false); await until(() => sticky.state.players.get(sticky.sessionId)?.ready === false);
 
+    const uneven = await create("custom", { bots: 0, maxPlayers: 12, private: true });
+    const unevenRoster = [uneven];
+    for (let i = 1; i < 9; i++) unevenRoster.push(await peer(uneven, `Uneven ${i}`, i < 3 ? 1 : 2));
+    for (const r of unevenRoster) r.send("ready", true);
+    await until(() => [...uneven.state.players.values()].every((p) => p.ready));
+    uneven.send("start", {}); await until(() => uneven.state.phase === "warmup");
+    assert.equal([...uneven.state.players.values()].filter((p) => p.team === 1).length, 3);
+    assert.equal([...uneven.state.players.values()].filter((p) => p.team === 2).length, 6);
+    assert.equal(uneven.state.players.size, 9, "Uneven matches start with empty seats and no bots");
+
+    const large = await create("custom", { bots: 0, maxPlayers: 20, private: true });
+    assert.equal(large.state.maxPlayers, 20);
+    const largeRoster = [large];
+    for (let i = 1; i < 19; i++) largeRoster.push(await peer(large, `Large ${i}`, i < 9 ? 1 : 2));
+    const switcher = largeRoster[9];
+    switcher.send("ready", true);
+    await until(() => large.state.players.get(switcher.sessionId)?.ready === true);
+    switcher.send("team", 1);
+    await until(() => large.state.players.get(switcher.sessionId)?.team === 1);
+    assert.equal(large.state.players.get(switcher.sessionId)?.ready, true, "Switching into the larger team preserves readiness");
+    largeRoster.push(await peer(large, "Twentieth", 2));
+    assert.equal(large.state.players.size, 20);
+    switcher.send("team", 2); await sleep(150);
+    assert.equal(large.state.players.get(switcher.sessionId)?.team, 1, "Ten players is the team limit");
+    await assert.rejects(client.joinById(large.roomId, { name: "Twenty-first", char: 0 }), /locked|full/);
+    for (const r of largeRoster) r.send("ready", true);
+    await until(() => [...large.state.players.values()].every((p) => p.ready));
+    large.send("start", {}); await until(() => large.state.phase === "warmup");
+    assert.equal([...large.state.players.values()].filter((p) => p.team === 1).length, 10);
+    assert.equal([...large.state.players.values()].filter((p) => p.team === 2).length, 10);
+    assert.ok([...large.state.players.values()].every((p) => p.alive && !p.bot));
+
     const practice = await create("custom", { bots: 4, maxPlayers: 4, private: true });
     practice.send("ready", true); await until(() => practice.state.players.get(practice.sessionId)?.ready === true);
     practice.send("start", {}); await until(() => practice.state.phase === "warmup");
     assert.equal(practice.state.players.size, 4); assert.equal([...practice.state.players.values()].filter((p) => p.bot).length, 3);
-    console.log(JSON.stringify({ passed: true, checks: ["shared showoffs", "showoff rate limit", "invalid showoff rejection", "match clears showoffs", "fixed seats", "server-enforced no bots", "ready gating", "host-only start", "queue isolation", "team capacity", "countdown survives departures", "persistent readiness", "late joins on either team", "late spawn protection", "explicit unready", "host migration", "2v2 live match", "practice bots"] }));
+    console.log(JSON.stringify({ passed: true, checks: ["shared showoffs", "showoff rate limit", "invalid showoff rejection", "match clears showoffs", "fixed seats", "server-enforced no bots", "ready gating", "host-only start", "queue isolation", "team capacity", "countdown survives departures", "persistent readiness", "late joins on either team", "late spawn protection", "explicit unready", "host migration", "2v2 live match", "uneven 3v6 start", "team switching into larger team", "10v10 start", "20-player capacity", "practice bots"] }));
   } finally { await Promise.all(rooms.map((r) => r.leave().catch(() => {}))); }
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

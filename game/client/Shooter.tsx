@@ -5,7 +5,7 @@ import Image from "next/image";
 import { assetUrl } from "./assets/url";
 import { createRoom, joinByCode, joinErrorMessage, leaveCurrentRoom, listRooms, quickPlay, type GameRoom, type PublicRoom } from "./net/session";
 import { useSettings } from "./settings";
-import { MODE_INFO, type GameMode } from "../shared/constants";
+import { MAX_PLAYERS, MODE_INFO, type GameMode } from "../shared/constants";
 import type { JoinOptions } from "../shared/messages";
 import { audio } from "./core/audio";
 import { parseRoomCode } from "./net/invite";
@@ -29,7 +29,8 @@ type PlayTab = "friends" | "quick" | "join";
 type Format = "1v1" | "2v2" | "custom";
 
 const TABS = [["friends", "With friends"], ["quick", "Quick play"], ["join", "Join room"]] as const;
-const FORMATS = [["1v1", "Duel", "2 players"], ["2v2", "Doubles", "4 players"], ["custom", "Your rules", "Up to 12"]] as const;
+const FORMATS = [["1v1", "Duel", "2 players"], ["2v2", "Doubles", "4 players"], ["custom", "Your rules", `Up to ${MAX_PLAYERS}`]] as const;
+const ROOM_SIZES = Array.from({ length: MAX_PLAYERS / 2 }, (_, i) => (i + 1) * 2);
 const HEADINGS: Record<PlayTab, [eyebrow: string, title: string, text: string]> = {
   friends: ["MAKE IT YOUR MATCH", "Play with your people.", "Pick a format and a map. Friends join with your code or invite link."],
   quick: ["STRAIGHT INTO THE ACTION", "Jump into a match.", "A public match. Bots fill empty slots so you can play right away."],
@@ -155,17 +156,17 @@ export default function Shooter() {
           {tab === "friends" && <>
             <span className="field-caption">MATCH FORMAT</span>
             <div className="format-options" role="group" aria-label="Match format">{FORMATS.map(([id, label, count]) => <button key={id} type="button" className={format === id ? "selected" : ""} aria-pressed={format === id} onClick={() => setFormat(id)}><strong>{id === "custom" ? "Custom" : id}</strong><span>{label}</span><small>{count}</small></button>)}</div>
-            <p className="format-note">{format === "custom" ? "Your rules: mode, room size and optional practice bots." : `${format === "1v1" ? "One friend. One rival." : "Bring three friends."} Players only, no bots.`}</p>
+            <p className="format-note">{format === "custom" ? "Up to 10v10. Uneven teams welcome. Optional practice bots." : `${format === "1v1" ? "One friend. One rival." : "Bring three friends."} Players only, no bots.`}</p>
             <span className="field-caption">MAP</span>
             <MapPicker value={map} onChange={setMap} />
-            {format === "custom" && <div className="custom-fields">{modeSelect}<label>ROOM SIZE<select value={maxPlayers} onChange={(e) => { const max = Number(e.target.value); setMaxPlayers(max); setBots(Math.min(bots, max)); }}>{[2, 4, 6, 8, 12].map((n) => <option key={n} value={n}>{n} players</option>)}</select></label><label>FILL MATCH TO<select value={bots} onChange={(e) => setBots(Number(e.target.value))}><option value={0}>No bots · Players only</option>{[2, 4, 8, 12].filter((n) => n <= maxPlayers).map((n) => <option key={n} value={n}>{n} players · Practice bots fill empty slots</option>)}</select></label></div>}
+            {format === "custom" && <div className="custom-fields">{modeSelect}<label>ROOM SIZE<select value={maxPlayers} onChange={(e) => { const max = Number(e.target.value); setMaxPlayers(max); setBots(Math.min(bots, max)); }}>{ROOM_SIZES.map((n) => <option key={n} value={n}>{n} players{mode === "tdm" ? ` · Up to ${n / 2}v${n / 2}` : ""}</option>)}</select></label><label>FILL MATCH TO<select value={bots} onChange={(e) => setBots(Number(e.target.value))}><option value={0}>No bots · Players only</option>{ROOM_SIZES.filter((n) => n <= maxPlayers).map((n) => <option key={n} value={n}>{n} players · Practice bots fill empty slots</option>)}</select></label></div>}
             <div className="room-options"><label><span>ROOM NAME <span className="optional">· OPTIONAL</span></span><input value={roomName} maxLength={32} placeholder={`${name.trim() || "Ranger"}'s room`} onChange={(e) => setRoomName(e.target.value)} /></label><label className="check-label toggle-label" title="Only people with your invite can join."><input type="checkbox" checked={privateRoom} onChange={(e) => setPrivateRoom(e.target.checked)} /> Private room</label></div>
           </>}
           {tab === "quick" && <>
             <span className="field-caption">MAP</span>
             <MapPicker value={map} onChange={setMap} />
             {modeSelect}
-            <div className="quick-summary"><strong>Public matchmaking</strong><span>{MAPS[map].name} · Up to 12 players · Practice bots enabled</span><span>Want a match without bots? Choose With friends.</span></div>
+            <div className="quick-summary"><strong>Public matchmaking</strong><span>{MAPS[map].name} · Up to {MAX_PLAYERS} players · Practice bots enabled</span><span>Want a match without bots? Choose With friends.</span></div>
           </>}
           {tab === "join" && <>
             <div className="join-fields">
