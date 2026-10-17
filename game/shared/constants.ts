@@ -40,6 +40,20 @@ export const MODE_INFO: Record<GameMode, { name: string; scoreLimit: number; min
   tdm: { name: "Team Deathmatch", scoreLimit: 60, minutes: 10 },
 };
 
+/** Eliminations to win that a room creator can choose; the mode's default is among them. */
+export const SCORE_LIMITS: Record<GameMode, readonly number[]> = { tdm: [30, 60, 100, 150], ffa: [20, 30, 50, 75] };
+
+/** A listed score limit for the mode, or the mode's default. */
+export function scoreLimitFor(mode: GameMode, requested?: unknown): number {
+  return typeof requested === "number" && SCORE_LIMITS[mode].includes(requested) ? requested : MODE_INFO[mode].scoreLimit;
+}
+
+/** Higher targets get a longer clock (rounded up to 5 minutes) so they stay reachable. */
+export function matchMinutes(mode: GameMode, scoreLimit: number): number {
+  const { minutes, scoreLimit: base } = MODE_INFO[mode];
+  return Math.max(minutes, Math.ceil((minutes * scoreLimit) / base / 5) * 5);
+}
+
 export const WARMUP_MS = 8000;
 export const END_SCREEN_MS = 12000;
 

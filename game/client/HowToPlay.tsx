@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { MODE_INFO } from "../shared/constants";
+import { MODE_INFO, SCORE_LIMITS } from "../shared/constants";
 import styles from "./HowToPlay.module.css";
 
 type Row = [keys: string[], action: string, note?: string];
@@ -79,8 +79,8 @@ export function HowToPlay({ onClose, touch = false, locked = false }: { onClose:
         {locked ? <span className={styles.closeHint}><kbd>H</kbd> to close</span> : <button type="button" className={styles.close} onClick={onClose} aria-label="Close how to play">✕</button>}
       </header>
       <div className={styles.goal}>
-        <div><strong>Team Deathmatch</strong><p>Two teams. First to {MODE_INFO.tdm.scoreLimit} eliminations, or the most when the {MODE_INFO.tdm.minutes}-minute clock runs out, wins.</p></div>
-        <div><strong>Free for All</strong><p>Everyone for themselves. First to {MODE_INFO.ffa.scoreLimit} eliminations wins.</p></div>
+        <div><strong>Team Deathmatch</strong><p>Two teams. First to {MODE_INFO.tdm.scoreLimit} eliminations (the room creator can pick up to {SCORE_LIMITS.tdm.at(-1)}), or the most when the clock runs out, wins.</p></div>
+        <div><strong>Free for All</strong><p>Everyone for themselves. First to {MODE_INFO.ffa.scoreLimit} eliminations (or the room&rsquo;s chosen target) wins.</p></div>
       </div>
       <div className={styles.columns}>
         {(touch ? [{ title: "TOUCH", rows: TOUCH }] : KEYBOARD).map((group) => <div key={group.title} className={styles.group}>

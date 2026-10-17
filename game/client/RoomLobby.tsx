@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { GameRoom } from "./net/session";
-import { MODE_INFO, type GameMode } from "../shared/constants";
+import { MODE_INFO, matchMinutes, type GameMode } from "../shared/constants";
 import { startBlockReason } from "../shared/lobby";
 import { RoomInvite } from "./RoomInvite";
 import { LobbyTools, SettingsDialog } from "./SettingsDialog";
@@ -20,13 +20,13 @@ function snapshot(room: GameRoom) {
   return JSON.stringify({
     phase: s?.code ? s.phase : "", lobby: s?.lobby ?? false, name: s?.roomName ?? "", mode: s?.mode ?? "tdm", map: mapId(s?.map),
     host: s?.hostId ?? "", format: s?.format ?? "custom", maxPlayers: s?.maxPlayers ?? 12,
-    botFill: s?.botFill ?? 0, privateRoom: s?.privateRoom ?? false,
+    botFill: s?.botFill ?? 0, scoreLimit: s?.scoreLimit ?? 0, privateRoom: s?.privateRoom ?? false,
     players: s?.players ? [...s.players.entries()].map(([id, p]) => ({ id, name: p.name, char: p.char, emote: p.emote, team: p.team, ready: p.ready, connected: p.connected, bot: p.bot })) : [],
   });
 }
 interface RoomSnapshot {
   phase: string; lobby: boolean; name: string; mode: GameMode; map: MapId; host: string; format: string;
-  maxPlayers: number; botFill: number; privateRoom: boolean;
+  maxPlayers: number; botFill: number; scoreLimit: number; privateRoom: boolean;
   players: { id: string; name: string; char: number; emote: string; team: number; ready: boolean; connected: boolean; bot: boolean }[];
 }
 type Player = RoomSnapshot["players"][number];
@@ -69,7 +69,7 @@ export function ConnectedRoom({ room, onLeave }: { room: GameRoom; onLeave: () =
     <div className="lobby-grain" aria-hidden="true" />
     <header className="lobby-top room-top">
       <button type="button" className="text-button leave-button" onClick={onLeave}>← Leave room</button>
-      <section className="room-heading"><span className="eyebrow">{s.privateRoom ? "INVITE ONLY" : "PUBLIC ROOM"} · {humans.length} / {s.maxPlayers} PLAYERS</span><h1>{s.name || "Joining room…"}</h1><p>{s.format === "custom" ? MODE_INFO[s.mode].name : `${s.format} · Team Deathmatch`} <span>·</span> {MAPS[s.map].name} <span>·</span> {s.botFill ? `Bots fill to ${s.botFill}` : "No bots"}</p></section>
+      <section className="room-heading"><span className="eyebrow">{s.privateRoom ? "INVITE ONLY" : "PUBLIC ROOM"} · {humans.length} / {s.maxPlayers} PLAYERS</span><h1>{s.name || "Joining room…"}</h1><p>{s.format === "custom" ? MODE_INFO[s.mode].name : `${s.format} · Team Deathmatch`} <span>·</span> {MAPS[s.map].name} <span>·</span> {s.scoreLimit > 0 && <>First to {s.scoreLimit} · {matchMinutes(s.mode, s.scoreLimit)} min <span>·</span> </>}{s.botFill ? `Bots fill to ${s.botFill}` : "No bots"}</p></section>
       <div className="top-tools"><LobbyTools onHelp={() => setHelp(true)} onSettings={() => setSettings(true)} /></div>
     </header>
 

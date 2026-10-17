@@ -3,7 +3,7 @@ import type RAPIER_NS from "@dimforge/rapier3d-compat";
 import { MatchState, PlayerState, GrenadeState } from "../game/shared/schema";
 import {
   TICK_MS, MAX_REWIND_MS, MAX_HEALTH, REGEN_DELAY_MS, REGEN_PER_SEC, RESPAWN_MS, SPAWN_PROTECTION_MS,
-  GRENADES_PER_LIFE, FALL_DAMAGE_MIN_SPEED, MAX_PLAYERS, MODE_INFO, WARMUP_MS, END_SCREEN_MS, EYE_HEIGHT,
+  GRENADES_PER_LIFE, FALL_DAMAGE_MIN_SPEED, MAX_PLAYERS, MODE_INFO, scoreLimitFor, matchMinutes, WARMUP_MS, END_SCREEN_MS, EYE_HEIGHT,
   CROUCH_EYE_HEIGHT, SPRINT_SPEED, type GameMode,
 } from "../game/shared/constants";
 import { WEAPONS, PRIMARIES, GRENADE, damageAt, fireIntervalMs, type WeaponId } from "../game/shared/weapons";
@@ -109,7 +109,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     this.state.privateRoom = c.private === true;
     this.state.code = this.roomId;
     this.state.roomName = (c.roomName || `${options.name || "Player"}'s game`).slice(0, 32);
-    this.state.scoreLimit = MODE_INFO[mode].scoreLimit;
+    this.state.scoreLimit = scoreLimitFor(mode, c.scoreLimit);
     if (c.private) this.setPrivate(true);
     this.updateMeta();
 
@@ -359,7 +359,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       for (const p of this.players.values()) this.spawn(p);
     }
     if (phase === "live") {
-      this.state.phaseEndsAt = t + MODE_INFO[this.state.mode as GameMode].minutes * 60_000;
+      this.state.phaseEndsAt = t + matchMinutes(this.state.mode as GameMode, this.state.scoreLimit) * 60_000;
       this.state.team1 = this.state.team2 = 0;
       this.state.winner = "";
       for (const p of this.players.values()) {

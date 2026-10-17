@@ -25,6 +25,8 @@ export interface JoinOptions {
     lobby?: boolean;
     format?: "1v1" | "2v2" | "custom";
     map?: MapId;
+    /** Eliminations to win; one of SCORE_LIMITS for the mode, else the mode's default. */
+    scoreLimit?: number;
   };
 }
 

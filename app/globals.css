@@ -167,7 +167,7 @@ small { display: block; }
 .format-note { margin: 7px 0 0; color: #a5b19a; font-size: 11px; line-height: 1.4; }
 .optional { font-size: 8px; opacity: .65; }
 .custom-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 10px; }
-.custom-fields > label:last-child { grid-column: 1 / -1; }
+.custom-fields > label:last-child:nth-child(odd) { grid-column: 1 / -1; }
 .room-options { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
 .panel-body .toggle-label { margin-top: 0; padding: 0 12px; height: 44px; border: 1px solid var(--line-strong); white-space: nowrap; }
 .quick-summary { display: grid; gap: 6px; margin-top: 14px; padding: 14px; border: 1px solid var(--line); font-size: 12px; }
@@ -404,6 +404,7 @@ small { display: block; }
   .panel-body [data-map] > span:first-child { min-height: 36px; }
   .custom-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 6px; }
   .custom-fields > label:last-child { grid-column: auto; }
+  .custom-fields:has(> label:nth-child(4)) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .panel-body .custom-fields select { padding: 8px 4px 8px 7px; font-size: 11px; letter-spacing: 0; }
   .panel-body .custom-fields label, .room-options label { font-size: 9px; }
   .room-invite input { display: none; }
@@ -451,6 +452,7 @@ small { display: block; }
   .room-options > label:first-child { gap: 0; }
   .custom-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 6px; }
   .custom-fields > label:last-child { grid-column: auto; }
+  .custom-fields:has(> label:nth-child(4)) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .panel-body .custom-fields select { padding: 8px 4px 8px 7px; font-size: 11px; letter-spacing: 0; }
   .room-browser { margin-top: 8px; }
   .panel-action { padding: 6px 10px 8px; }
@@ -526,3 +528,10 @@ small { display: block; }
 .game-view[data-touch] .match-mode { visibility: hidden; }
 .game-view[data-touch] .fps-meter small, .game-view[data-touch] .ping-meter small { display: none; }
 .game-view[data-touch] .fps-meter, .game-view[data-touch] .ping-meter { background: #111812a8; }
+/* With a score target the custom options are four fields; on shorter desktops keep them on one row. */
+@media (max-height: 960px) and (min-width: 761px) {
+  .custom-fields:has(> label:nth-child(4)) { grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: 6px; }
+  .custom-fields:has(> label:nth-child(4)) > label:last-child { grid-column: auto; }
+  .panel-body .custom-fields:has(> label:nth-child(4)) select { padding: 8px 4px 8px 7px; font-size: 11px; letter-spacing: 0; }
+  .panel-body .custom-fields:has(> label:nth-child(4)) label { font-size: 9px; }
+}

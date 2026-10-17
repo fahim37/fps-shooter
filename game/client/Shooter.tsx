@@ -5,7 +5,7 @@ import Image from "next/image";
 import { assetUrl } from "./assets/url";
 import { createRoom, joinByCode, joinErrorMessage, leaveCurrentRoom, listRooms, quickPlay, type GameRoom, type PublicRoom } from "./net/session";
 import { useSettings } from "./settings";
-import { MAX_PLAYERS, MODE_INFO, type GameMode } from "../shared/constants";
+import { MAX_PLAYERS, MODE_INFO, SCORE_LIMITS, scoreLimitFor, type GameMode } from "../shared/constants";
 import type { JoinOptions } from "../shared/messages";
 import { audio } from "./core/audio";
 import { parseRoomCode } from "./net/invite";
@@ -74,6 +74,8 @@ export default function Shooter() {
   const [privateRoom, setPrivateRoom] = useState(true);
   const [bots, setBots] = useState(0);
   const [maxPlayers, setMaxPlayers] = useState(12);
+  /** Chosen score to win; 0 (or one not offered for the mode) uses the mode's default. */
+  const [scoreTarget, setScoreTarget] = useState(0);
   const [roomName, setRoomName] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -107,7 +109,7 @@ export default function Shooter() {
     try {
       const joined = await (kind === "code" ? joinByCode(parseRoomCode(selectedCode), opts) : kind === "quick" ? quickPlay(opts) : createRoom({
         ...opts, mode: format === "custom" ? mode : "tdm",
-        create: { mode: format === "custom" ? mode : "tdm", map, format, lobby: true, maxPlayers: format === "1v1" ? 2 : format === "2v2" ? 4 : maxPlayers, bots: format === "custom" ? bots : 0, botSkill: 1, private: privateRoom, roomName: roomName.trim() || `${playerName}'s room` },
+        create: { mode: format === "custom" ? mode : "tdm", map, format, lobby: true, maxPlayers: format === "1v1" ? 2 : format === "2v2" ? 4 : maxPlayers, bots: format === "custom" ? bots : 0, botSkill: 1, private: privateRoom, roomName: roomName.trim() || `${playerName}'s room`, scoreLimit: scoreLimitFor(format === "custom" ? mode : "tdm", scoreTarget) },
       }));
       setRoom(joined);
     } catch (e) { setError(joinErrorMessage(e)); }
@@ -123,6 +125,8 @@ export default function Shooter() {
 
   const visibleRooms = rooms.filter((r) => (filter !== "humans" || r.botFill === 0) && (filter !== "waiting" || r.phase === "waiting") && `${r.name} ${r.code} ${r.format}`.toLowerCase().includes(search.toLowerCase()));
   const [eyebrow, title, text] = invited && tab === "join" ? ["YOU’RE INVITED", "Meet your friends.", "Your invite code is filled in. Pick a team and join."] : HEADINGS[tab];
+  const roomMode: GameMode = format === "custom" ? mode : "tdm";
+  const scoreSelect = <label>SCORE TO WIN<select aria-label="Score to win" value={scoreLimitFor(roomMode, scoreTarget)} onChange={(e) => setScoreTarget(Number(e.target.value))}>{SCORE_LIMITS[roomMode].map((n) => <option key={n} value={n}>{n} kills</option>)}</select></label>;
   const modeSelect = <label>MODE<select aria-label="Game mode" value={mode} onChange={(e) => setMode(e.target.value as GameMode)}><option value="tdm">Team Deathmatch</option><option value="ffa">Free for All</option></select></label>;
   return <main className="lobby home-lobby" data-tab={tab}>
     <div className="lobby-grain" aria-hidden="true" />
@@ -159,7 +163,7 @@ export default function Shooter() {
             <p className="format-note">{format === "custom" ? "Up to 10v10. Uneven teams welcome. Optional practice bots." : `${format === "1v1" ? "One friend. One rival." : "Bring three friends."} Players only, no bots.`}</p>
             <span className="field-caption">MAP</span>
             <MapPicker value={map} onChange={setMap} />
-            {format === "custom" && <div className="custom-fields">{modeSelect}<label>ROOM SIZE<select value={maxPlayers} onChange={(e) => { const max = Number(e.target.value); setMaxPlayers(max); setBots(Math.min(bots, max)); }}>{ROOM_SIZES.map((n) => <option key={n} value={n}>{n} players{mode === "tdm" ? ` · Up to ${n / 2}v${n / 2}` : ""}</option>)}</select></label><label>FILL MATCH TO<select value={bots} onChange={(e) => setBots(Number(e.target.value))}><option value={0}>No bots · Players only</option>{ROOM_SIZES.filter((n) => n <= maxPlayers).map((n) => <option key={n} value={n}>{n} players · Practice bots fill empty slots</option>)}</select></label></div>}
+            <div className="custom-fields">{format === "custom" && <>{modeSelect}<label>ROOM SIZE<select value={maxPlayers} onChange={(e) => { const max = Number(e.target.value); setMaxPlayers(max); setBots(Math.min(bots, max)); }}>{ROOM_SIZES.map((n) => <option key={n} value={n}>{n} players{mode === "tdm" ? ` · Up to ${n / 2}v${n / 2}` : ""}</option>)}</select></label><label>FILL MATCH TO<select value={bots} onChange={(e) => setBots(Number(e.target.value))}><option value={0}>No bots · Players only</option>{ROOM_SIZES.filter((n) => n <= maxPlayers).map((n) => <option key={n} value={n}>{n} players · Practice bots fill empty slots</option>)}</select></label></>}{scoreSelect}</div>
             <div className="room-options"><label><span>ROOM NAME <span className="optional">· OPTIONAL</span></span><input value={roomName} maxLength={32} placeholder={`${name.trim() || "Ranger"}'s room`} onChange={(e) => setRoomName(e.target.value)} /></label><label className="check-label toggle-label" title="Only people with your invite can join."><input type="checkbox" checked={privateRoom} onChange={(e) => setPrivateRoom(e.target.checked)} /> Private room</label></div>
           </>}
           {tab === "quick" && <>
