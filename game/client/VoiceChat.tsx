@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { canHearVoice, type VoiceChannel } from "../shared/voice";
 import type { GameRoom } from "./net/session";
 import { INITIAL_VOICE, VoiceClient } from "./net/voice";
@@ -9,39 +9,93 @@ import styles from "./VoiceChat.module.css";
 /** Push-to-talk keys: N reaches your team, M reaches everyone (Free for All sends both to All). */
 const TALK_KEYS: Record<string, VoiceChannel> = { KeyN: "team", KeyM: "all" };
 
-function MicIcon() {
-  return <svg aria-hidden="true" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-    <rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5" /><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2" />
-  </svg>;
+const svg = { "aria-hidden": true, viewBox: "0 0 20 20", width: 18, height: 18, fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+
+function TeamIcon() {
+  return <svg {...svg}><circle cx="7" cy="7" r="2.6" /><circle cx="13.5" cy="7.5" r="2.1" /><path d="M2.5 16c.4-3 2.2-4.6 4.5-4.6S11.1 13 11.5 16M12 11.6c2.6-.4 4.6 1 5.2 4.2" /></svg>;
+}
+function AllIcon() {
+  return <svg {...svg}><circle cx="10" cy="10" r="7.2" /><path d="M2.8 10h14.4M10 2.8c2.1 2 3 4.4 3 7.2s-.9 5.2-3 7.2c-2.1-2-3-4.4-3-7.2s.9-5.2 3-7.2Z" /></svg>;
+}
+function MicIcon({ open }: { open: boolean }) {
+  return <svg {...svg}><rect x="7" y="2.5" width="6" height="10" rx="3" /><path d="M4.2 9.5a5.8 5.8 0 0 0 11.6 0M10 15.3v2.4" />{!open && <path d="M3.5 3.5l13 13" />}</svg>;
+}
+function MoreIcon() {
+  return <svg {...svg}><path d="M4 6h12M4 10h12M4 14h12" /><circle cx="7" cy="6" r="1.4" fill="currentColor" /><circle cx="13" cy="10" r="1.4" fill="currentColor" /><circle cx="9" cy="14" r="1.4" fill="currentColor" /></svg>;
 }
 
+interface Control {
+  start: (source: string, channel: VoiceChannel) => void;
+  stop: (source: string) => void;
+  setOpenMic: (open: boolean) => void;
+  select: (channel: VoiceChannel) => void;
+}
+
+/** Press and hold to talk on a channel; it also becomes the open-mic channel. */
+function ChannelButton({ channel, control, live, pressed, label, title, children }: {
+  channel: VoiceChannel; control: RefObject<Control | null>; live: boolean; pressed: boolean; label: string; title: string; children: ReactNode;
+}) {
+  const source = `button-${channel}`;
+  const begin = () => { control.current?.select(channel); control.current?.start(source, channel); };
+  const end = () => control.current?.stop(source);
+  return <button type="button" className={live ? styles.live : ""} aria-label={label} title={title} aria-pressed={pressed}
+    onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); begin(); }}
+    onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end} onBlur={end}
+    onKeyDown={(e) => { if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); begin(); } }}
+    onKeyUp={(e) => { if (e.key === " " || e.key === "Enter") end(); }}>{children}</button>;
+}
+
+/**
+ * Icon bar under the scores. Hold Team / All (or N / M) to talk on that channel; the mic button
+ * keeps the microphone open on the selected channel instead. Either turns voice on first.
+ */
 export function VoiceChat({ room }: { room: GameRoom }) {
+  const teams = room.state.mode === "tdm";
   const [state, setState] = useState(INITIAL_VOICE);
-  const [open, setOpen] = useState(false);
+  const [panel, setPanel] = useState(false);
+  const [openMic, setOpenMic] = useState(false);
+  const [selected, setSelected] = useState<VoiceChannel>(teams ? "team" : "all");
   const client = useRef<VoiceClient | null>(null);
-  /** Held talk sources in press order; the latest one picks the channel (undefined keeps the selected one). */
-  const held = useRef(new Map<string, VoiceChannel | undefined>());
-  const control = useRef<{ start: (source: string, channel?: VoiceChannel) => void; stop: (source: string) => void } | null>(null);
+  const control = useRef<Control | null>(null);
   useEffect(() => {
     let snapshot = INITIAL_VOICE;
-    const voice = new VoiceClient(room, (next) => { snapshot = next; setState(next); }); client.current = voice;
-    const sources = held.current;
-    const resume = () => { if (sources.size) voice.talk(true, [...sources.values()].at(-1)); };
-    const start = (source: string, channel?: VoiceChannel) => {
-      sources.delete(source); sources.set(source, channel);
-      if (snapshot.enabled) voice.talk(true, channel);
-      // The first talk press enables voice; talk only if the key is still held once the microphone opens.
-      else if (!snapshot.pending) void voice.join().then(resume);
+    let open = false;
+    let channel: VoiceChannel = room.state.mode === "tdm" ? "team" : "all";
+    const voice = new VoiceClient(room, (next) => {
+      // Leaving voice (or losing it) closes the open mic, so rejoining never transmits by surprise.
+      if (snapshot.enabled && !next.enabled && open) { open = false; setOpenMic(false); }
+      snapshot = next; setState(next);
+    }); client.current = voice;
+    /** Held talk sources in press order; the latest one picks the channel. */
+    const sources = new Map<string, VoiceChannel>();
+    const settle = () => {
+      if (sources.size) voice.talk(true, [...sources.values()].at(-1));
+      else if (open) voice.talk(true, channel);
+      else voice.talk(false);
     };
-    const stop = (source: string) => { if (!sources.delete(source)) return; if (sources.size) resume(); else voice.talk(false); };
-    control.current = { start, stop };
+    const ensureJoined = () => {
+      if (snapshot.enabled) settle();
+      // Talk only if something still asks for it once the microphone opens.
+      else if (!snapshot.pending) void voice.join().then(() => {
+        if (snapshot.enabled) settle();
+        else if (open) { open = false; setOpenMic(false); }
+      });
+    };
+    const start = (source: string, to: VoiceChannel) => { sources.delete(source); sources.set(source, to); ensureJoined(); };
+    const stop = (source: string) => { if (sources.delete(source)) settle(); };
+    control.current = {
+      start, stop,
+      setOpenMic: (value) => { open = value; setOpenMic(value); if (value) ensureJoined(); else settle(); },
+      select: (to) => { channel = to; setSelected(to); if (snapshot.enabled) settle(); },
+    };
     const down = (e: KeyboardEvent) => {
-      const channel = TALK_KEYS[e.code];
-      if (!channel || e.repeat || e.altKey || e.metaKey || (e.target as HTMLElement).closest("input, select, textarea, [contenteditable=true]")) return;
-      e.preventDefault(); start(e.code, channel);
+      const to = TALK_KEYS[e.code];
+      if (!to || e.repeat || e.altKey || e.metaKey || (e.target as HTMLElement).closest("input, select, textarea, [contenteditable=true]")) return;
+      e.preventDefault(); start(e.code, to);
     };
     const up = (e: KeyboardEvent) => { if (TALK_KEYS[e.code]) stop(e.code); };
-    const release = () => { sources.clear(); voice.talk(false); };
+    // Losing focus drops held keys; an open mic stays open.
+    const release = () => { sources.clear(); settle(); };
     const visibility = () => { if (document.hidden) release(); };
     document.addEventListener("keydown", down); document.addEventListener("keyup", up);
     window.addEventListener("blur", release); document.addEventListener("visibilitychange", visibility);
@@ -51,33 +105,27 @@ export function VoiceChat({ room }: { room: GameRoom }) {
       sources.clear(); control.current = null; voice.dispose(); client.current = null;
     };
   }, [room]);
+
   const me = room.state.players.get(room.sessionId);
-  const teams = room.state.mode === "tdm";
   const speakers = state.members.filter((m) => m.id !== room.sessionId && m.talking && !state.deafened && !state.mutedPeers.includes(m.id) && canHearVoice(m.channel, room.state.players.get(m.id)?.team ?? 0, me?.team ?? 0, room.state.mode));
-  const stopPointer = () => control.current?.stop("pointer");
-  return <aside className={styles.voice} aria-label="Voice chat" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+  const live = (channel: VoiceChannel) => state.talking && state.channel === channel;
+  const micTitle = state.pending ? "Waiting for microphone…" : !state.enabled ? "Voice is off. Click to turn it on with an open mic" : openMic ? "Mic open: everyone on your channel hears you. Click for push-to-talk" : "Push-to-talk (hold N / M). Click to keep the mic open";
+  return <aside className={styles.voice} aria-label="Voice chat" data-voice={state.enabled ? "on" : state.pending ? "pending" : "off"} data-talking={state.talking ? state.channel : ""} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
     <div className={styles.bar}>
-      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>VOICE {state.enabled ? `· ${state.channel.toUpperCase()}` : "OFF"}</button>
-      {state.enabled ? <button type="button" className={state.talking ? styles.talking : ""} aria-label="Hold to talk" aria-pressed={state.talking} disabled={state.micMuted || state.deafened}
-        onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); control.current?.start("pointer"); }}
-        onPointerUp={stopPointer} onPointerCancel={stopPointer} onLostPointerCapture={stopPointer}
-        onKeyDown={(e) => { if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); control.current?.start("button"); } }}
-        onKeyUp={(e) => { if (e.key === " " || e.key === "Enter") control.current?.stop("button"); }} onBlur={() => control.current?.stop("button")}>
-        {state.talking ? `TALKING · ${state.channel.toUpperCase()}` : state.micMuted ? "MIC MUTED" : "HOLD TO TALK"}
-      </button> : <button type="button" className={styles.enable} disabled={state.pending} onClick={() => void client.current?.join()}>
-        <MicIcon />{state.pending ? "WAITING FOR MIC…" : "ENABLE VOICE"}
-      </button>}
+      {teams && <ChannelButton channel="team" control={control} live={live("team")} pressed={state.enabled && selected === "team"} label="Team voice" title="Team voice: hold to talk to your team (N)"><TeamIcon /></ChannelButton>}
+      <ChannelButton channel="all" control={control} live={live("all")} pressed={state.enabled && selected === "all"} label="All voice" title={`All voice: hold to talk to everyone (${teams ? "M" : "N / M"})`}><AllIcon /></ChannelButton>
+      <button type="button" className={`${styles.mic} ${openMic && state.enabled ? styles.open : ""}`} aria-label="Open mic" title={micTitle} aria-pressed={openMic} aria-busy={state.pending} disabled={state.pending}
+        onClick={() => control.current?.setOpenMic(!openMic || !state.enabled)}><MicIcon open={openMic && state.enabled} /></button>
+      <button type="button" className={styles.more} aria-label="Voice settings" title="Voice settings" aria-expanded={panel} onClick={() => setPanel(!panel)}><MoreIcon /></button>
     </div>
-    <p className={styles.keys}>HOLD {teams ? <><kbd>N</kbd> TEAM · <kbd>M</kbd> ALL</> : <><kbd>N</kbd> / <kbd>M</kbd> TALK</>}</p>
     {speakers.length > 0 && <p className={styles.speakers} aria-live="polite">{speakers.map((m) => `${room.state.players.get(m.id)?.name ?? "Player"} (${m.channel})`).join(", ")}</p>}
-    {!open && state.error && <p className={styles.error} role="alert">{state.error}</p>}
-    {open && <div className={styles.panel}>
+    {!panel && state.error && <p className={styles.error} role="alert">{state.error}</p>}
+    {panel && <div className={styles.panel}>
       <strong>Voice chat</strong>
-      <p>{teams ? "Hold N to talk to your team, M to talk to everyone, or hold the talk button to use the channel below." : "Hold N, M or the talk button to talk to everyone."} You always hear teammates and All voice.</p>
-      <label>Speak to<select aria-label="Voice channel" value={teams ? state.channel : "all"} onChange={(e) => client.current?.channel(e.target.value as VoiceChannel)}><option value="team" disabled={!teams}>Team</option><option value="all">All players</option></select></label>
+      <p>{teams ? "Hold the team button or N to talk to your team, the globe or M to talk to everyone." : "Hold the globe, N or M to talk to everyone."} The mic button keeps your microphone open on the selected channel. You always hear teammates and All voice.</p>
       {!state.enabled ? <button type="button" disabled={state.pending} onClick={() => void client.current?.join()}>{state.pending ? "Waiting for microphone…" : "JOIN VOICE"}</button> : <>
-        <p role="status">{state.connected} connected · Microphone {state.talking ? "live" : "muted until you talk"}</p>
-        <div className={styles.actions}><button type="button" aria-pressed={state.micMuted} onClick={() => client.current?.muteMic()}>{state.micMuted ? "Unmute mic" : "Mute mic"}</button><button type="button" aria-pressed={state.deafened} onClick={() => client.current?.deafen()}>{state.deafened ? "Enable sound" : "Mute sound"}</button></div>
+        <p role="status">{state.connected} connected · {state.talking ? `Talking to ${state.channel === "team" ? "your team" : "everyone"}` : openMic ? "Mic open" : "Push-to-talk"}</p>
+        <div className={styles.actions}><button type="button" aria-pressed={state.deafened} onClick={() => client.current?.deafen()}>{state.deafened ? "Enable sound" : "Mute sound"}</button></div>
         <label>Voice volume<input aria-label="Voice volume" type="range" min="0" max="1" step="0.05" value={state.volume} onChange={(e) => client.current?.volume(Number(e.target.value))} /></label>
         {state.members.filter((m) => m.id !== room.sessionId).map((m) => <div className={styles.member} key={m.id}><span>{room.state.players.get(m.id)?.name ?? "Player"}</span><button type="button" aria-label={`Mute ${room.state.players.get(m.id)?.name ?? "Player"}`} aria-pressed={state.mutedPeers.includes(m.id)} onClick={() => client.current?.mutePeer(m.id)}>{state.mutedPeers.includes(m.id) ? "Unmute" : "Mute"}</button></div>)}
         <button type="button" onClick={() => client.current?.leave()}>LEAVE VOICE</button>

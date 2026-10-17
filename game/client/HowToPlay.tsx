@@ -31,9 +31,9 @@ const KEYBOARD: { title: string; rows: Row[] }[] = [
     [["Esc"], "Pause", "Invite friends, settings, leave"],
   ] },
   { title: "VOICE", rows: [
-    [["N"], "Team voice", "Hold to talk to your team. The first press turns voice on"],
-    [["M"], "All voice", "Hold to talk to everyone. Free for All uses All for both"],
-    [["Enable voice"], "Voice on / off", "Top-left button. VOICE opens mute, volume and player mute"],
+    [["N"], "Team voice", "Push-to-talk to your team. The first press turns voice on"],
+    [["M"], "All voice", "Push-to-talk to everyone. Free for All uses All for both"],
+    [["Mic button"], "Open mic on / off", "Under the scores: keeps your mic on for the selected Team or All channel"],
   ] },
 ];
 
@@ -52,7 +52,8 @@ const TOUCH: Row[] = [
   [["Camera"], "First / third person"],
   [["Emote"], "Emote", "Pick one; move or shoot to stop"],
   [["Pause"], "Pause", "Invite friends, settings, leave"],
-  [["Enable voice"], "Voice chat", "Top left, then hold the talk button. VOICE picks Team or All"],
+  [["Team", "All"], "Voice chat", "Icons under the scores: hold to talk to your team or everyone"],
+  [["Mic"], "Open mic on / off", "Keeps your mic on for the selected channel"],
   [["Layout"], "Move and resize buttons"],
 ];
 

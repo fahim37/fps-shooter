@@ -1,22 +1,29 @@
-.voice { position: absolute; z-index: 4; top: 78px; left: 24px; max-width: min(310px, calc(100vw - 48px)); color: #e2ebda; font: 11px var(--font-geist-mono), monospace; }
+/* Centered under the team scores. */
+.voice { position: absolute; z-index: 4; top: 86px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; width: max-content; max-width: min(320px, calc(100vw - 24px)); color: #e2ebda; font: 11px var(--font-geist-mono), monospace; }
 .bar, .actions { display: flex; gap: 6px; }
-.voice button { border: 1px solid #ffffff40; background: #111c16ed; color: #d9ed79; padding: 9px 10px; font: inherit; }
-.voice button:hover:not(:disabled), .voice button[aria-pressed=true] { background: #344c22; }
-.voice button.talking { background: #d9ed79; color: #17210e; }
-.bar button { touch-action: none; user-select: none; }
-.voice button.enable { display: inline-flex; align-items: center; gap: 6px; border-color: #d9ed7988; color: #e9f5a8; }
-.voice button.enable:disabled { color: #b6c5ab; border-style: dashed; }
-.keys { margin: 5px 0 0; color: #b6c5ab; font-size: 10px; letter-spacing: .04em; text-shadow: 0 1px 2px #000c; }
-.keys kbd { display: inline-block; min-width: 16px; padding: 1px 4px; border: 1px solid #d9ed7955; border-bottom-width: 2px; border-radius: 3px; background: #111c16cc; color: #d9ed79; font: inherit; text-align: center; }
-.error { max-width: 280px; padding: 6px 8px; margin: 6px 0 0; background: #2a1512e6; color: #ffc9b8; line-height: 1.5; }
-.panel { display: grid; gap: 10px; max-height: min(500px, calc(100dvh - 140px)); overflow: auto; margin-top: 7px; padding: 14px; background: #101b16f5; border: 1px solid #ffffff30; }
+.bar { gap: 4px; padding: 3px; border: 1px solid #ffffff1f; border-radius: 8px; background: #0d1611c4; }
+.voice button { border: 1px solid #ffffff40; background: #111c16ed; color: #d9ed79; padding: 9px 10px; font: inherit; cursor: pointer; }
+.voice button:disabled { cursor: default; }
+.bar button { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border-color: transparent; border-radius: 6px; background: transparent; color: #aebba4; touch-action: none; user-select: none; }
+.bar button:hover:not(:disabled) { background: #ffffff12; color: #e9f5a8; }
+.bar button[aria-pressed=true] { background: #2c3f1e; border-color: #d9ed7955; color: #d9ed79; }
+.bar button.live { background: #d9ed79; border-color: #d9ed79; color: #17210e; box-shadow: 0 0 12px #d9ed7966; }
+.bar .mic[aria-pressed=false] { color: #ff9a8b; }
+.bar .mic.open { background: #3a5a1f; border-color: #a6e36d; color: #c8ff8a; animation: open-mic 1.6s ease-in-out infinite; }
+.bar .mic[aria-busy=true] { opacity: .55; animation: open-mic .8s ease-in-out infinite; }
+.bar .more { width: 28px; color: #8f9c88; }
+.voice[data-voice=off] .bar button:not(.more) { color: #8f9c88; }
+@keyframes open-mic { 50% { box-shadow: 0 0 0 3px #a6e36d33; } }
+@media (prefers-reduced-motion: reduce) { .bar .mic.open, .bar .mic[aria-busy=true] { animation: none; } }
+.error { max-width: 280px; padding: 6px 8px; margin: 6px 0 0; background: #2a1512e6; color: #ffc9b8; line-height: 1.5; text-align: center; }
+.panel { display: grid; gap: 10px; width: min(300px, calc(100vw - 24px)); max-height: min(500px, calc(100dvh - 150px)); overflow: auto; margin-top: 7px; padding: 14px; background: #101b16f5; border: 1px solid #ffffff30; }
 .panel p { margin: 0; color: #b6c5ab; font-size: 10px; line-height: 1.5; }
 .panel label { display: grid; gap: 6px; font-size: 10px; }
-.panel select { color: #e2ebda; background: #1b291e; padding: 8px; }
 .panel input { width: 100%; }
 .member { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
 .member span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .member button { padding: 5px 8px; }
-.speakers { max-width: 280px; padding: 6px 8px; margin: 6px 0 0; background: #111c16dc; color: #d9ed79; line-height: 1.5; }
-@media (pointer: coarse) { .keys { display: none; } }
-@media (pointer: coarse), (max-width: 700px) { .voice { top: 72px; left: 10px; max-width: min(290px, calc(100vw - 20px)); font-size: 10px; } .voice button { padding: 9px 7px; } .panel { max-height: calc(100dvh - 130px); } }
+.speakers { max-width: 280px; padding: 5px 8px; margin: 5px 0 0; border-radius: 4px; background: #111c16dc; color: #d9ed79; line-height: 1.5; text-align: center; }
+@media (max-width: 800px) { .voice { top: 66px; } }
+/* Touch: compact, so it fits between the score and the top-right tool buttons. */
+@media (pointer: coarse) { .voice { top: max(58px, calc(env(safe-area-inset-top) + 50px)); font-size: 10px; } .bar { gap: 3px; padding: 2px; } .bar button { width: 32px; height: 32px; } .bar .more { width: 24px; } .panel { max-height: calc(100dvh - 130px); } }

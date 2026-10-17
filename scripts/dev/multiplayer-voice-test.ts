@@ -92,29 +92,35 @@ async function main() {
     await waitUntil(() => host.getByRole("button", { name: "START MATCH" }).isEnabled());
     await host.screenshot({ path: "out/qa/room-20-players.png" });
     await host.getByRole("button", { name: "START MATCH" }).click();
-    const talkButton = (page: Page) => page.getByRole("button", { name: "Hold to talk", exact: true });
+    const bar = (page: Page) => page.getByRole("complementary", { name: "Voice chat" });
+    const talking = (page: Page) => bar(page).getAttribute("data-talking");
+    const voiceMode = (page: Page) => bar(page).getAttribute("data-voice");
+    const icon = (page: Page, name: string) => bar(page).getByRole("button", { name, exact: true });
     for (const page of pages) {
-      await page.getByRole("button", { name: "ENABLE VOICE", exact: true }).waitFor({ timeout: 90_000 });
-      await page.getByText("HOLD N TEAM · M ALL", { exact: true }).waitFor();
+      await bar(page).waitFor({ timeout: 90_000 });
+      for (const name of ["Team voice", "All voice", "Open mic", "Voice settings"]) await icon(page, name).waitFor();
+      assert.equal(await voiceMode(page), "off");
       assert.equal(await page.evaluate(() => (window as TestWindow).voiceStreams.length), 0, "Microphone is opt-in");
     }
-    await host.screenshot({ path: "out/qa/voice-bar-off.png", clip: { x: 0, y: 0, width: 520, height: 200 } });
+    await host.screenshot({ path: "out/qa/voice-bar-off.png", clip: { x: 440, y: 0, width: 400, height: 170 } });
     // Holding N while voice is off enables it, then talks to the team once the microphone opens.
     await host.bringToFront();
     await host.keyboard.down("n");
-    await waitUntil(async () => await talkButton(host).getAttribute("aria-pressed").catch(() => null) === "true");
-    assert.equal(await host.getByRole("button", { name: "VOICE · TEAM", exact: true }).count(), 1);
+    await waitUntil(async () => await talking(host) === "team");
     await host.keyboard.up("n");
-    await waitUntil(async () => await talkButton(host).getAttribute("aria-pressed") === "false");
-    // The bar button enables voice in one click.
-    await blue.getByRole("button", { name: "ENABLE VOICE", exact: true }).click();
-    await talkButton(blue).waitFor();
+    await waitUntil(async () => await talking(host) === "");
+    // The mic button turns voice on with an open mic in one click; a second click goes back to push-to-talk.
+    await icon(blue, "Open mic").click();
+    await waitUntil(async () => await talking(blue) === "team");
+    assert.equal(await icon(blue, "Open mic").getAttribute("aria-pressed"), "true");
+    await icon(blue, "Open mic").click();
+    await waitUntil(async () => await talking(blue) === "");
     // A tap of M enables voice but stays silent once the key is no longer held.
     await green.bringToFront();
     await green.keyboard.down("m");
     await green.keyboard.up("m");
-    await talkButton(green).waitFor();
-    assert.equal(await talkButton(green).getAttribute("aria-pressed"), "false", "Released key does not transmit after joining");
+    await waitUntil(async () => await voiceMode(green) === "on");
+    assert.equal(await talking(green), "", "Released key does not transmit after joining");
     for (const page of pages) await waitUntil(() => page.evaluate(() => (window as TestWindow).voiceConnections.filter((pc) => pc.connectionState === "connected").length === 2), 45_000);
     assert.equal(await enabledTracks(host), 0, "Microphone starts silent");
     assert.equal(await enabledTracks(green), 0, "Tapped key leaves the microphone silent");
@@ -131,7 +137,7 @@ async function main() {
     await waitUntil(async () => await enabledTracks(host) === 2);
     await green.getByText("Voice Host (all)", { exact: true }).waitFor();
     await waitUntil(async () => await receivedEnergy(green) > 0);
-    await host.screenshot({ path: "out/qa/voice-bar-talking.png", clip: { x: 0, y: 0, width: 520, height: 200 } });
+    await host.screenshot({ path: "out/qa/voice-bar-talking.png", clip: { x: 440, y: 0, width: 400, height: 170 } });
     // Pressing N while M is held narrows to Team; releasing N returns to All.
     await host.keyboard.down("n");
     await waitUntil(async () => await enabledTracks(host) === 1);
@@ -139,20 +145,30 @@ async function main() {
     await waitUntil(async () => await enabledTracks(host) === 2);
     await host.keyboard.up("m");
     await waitUntil(async () => await enabledTracks(host) === 0);
-    await host.getByRole("button", { name: "VOICE · ALL", exact: true }).click();
-    await host.getByLabel("Voice channel", { exact: true }).selectOption("team");
-    const talk = talkButton(host);
-    const talkBounds = (await talk.boundingBox())!;
-    await host.mouse.move(talkBounds.x + talkBounds.width / 2, talkBounds.y + talkBounds.height / 2);
+    // Holding the All icon talks to everyone; a cancelled touch releases it.
+    const all = icon(host, "All voice");
+    const allBounds = (await all.boundingBox())!;
+    await host.mouse.move(allBounds.x + allBounds.width / 2, allBounds.y + allBounds.height / 2);
     await host.mouse.down();
-    await waitUntil(async () => await enabledTracks(host) === 1);
-    await talk.dispatchEvent("pointercancel", { pointerId: 1 });
+    await waitUntil(async () => await enabledTracks(host) === 2);
+    await all.dispatchEvent("pointercancel", { pointerId: 1 });
     await host.mouse.up();
-    assert.equal(await enabledTracks(host), 0, "Cancelling touch releases transmission");
-    await host.getByRole("button", { name: "Mute mic", exact: true }).click();
-    await host.keyboard.down("m");
-    assert.equal(await enabledTracks(host), 0, "Mic mute blocks push-to-talk");
-    await host.keyboard.up("m");
+    await waitUntil(async () => await enabledTracks(host) === 0);
+    assert.equal(await all.getAttribute("aria-pressed"), "true", "The All icon becomes the selected channel");
+    // Open mic transmits continuously on the selected channel; push-to-talk keys still override it.
+    await icon(host, "Open mic").click();
+    await waitUntil(async () => await enabledTracks(host) === 2);
+    await host.keyboard.down("n");
+    await waitUntil(async () => await enabledTracks(host) === 1);
+    await host.keyboard.up("n");
+    await waitUntil(async () => await enabledTracks(host) === 2);
+    await host.screenshot({ path: "out/qa/voice-bar-open.png", clip: { x: 440, y: 0, width: 400, height: 170 } });
+    await icon(host, "Team voice").click();
+    await waitUntil(async () => await enabledTracks(host) === 1);
+    assert.equal(await talking(host), "team", "Open mic follows the selected channel");
+    await icon(host, "Open mic").click();
+    await waitUntil(async () => await enabledTracks(host) === 0);
+    await icon(host, "Voice settings").click();
     await host.getByRole("button", { name: "Mute Voice Green", exact: true }).click();
     assert.equal(await host.getByRole("button", { name: "Mute Voice Green", exact: true }).getAttribute("aria-pressed"), "true");
     await waitUntil(() => host.evaluate(async () => {
@@ -164,15 +180,16 @@ async function main() {
     await host.getByRole("button", { name: "LEAVE VOICE", exact: true }).click();
     assert.ok(await host.evaluate(() => (window as TestWindow).voiceStreams.every((stream) => stream.getTracks().every((track) => track.readyState === "ended"))), "Leaving stops microphone capture");
     assert.equal(await host.locator("audio[data-voice-peer]").count(), 0);
+    assert.equal(await icon(host, "Open mic").getAttribute("aria-pressed"), "false");
     await host.evaluate(() => { navigator.mediaDevices.getUserMedia = async () => { await new Promise((resolve) => setTimeout(resolve, 600)); throw new DOMException("Denied", "NotAllowedError"); }; });
-    await host.getByRole("button", { name: "VOICE OFF", exact: true }).click();
+    await icon(host, "Voice settings").click();
     await host.keyboard.press("n");
-    await host.getByRole("button", { name: "WAITING FOR MIC…", exact: true }).waitFor();
-    assert.ok(await host.getByRole("button", { name: "WAITING FOR MIC…", exact: true }).isDisabled(), "Pending join cannot be repeated");
+    await waitUntil(async () => await voiceMode(host) === "pending");
+    assert.ok(await icon(host, "Open mic").isDisabled(), "Pending join cannot be repeated");
     await host.getByRole("alert").filter({ hasText: "Microphone permission was denied" }).waitFor();
-    await host.getByRole("button", { name: "ENABLE VOICE", exact: true }).waitFor();
+    await waitUntil(async () => await voiceMode(host) === "off");
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ passed: true, checks: ["20-slot lobby", "Join team transfer", "open slot pointer and keyboard transfer", "readiness preserved", "uneven 2v1 start", "microphone opt-in", "N enables and talks", "bar enable button", "tapped key joins silently", "three-way WebRTC audio packets", "N Team routing", "M All routing", "N over M narrows to Team", "push-to-talk release", "touch cancel", "mic mute", "player mute", "microphone cleanup", "pending state", "permission denied"] }));
+    console.log(JSON.stringify({ passed: true, checks: ["20-slot lobby", "Join team transfer", "open slot pointer and keyboard transfer", "readiness preserved", "uneven 2v1 start", "microphone opt-in", "N enables and talks", "mic button enables open mic", "tapped key joins silently", "three-way WebRTC audio packets", "N Team routing", "M All routing", "N over M narrows to Team", "push-to-talk release", "icon hold and touch cancel", "open mic with key override", "open mic follows channel", "player mute", "microphone cleanup", "pending state", "permission denied"] }));
   } catch (error) {
     for (const page of pages) console.error(await page.evaluate(() => (window as TestWindow).voiceConnections.map((pc) => ({ connection: pc.connectionState, ice: pc.iceConnectionState, signaling: pc.signalingState, local: pc.localDescription?.type, remote: pc.remoteDescription?.type }))).catch((e: Error) => e.message));
     console.error(await host.locator("body").innerText());
