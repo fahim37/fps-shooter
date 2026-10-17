@@ -74,7 +74,7 @@ async function main() {
     await page.waitForFunction(() => document.querySelector('[role="progressbar"][aria-label="Health"]')?.getAttribute("aria-valuenow") === "100", undefined, { timeout: 7000 });
     assert.equal(await page.locator('[data-health-state="healing"]').count(), 0);
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ passed: true, checks: ["invite late join on Green", "public in-progress join on Blue", "protected alive spawn", "visible bottom health bar", "critical health color", "damage restarts five-second delay", "server regeneration to 100", "mobile healing layout"], errors }));
+    console.log(JSON.stringify({ passed: true, checks: ["invite late join on Red", "public in-progress join on Blue", "protected alive spawn", "visible bottom health bar", "critical health color", "damage restarts five-second delay", "server regeneration to 100", "mobile healing layout"], errors }));
   } catch (error) {
     console.error(errors); console.error((await page.locator("body").innerText()).slice(0, 1800));
     await page.screenshot({ path: "out/qa/late-join-health-failure.png" }).catch(() => {}); throw error;

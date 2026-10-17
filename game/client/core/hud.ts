@@ -108,7 +108,7 @@ export interface HudState {
   set: (patch: Partial<HudState>) => void;
 }
 
-export const useHud = create<HudState>((set) => ({
+export const useHud = create<HudState>((set, get) => ({
   conn: "connecting",
   error: "",
   loading: 0,
@@ -169,7 +169,14 @@ export const useHud = create<HudState>((set) => ({
   fps: 0,
   fpsLow: 0,
   ping: 0,
-  set: (patch) => set(patch),
+  // The game pushes its state many times a second; a patch that changes nothing must not
+  // re-render the HUD.
+  set: (patch) => {
+    const current = get();
+    for (const key in patch) {
+      if (!Object.is(current[key as keyof HudState], patch[key as keyof HudState])) { set(patch); return; }
+    }
+  },
 }));
 
 export const hud = () => useHud.getState();

@@ -57,5 +57,6 @@ export function matchMinutes(mode: GameMode, scoreLimit: number): number {
 export const WARMUP_MS = 8000;
 export const END_SCREEN_MS = 12000;
 
-export const TEAM_COLORS = ["#e8e8e8", "#3f86ff", "#2fc25b"] as const;
-export const TEAM_NAMES = ["", "Blue", "Green"] as const;
+/** Outfit tints: neutral, blue and red. In a match these mean ally and enemy as seen by the viewer. */
+export const TEAM_COLORS = ["#e8e8e8", "#3f86ff", "#ff4d3d"] as const;
+export const TEAM_NAMES = ["", "Blue", "Red"] as const;

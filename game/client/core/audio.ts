@@ -11,6 +11,16 @@ interface ShotVoice {
   tail: number; // reverb send
 }
 
+/** Sounds nearer than this (m) use HRTF; farther ones use the far cheaper equal-power panning. */
+const HRTF_RANGE = 20;
+const MAX_HRTF = 8;
+/** Spatial sounds alive at once; past this only loud (near) ones still start. */
+const MAX_SPATIAL = 40;
+const LOUD_ENOUGH = 0.3;
+
+/** One playing sound: its routing is cut when it ends so the audio thread stops processing it. */
+interface Voice { end: number; nodes: AudioNode[]; spatial: boolean; hrtf: boolean }
+
 const SHOTS: Record<WeaponId, ShotVoice> = {
   ar: { crack: 0.9, body: 1, thump: 0.9, pitch: 1, length: 0.16, tail: 0.55 },
   smg: { crack: 0.8, body: 0.8, thump: 0.6, pitch: 1.3, length: 0.11, tail: 0.4 },
@@ -34,6 +44,7 @@ export class AudioEngine {
   private listener = { x: 0, y: 0, z: 0 };
   private forward = { x: 0, y: 0, z: -1 };
   private listenerSynced = false;
+  private voices: Voice[] = [];
   volume = 0.8;
 
   /** Must be called from a user gesture (click/tap) to unlock audio. */
@@ -77,10 +88,27 @@ export class AudioEngine {
     this.ambience?.stop();
     void this.ctx?.close();
     this.ctx = null;
+    this.voices = [];
     this.listenerSynced = false;
   }
 
+  /**
+   * Disconnects finished sounds. Left connected, every past gunshot's panner and filters keep
+   * running until garbage collection; in a 16-player firefight that piles up until the audio
+   * thread misses its deadline and the whole mix drops out.
+   */
+  private sweep() {
+    const now = this.ctx?.currentTime ?? Infinity;
+    let kept = 0;
+    for (const v of this.voices) {
+      if (v.end > now) { this.voices[kept++] = v; continue; }
+      for (const n of v.nodes) n.disconnect();
+    }
+    this.voices.length = kept;
+  }
+
   setListener(pos: V3, forward: V3) {
+    if (this.voices.length) this.sweep();
     const moved = !this.listenerSynced || pos.x !== this.listener.x || pos.y !== this.listener.y || pos.z !== this.listener.z;
     const turned = !this.listenerSynced || forward.x !== this.forward.x || forward.y !== this.forward.y || forward.z !== this.forward.z;
     this.listener.x = pos.x; this.listener.y = pos.y; this.listener.z = pos.z;
@@ -111,13 +139,29 @@ export class AudioEngine {
     this.listenerSynced = true;
   }
 
-  /** Output chain for a sound at `pos` (or non-spatial when omitted). Returns [input, distance]. */
-  private spatial(pos?: V3): [AudioNode, number] {
+  /**
+   * Input for a sound at `pos` (non-spatial when omitted) lasting `seconds` from `delay`, or null
+   * when many sounds already play and this one would be faint. Returns the input node, the
+   * distance and the voice, to which reverb sends are added so they are cut with it.
+   */
+  private spatial(pos: V3 | undefined, seconds: number, delay = 0): [AudioNode, number, Voice] | null {
     const ctx = this.ctx!;
-    if (!pos) return [this.sfx, 0];
+    const bus = ctx.createGain();
+    const voice: Voice = { end: ctx.currentTime + delay + seconds + 0.1, nodes: [bus], spatial: !!pos, hrtf: false };
+    if (!pos) {
+      bus.connect(this.sfx);
+      this.voices.push(voice);
+      return [bus, 0, voice];
+    }
     const dist = Math.hypot(pos.x - this.listener.x, pos.y - this.listener.y, pos.z - this.listener.z);
+    let spatial = 0, hrtf = 0;
+    for (const v of this.voices) { if (v.spatial) spatial++; if (v.hrtf) hrtf++; }
+    // Same curve as the panner below: a crowded mix skips only sounds too far away to matter.
+    const loudness = 3 / (3 + 1.1 * Math.max(0, dist - 3));
+    if (spatial >= MAX_SPATIAL && loudness < LOUD_ENOUGH) return null;
     const panner = ctx.createPanner();
-    panner.panningModel = "HRTF";
+    voice.hrtf = dist < HRTF_RANGE && hrtf < MAX_HRTF;
+    panner.panningModel = voice.hrtf ? "HRTF" : "equalpower";
     panner.distanceModel = "inverse";
     panner.refDistance = 3;
     panner.rolloffFactor = 1.1;
@@ -131,8 +175,10 @@ export class AudioEngine {
     const lp = ctx.createBiquadFilter();
     lp.type = "lowpass";
     lp.frequency.value = Math.max(900, 18000 / (1 + dist * 0.06));
-    lp.connect(panner).connect(this.sfx);
-    return [lp, dist];
+    bus.connect(lp).connect(panner).connect(this.sfx);
+    voice.nodes.push(lp, panner);
+    this.voices.push(voice);
+    return [bus, dist, voice];
   }
 
   private noiseSource(start: number, dur: number) {
@@ -153,7 +199,9 @@ export class AudioEngine {
     if (!ctx) return;
     const v = SHOTS[weapon];
     const t = ctx.currentTime + 0.001;
-    const [out, dist] = this.spatial(pos);
+    const route = this.spatial(pos, Math.max(0.2, v.length) + 0.05);
+    if (!route) return;
+    const [out, dist, voice] = route;
     const gainMul = local ? 0.9 : 1;
     const jitter = 0.94 + Math.random() * 0.12;
 
@@ -191,6 +239,7 @@ export class AudioEngine {
     const send = ctx.createGain();
     send.gain.value = v.tail * (0.5 + Math.min(1, dist / 60));
     bg.connect(send).connect(this.reverb);
+    voice.nodes.push(send);
   }
 
   dryFire() {
@@ -201,7 +250,9 @@ export class AudioEngine {
     const ctx = this.ctx;
     if (!ctx) return;
     const t = ctx.currentTime + delay;
-    const [out] = this.spatial(pos);
+    const route = this.spatial(pos, 0.05, delay);
+    if (!route) return;
+    const [out] = route;
     const n = this.noiseSource(t, 0.03);
     const bp = ctx.createBiquadFilter();
     bp.type = "bandpass";
@@ -229,7 +280,9 @@ export class AudioEngine {
     const ctx = this.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
-    const [out] = this.spatial(pos);
+    const route = this.spatial(pos, 0.12);
+    if (!route) return;
+    const [out] = route;
     const n = this.noiseSource(t, 0.08);
     const f = ctx.createBiquadFilter();
     f.type = stone ? "bandpass" : "lowpass";
@@ -250,7 +303,7 @@ export class AudioEngine {
     f.frequency.value = 500;
     const g = ctx.createGain();
     this.env(g, t, 0.25 * level, 0.003, 0.12);
-    n.connect(f).connect(g).connect(this.sfx);
+    n.connect(f).connect(g).connect(this.spatial(undefined, 0.2)![0]);
   }
 
   hitmarker(head: boolean) {
@@ -262,7 +315,7 @@ export class AudioEngine {
     o.frequency.value = head ? 2600 : 1700;
     const g = ctx.createGain();
     this.env(g, t, head ? 0.28 : 0.2, 0.001, 0.05);
-    o.connect(g).connect(this.sfx);
+    o.connect(g).connect(this.spatial(undefined, 0.1)![0]);
     o.start(t);
     o.stop(t + 0.08);
   }
@@ -280,7 +333,7 @@ export class AudioEngine {
       osc.frequency.value = frequency;
       const gain = ctx.createGain();
       this.env(gain, start, level, 0.005, decay);
-      osc.connect(gain).connect(this.sfx);
+      osc.connect(gain).connect(this.spatial(undefined, decay + 0.03, delay)![0]);
       osc.start(start);
       osc.stop(start + decay + 0.015);
     };
@@ -300,7 +353,7 @@ export class AudioEngine {
     o.frequency.exponentialRampToValueAtTime(45, t + 0.2);
     const g = ctx.createGain();
     this.env(g, t, 0.5, 0.003, 0.22);
-    o.connect(g).connect(this.sfx);
+    o.connect(g).connect(this.spatial(undefined, 0.3)![0]);
     o.start(t);
     o.stop(t + 0.3);
   }
@@ -309,7 +362,9 @@ export class AudioEngine {
     const ctx = this.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
-    const [out, dist] = this.spatial(pos);
+    const route = this.spatial(pos, 1.7);
+    if (!route) return;
+    const [out, dist, voice] = route;
     const n = this.noiseSource(t, 1.6);
     const lp = ctx.createBiquadFilter();
     lp.type = "lowpass";
@@ -330,6 +385,7 @@ export class AudioEngine {
     const send = ctx.createGain();
     send.gain.value = 0.9 + Math.min(1, dist / 40);
     g.connect(send).connect(this.reverb);
+    voice.nodes.push(send);
   }
 
   grenadeThrow() {
@@ -370,6 +426,7 @@ export class AudioEngine {
       const pan = ctx.createStereoPanner();
       pan.pan.value = Math.random() * 2 - 1;
       pan.connect(this.master);
+      this.voices.push({ end: t + n * 0.15 + 0.2, nodes: [pan], spatial: false, hrtf: false });
       for (let i = 0; i < n; i++) {
         const o = ctx.createOscillator();
         o.type = "sine";

@@ -107,10 +107,15 @@ function MatchHud({ game, map, onLeave }: { game: Game | null; map: MapId; onLea
   const paused = h.ready && !h.loadoutOpen && ((!h.locked && !h.touch) || h.menu);
   const failed = h.conn === "error" || h.conn === "left";
   const scoreboard = h.scoreboard || h.phase === "ended";
-  const winner = h.winner === "draw" ? "Draw" : h.mode === "tdm" ? `${TEAM_NAMES[Number(h.winner) as 1 | 2] ?? ""} team wins` : `${h.players.find((p) => p.id === h.winner)?.name ?? "Player"} wins`;
+  // Like PUBG, colors follow the viewer: your side is blue, every opponent red.
+  const enemyTeam = h.myTeam === 2 ? 1 : 2;
+  const ours = h.myTeam === 2 ? h.team2 : h.team1, theirs = h.myTeam === 2 ? h.team1 : h.team2;
+  const relation = (p: { team: number; me: boolean }) => p.me || (h.mode === "tdm" && h.myTeam > 0 && p.team === h.myTeam) ? "blue" : "red";
+  const winningTeam = Number(h.winner) as 1 | 2;
+  const winner = h.winner === "draw" ? "Draw" : h.mode === "tdm" ? (h.myTeam ? (winningTeam === h.myTeam ? "Your team wins" : "Enemy team wins") : `${TEAM_NAMES[winningTeam] ?? ""} team wins`) : `${h.players.find((p) => p.id === h.winner)?.name ?? "Player"} wins`;
   return <>
     <div className="hud-layer">
-      <div className="match-top"><span className="match-mode">{MODE_INFO[h.mode].name}<small>{h.code} · {h.phase.toUpperCase()}</small></span><div className="match-score">{h.mode === "tdm" && <b className="blue">{h.team1}</b>}<span>{time}<small>FIRST TO {h.scoreLimit}</small></span>{h.mode === "tdm" && <b className="green">{h.team2}</b>}</div><span className="match-stats">{fpsMeter && h.ready && <FpsMeter fps={h.fps} low={h.fpsLow} />}<span className="ping-meter" title="Round-trip time to the game server"><b>{h.ping}</b> MS<small>PING</small></span></span></div>
+      <div className="match-top"><span className="match-mode">{MODE_INFO[h.mode].name}<small>{h.code} · {h.phase.toUpperCase()}</small></span><div className="match-score">{h.mode === "tdm" && <b className="blue" title={`Your team (${TEAM_NAMES[h.myTeam === 2 ? 2 : 1]})`}>{ours}</b>}<span>{time}<small>FIRST TO {h.scoreLimit}</small></span>{h.mode === "tdm" && <b className="red" title={`Enemy team (${TEAM_NAMES[enemyTeam]})`}>{theirs}</b>}</div><span className="match-stats">{fpsMeter && h.ready && <FpsMeter fps={h.fps} low={h.fpsLow} />}<span className="ping-meter" title="Round-trip time to the game server"><b>{h.ping}</b> MS<small>PING</small></span></span></div>
       <KillFeed h={h} now={now} />
       {h.ready && !paused && !scoreboard && !h.loadoutOpen && !h.customizingControls && h.conn === "connected" && <><Minimap now={now} map={map} /><SquadPanel /></>}
       {h.ready && h.alive && !paused && !scoreboard && !h.loadoutOpen && !h.customizingControls && h.conn === "connected" && <MatchStats />}
@@ -133,7 +138,7 @@ function MatchHud({ game, map, onLeave }: { game: Game | null; map: MapId; onLea
     {h.loadoutOpen && h.ready && !failed && h.conn === "connected" && h.phase !== "ended" && game && <LoadoutPanel game={game} />}
     {h.touch && !h.mobilePortrait && h.ready && (h.alive || h.customizingControls) && !h.menu && !h.loadoutOpen && h.conn === "connected" && h.phase !== "ended" && game && <MobileControls game={game} />}
     {h.emoteMenu && h.ready && h.alive && !paused && !scoreboard && !h.loadoutOpen && !h.customizingControls && h.conn === "connected" && game && <EmoteMenu game={game} touch={h.touch} />}
-    {scoreboard && <div className="scoreboard"><span className="eyebrow">{h.phase === "ended" ? "MATCH COMPLETE" : "FIELD REPORT"}</span><h2>{h.phase === "ended" ? winner : h.roomName}</h2><table><thead><tr><th>PLAYER</th><th>K</th><th>D</th><th>A</th><th>SCORE</th><th>PING</th></tr></thead><tbody>{h.players.map((p) => <tr key={p.id} className={p.me ? "self" : ""}><td><span className={p.team === 1 ? "blue" : p.team === 2 ? "green" : ""}>{p.name}</span>{p.me ? " (YOU)" : p.bot ? " [BOT]" : ""}{!p.connected && " · OFFLINE"}</td><td>{p.kills}</td><td>{p.deaths}</td><td>{p.assists}</td><td>{p.score}</td><td>{p.bot ? "—" : p.ping}</td></tr>)}</tbody></table>{h.phase === "ended" && <p>Next match in {seconds}s <button onClick={onLeave}>Leave match</button></p>}</div>}
+    {scoreboard && <div className="scoreboard"><span className="eyebrow">{h.phase === "ended" ? "MATCH COMPLETE" : "FIELD REPORT"}</span><h2>{h.phase === "ended" ? winner : h.roomName}</h2><table><thead><tr><th>PLAYER</th><th>K</th><th>D</th><th>A</th><th>SCORE</th><th>PING</th></tr></thead><tbody>{h.players.map((p) => <tr key={p.id} className={p.me ? "self" : ""}><td><span className={relation(p)}>{p.name}</span>{p.me ? " (YOU)" : p.bot ? " [BOT]" : ""}{!p.connected && " · OFFLINE"}</td><td>{p.kills}</td><td>{p.deaths}</td><td>{p.assists}</td><td>{p.score}</td><td>{p.bot ? "—" : p.ping}</td></tr>)}</tbody></table>{h.phase === "ended" && <p>Next match in {seconds}s <button onClick={onLeave}>Leave match</button></p>}</div>}
     {h.help && h.ready && <HowToPlay touch={h.touch} locked={h.locked && !paused} onClose={() => hud().set({ help: false })} />}
     {(!h.ready || failed || h.conn === "reconnecting" || (paused && !scoreboard)) && (h.ready && !failed && h.conn !== "reconnecting" ? <div className="modal-shade"><div className="match-modal deploy-modal">
       {/* Two columns so everything before deploying fits on one screen. */}

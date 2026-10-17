@@ -11,6 +11,10 @@
 .viewport { position: relative; flex: 1 1 auto; width: 100%; min-height: 0; }
 .viewport canvas { display: block; }
 .canvasHost { position: absolute; inset: 0; }
+/* Horizontal drags turn the rangers; vertical ones still scroll the page on touch. */
+.canvasHost canvas { cursor: grab; touch-action: pan-y; }
+.canvasHost canvas[data-dragging] { cursor: grabbing; }
+.canvasHost canvas:focus-visible { outline: 2px solid #d4eea4; outline-offset: -2px; }
 .notice { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; margin: 0; padding: 30px; color: #c5cfbe; font-size: 13px; text-align: center; z-index: 1; }
 .notice button { padding: 8px 14px; border: 1px solid #789467; background: #23331c; }
 /* Name tags sit under each front-row ranger's feet and above each back-row ranger's head. */

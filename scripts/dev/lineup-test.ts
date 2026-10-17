@@ -23,14 +23,14 @@ async function checkTags(page: Page, count: number, label: string) {
       if (w > 1 && h > 1) overlaps.push(`${a.name} / ${b.name}`);
     }));
     const outside = tags.filter(({ box }) => box.left < stage.left - 1 || box.right > stage.right + 1 || box.top < stage.top - 1 || box.bottom > stage.bottom + 1).map((t) => t.name);
-    const blue = tags.filter((t) => t.team === 1).map((t) => t.x), green = tags.filter((t) => t.team === 2).map((t) => t.x);
-    const grouped = !blue.length || !green.length || Math.max(...blue) < Math.min(...green);
+    const blue = tags.filter((t) => t.team === 1).map((t) => t.x), red = tags.filter((t) => t.team === 2).map((t) => t.x);
+    const grouped = !blue.length || !red.length || Math.max(...blue) < Math.min(...red);
     return { count: tags.length, overlaps, outside, grouped, mode: layer.dataset.mode };
   });
   assert.equal(report.count, count, `${label}: one tag per player`);
   assert.deepEqual(report.overlaps, [], `${label}: name tags do not overlap`);
   assert.deepEqual(report.outside, [], `${label}: name tags stay on the stage`);
-  assert.ok(report.grouped, `${label}: Blue stands left of Green`);
+  assert.ok(report.grouped, `${label}: Blue stands left of Red`);
   return report.mode;
 }
 
@@ -120,7 +120,7 @@ async function main() {
     await ready(6);
     modes.shrunk = await checkTags(page, 6, "roster shrinks back to six");
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ passed: true, modes, checks: ["six in one row", "twelve in two rows", "twenty together, no pager", "tags inside stage, no overlaps", "Blue left of Green", "phone landscape and portrait fit", "roster shrinks safely"] }));
+    console.log(JSON.stringify({ passed: true, modes, checks: ["six in one row", "twelve in two rows", "twenty together, no pager", "tags inside stage, no overlaps", "Blue left of Red", "phone landscape and portrait fit", "roster shrinks safely"] }));
   } catch (error) {
     await page.screenshot({ path: join(shots, "lineup-failure.png") }).catch(() => {});
     throw error;

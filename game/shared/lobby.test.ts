@@ -21,8 +21,8 @@ describe("room start requirements", () => {
   it("allows smaller balanced custom matches", () => {
     expect(startBlockReason({ ...duel, format: "custom", maxPlayers: 12 }, [player(1), player(2)])).toBe("");
   });
-  it.each([[4, 5], [3, 6], [1, 2], [10, 10]])("allows a ready %iv%i custom match with empty seats", (blue, green) => {
-    const roster = [...Array.from({ length: blue }, () => player(1)), ...Array.from({ length: green }, () => player(2))];
+  it.each([[4, 5], [3, 6], [1, 2], [10, 10]])("allows a ready %iv%i custom match with empty seats", (blue, red) => {
+    const roster = [...Array.from({ length: blue }, () => player(1)), ...Array.from({ length: red }, () => player(2))];
     expect(startBlockReason({ ...duel, format: "custom", maxPlayers: 20 }, roster)).toBe("");
     roster[0].ready = false;
     expect(startBlockReason({ ...duel, format: "custom", maxPlayers: 20 }, roster)).toContain("ready up");

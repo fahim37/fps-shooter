@@ -18,7 +18,7 @@ Open the web URL printed by Next.js (normally http://localhost:3000). The game s
 ## Maps
 
 - **Village**: timber houses around a market plaza, open lanes and forest edges.
-- **Downtown**: a city crossing with prefab buildings along a 4-lane avenue and cross street, alleys into walled courtyards, and an enterable corner shop with rooftop stairs in each courtyard. The layout is 180° symmetric, so Blue (west) and Green (east) get mirror-image halves.
+- **Downtown**: a city crossing with prefab buildings along a 4-lane avenue and cross street, alleys into walled courtyards, and an enterable corner shop with rooftop stairs in each courtyard. The layout is 180° symmetric, so Blue (west) and Red (east) get mirror-image halves.
 
 Pick the map on the lobby's map cards when creating a room or using Quick play (Quick play matches rooms on that map); the choice is remembered in the browser. The room host can switch maps in the waiting room until the match starts, and everyone sees the change. Room listings show each room's map.
 
@@ -91,7 +91,7 @@ Male and female Rangers have animated selection previews and shared lobby showof
 
 When creating a room with friends, **Score to win** sets the elimination target: 30, 60 (default), 100 or 150 for Team Deathmatch, and 20, 30 (default), 50 or 75 for Free for All. Higher targets get a longer clock (100 → 20 minutes, 150 → 25 minutes) so they stay reachable; the waiting room shows the target and match length.
 
-Room readiness stays set until the player cancels it, including roster changes, team changes, reconnects and subsequent rounds. The host still starts each round. Warmup and active matches remain open while seats are available; joining players can choose Blue, Green or Auto assign in the invite form or public room browser. Team capacity is enforced by the server and late joiners receive a protected spawn. Departures do not cancel the countdown.
+Room readiness stays set until the player cancels it, including roster changes, team changes, reconnects and subsequent rounds. The host still starts each round. Warmup and active matches remain open while seats are available; joining players can choose Blue, Red or Auto assign in the invite form or public room browser. Team capacity is enforced by the server and late joiners receive a protected spawn. Departures do not cancel the countdown.
 
 Custom rooms support up to 20 players (10v10). Teams can start uneven, including 4v5 or 3v6, once everyone is ready and each team has a player (or practice bots are enabled). Choose a room size large enough for the larger team. In the waiting room, use **Join team** or click an **Open slot** on the other team to switch without losing readiness. Duel and Doubles keep their 1v1 and 2v2 formats.
 

@@ -19,11 +19,11 @@ const BACK_Z = -0.95;
 const RISER = 0.28;
 const HEADING = 40;
 const TAG_HEIGHT: Record<TagMode, number> = { full: 36, name: 16, stagger: 30 };
-const PAD_COLORS = ["#c4dc98", "#66b8ff", "#6fe08a"];
+const PAD_COLORS = ["#c4dc98", "#66b8ff", "#ff827c"];
 
 /**
  * Up to six stand in one row. Larger rooms zig-zag across a front row and a raised back row,
- * half a slot apart so every face shows; the caller orders Blue before Green so teams stay grouped.
+ * half a slot apart so every face shows; the caller orders Blue before Red so teams stay grouped.
  */
 function formation(members: Member[]) {
   const rows = members.length > 6 ? 2 : 1;
@@ -45,6 +45,9 @@ function formation(members: Member[]) {
 }
 
 /** One small renderer for the whole party; no physics, HDR, shadows or postprocessing. */
+/** Radians the rangers turn per pixel dragged: a full turn over roughly the stage width. */
+const TURN_PER_PIXEL = 0.012;
+
 export default function CharacterStage({ players, paused, label }: {
   players: ShowcasePlayer[]; paused: boolean; label: (player: ShowcasePlayer, mode: TagMode) => ReactNode;
 }) {
@@ -82,8 +85,6 @@ export default function CharacterStage({ players, paused, label }: {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.3;
-    renderer.domElement.setAttribute("aria-label", "Animated character preview");
-    renderer.domElement.setAttribute("role", "img");
     container.appendChild(renderer.domElement);
     scene.add(new THREE.HemisphereLight(0xd8edff, 0x5b6446, 2.6));
     const key = new THREE.DirectionalLight(0xffead0, 3.5);
@@ -212,6 +213,26 @@ export default function CharacterStage({ players, paused, label }: {
       setStatus("3D preview paused. Retry to restore it; your room is still connected.");
     };
     renderer.domElement.addEventListener("webglcontextlost", lost);
+    // Drag (or arrow keys) turns every ranger in place to show their back; double-click faces them forward again.
+    let turn = 0, dragging: number | null = null, lastX = 0;
+    const applyTurn = () => { for (const actor of actors.values()) actor.instance.root.rotation.y = turn; dirty = true; };
+    const canvas = renderer.domElement;
+    canvas.tabIndex = 0;
+    canvas.setAttribute("aria-label", "Animated character preview. Drag or use the arrow keys to turn the characters around.");
+    const down = (e: PointerEvent) => { if (e.button !== 0) return; dragging = e.pointerId; lastX = e.clientX; canvas.setPointerCapture(e.pointerId); canvas.dataset.dragging = ""; };
+    const move = (e: PointerEvent) => {
+      if (dragging !== e.pointerId) return;
+      turn += (e.clientX - lastX) * TURN_PER_PIXEL; lastX = e.clientX; applyTurn();
+    };
+    const up = (e: PointerEvent) => { if (dragging !== e.pointerId) return; dragging = null; delete canvas.dataset.dragging; };
+    const reset = () => { turn = 0; applyTurn(); };
+    const turnKey = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault(); turn += e.key === "ArrowLeft" ? -0.3 : 0.3; applyTurn();
+    };
+    canvas.addEventListener("pointerdown", down); canvas.addEventListener("pointermove", move);
+    canvas.addEventListener("pointerup", up); canvas.addEventListener("pointercancel", up);
+    canvas.addEventListener("dblclick", reset); canvas.addEventListener("keydown", turnKey);
     const releaseActor = ({ instance, mixer }: Actor) => {
       mixer.stopAllAction(); mixer.uncacheRoot(instance.root);
       instance.root.removeFromParent();
@@ -224,6 +245,7 @@ export default function CharacterStage({ players, paused, label }: {
       for (const spot of lineup.spots) {
         const actor = actors.get(spot.id);
         actor?.instance.root.position.set(spot.x, spot.y, spot.z);
+        if (actor) actor.instance.root.rotation.y = turn;
         const pad = new THREE.Mesh(padGeometry, padMaterials[spot.team === 1 || spot.team === 2 ? spot.team : 0]);
         pad.rotation.x = -Math.PI / 2; pad.scale.setScalar(radius);
         pad.position.set(spot.x, spot.y + 0.005, spot.z);
@@ -305,6 +327,9 @@ export default function CharacterStage({ players, paused, label }: {
       motion.removeEventListener("change", invalidate);
       document.removeEventListener("visibilitychange", invalidate);
       renderer.domElement.removeEventListener("webglcontextlost", lost);
+      canvas.removeEventListener("pointerdown", down); canvas.removeEventListener("pointermove", move);
+      canvas.removeEventListener("pointerup", up); canvas.removeEventListener("pointercancel", up);
+      canvas.removeEventListener("dblclick", reset); canvas.removeEventListener("keydown", turnKey);
       actors.forEach(releaseActor);
       for (const resource of [padGeometry, riserGeometry, riserMaterial, ...padMaterials]) resource.dispose();
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove();

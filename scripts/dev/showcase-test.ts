@@ -10,7 +10,7 @@ async function main() {
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(url);
     await page.locator('[data-stage-status="ready"]').waitFor();
-    const canvas = page.getByRole("img", { name: "Animated character preview" });
+    const canvas = page.getByLabel(/^Animated character preview/);
     await canvas.scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
     const still = await canvas.screenshot();
@@ -27,6 +27,21 @@ async function main() {
     const paused = await canvas.screenshot();
     await page.waitForTimeout(350);
     assert.ok(paused.equals(await canvas.screenshot()), "Pause motion stops rendering new poses");
+    // Dragging turns the ranger around even while paused; double-click faces it forward again.
+    // Compared below the stage heading, whose buttons change focus styling.
+    const box = (await canvas.boundingBox())!;
+    const stage = () => page.screenshot({ clip: { x: box.x, y: box.y + 48, width: box.width, height: box.height - 48 } });
+    const front = await stage();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 260, box.y + box.height / 2, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForTimeout(150);
+    assert.ok(!front.equals(await stage()), "Dragging turns the character");
+    await page.screenshot({ path: "out/qa/showcase-turned.png" });
+    await canvas.dblclick();
+    await page.waitForTimeout(150);
+    assert.ok(front.equals(await stage()), "Double-click faces the character forward again");
     await page.getByRole("button", { name: "Hide preview", exact: true }).click();
     assert.equal(await page.locator("canvas").count(), 0, "Hiding disposes the renderer");
     await page.getByRole("button", { name: "Show preview", exact: true }).click();

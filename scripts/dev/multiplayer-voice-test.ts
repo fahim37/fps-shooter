@@ -50,8 +50,8 @@ async function main() {
   }, process.env.VOICE_TEST_FORCE_RELAY === "1");
   const host = await context.newPage();
   const blue = await context.newPage();
-  const green = await context.newPage();
-  const pages = [host, blue, green];
+  const red = await context.newPage();
+  const pages = [host, blue, red];
   const errors: string[] = [];
   pages.forEach((page) => page.on("pageerror", (error) => errors.push(error.message)));
   try {
@@ -70,7 +70,7 @@ async function main() {
     await host.getByRole("button", { name: "READY UP", exact: true }).waitFor();
     assert.equal(await host.locator(".player-slot").count(), 20);
     const invite = await host.getByLabel("Invite link", { exact: true }).inputValue();
-    for (const [page, name] of [[blue, "Voice Blue"], [green, "Voice Green"]] as const) {
+    for (const [page, name] of [[blue, "Voice Blue"], [red, "Voice Red"]] as const) {
       await page.goto(invite);
       await page.getByLabel("CALLSIGN", { exact: true }).fill(name);
       await page.getByLabel("Join team", { exact: true }).selectOption("2");
@@ -81,14 +81,14 @@ async function main() {
     await blue.getByRole("region", { name: "Blue team", exact: true }).getByRole("button", { name: "Join team", exact: true }).click();
     await blue.locator(".team-blue .player-slot.is-me").waitFor();
     await blue.getByRole("button", { name: "CANCEL READY", exact: true }).waitFor();
-    await blue.getByRole("button", { name: /Join Green team, open slot/ }).first().click();
-    await blue.locator(".team-green .player-slot.is-me").waitFor();
+    await blue.getByRole("button", { name: /Join Red team, open slot/ }).first().click();
+    await blue.locator(".team-red .player-slot.is-me").waitFor();
     await blue.getByRole("button", { name: /Join Blue team, open slot/ }).first().focus();
     await blue.keyboard.press("Enter");
     await blue.locator(".team-blue .player-slot.is-me").waitFor();
     await blue.getByRole("button", { name: "CANCEL READY", exact: true }).waitFor();
     await host.getByRole("button", { name: "READY UP", exact: true }).click();
-    await green.getByRole("button", { name: "READY UP", exact: true }).click();
+    await red.getByRole("button", { name: "READY UP", exact: true }).click();
     await waitUntil(() => host.getByRole("button", { name: "START MATCH" }).isEnabled());
     await host.screenshot({ path: "out/qa/room-20-players.png" });
     await host.getByRole("button", { name: "START MATCH" }).click();
@@ -116,27 +116,27 @@ async function main() {
     await icon(blue, "Open mic").click();
     await waitUntil(async () => await talking(blue) === "");
     // A tap of M enables voice but stays silent once the key is no longer held.
-    await green.bringToFront();
-    await green.keyboard.down("m");
-    await green.keyboard.up("m");
-    await waitUntil(async () => await voiceMode(green) === "on");
-    assert.equal(await talking(green), "", "Released key does not transmit after joining");
+    await red.bringToFront();
+    await red.keyboard.down("m");
+    await red.keyboard.up("m");
+    await waitUntil(async () => await voiceMode(red) === "on");
+    assert.equal(await talking(red), "", "Released key does not transmit after joining");
     for (const page of pages) await waitUntil(() => page.evaluate(() => (window as TestWindow).voiceConnections.filter((pc) => pc.connectionState === "connected").length === 2), 45_000);
     assert.equal(await enabledTracks(host), 0, "Microphone starts silent");
-    assert.equal(await enabledTracks(green), 0, "Tapped key leaves the microphone silent");
+    assert.equal(await enabledTracks(red), 0, "Tapped key leaves the microphone silent");
     await host.bringToFront();
     await host.keyboard.down("n");
     await waitUntil(async () => await enabledTracks(host) === 1);
     await blue.getByText("Voice Host (team)", { exact: true }).waitFor();
-    assert.equal(await green.getByText("Voice Host (team)", { exact: true }).count(), 0, "Opponents do not see Team transmissions");
+    assert.equal(await red.getByText("Voice Host (team)", { exact: true }).count(), 0, "Opponents do not see Team transmissions");
     await waitUntil(async () => await receivedEnergy(blue) > 0);
-    assert.equal(await receivedEnergy(green), 0, "Team audio is silent for opponents");
+    assert.equal(await receivedEnergy(red), 0, "Team audio is silent for opponents");
     await host.keyboard.up("n");
     await waitUntil(async () => await enabledTracks(host) === 0);
     await host.keyboard.down("m");
     await waitUntil(async () => await enabledTracks(host) === 2);
-    await green.getByText("Voice Host (all)", { exact: true }).waitFor();
-    await waitUntil(async () => await receivedEnergy(green) > 0);
+    await red.getByText("Voice Host (all)", { exact: true }).waitFor();
+    await waitUntil(async () => await receivedEnergy(red) > 0);
     await host.screenshot({ path: "out/qa/voice-bar-talking.png", clip: { x: 440, y: 0, width: 400, height: 170 } });
     // Pressing N while M is held narrows to Team; releasing N returns to All.
     await host.keyboard.down("n");
@@ -169,8 +169,8 @@ async function main() {
     await icon(host, "Open mic").click();
     await waitUntil(async () => await enabledTracks(host) === 0);
     await icon(host, "Voice settings").click();
-    await host.getByRole("button", { name: "Mute Voice Green", exact: true }).click();
-    assert.equal(await host.getByRole("button", { name: "Mute Voice Green", exact: true }).getAttribute("aria-pressed"), "true");
+    await host.getByRole("button", { name: "Mute Voice Red", exact: true }).click();
+    assert.equal(await host.getByRole("button", { name: "Mute Voice Red", exact: true }).getAttribute("aria-pressed"), "true");
     await waitUntil(() => host.evaluate(async () => {
       const connected = (window as TestWindow).voiceConnections.filter((pc) => pc.connectionState === "connected");
       const stats = await Promise.all(connected.map((pc) => pc.getStats()));

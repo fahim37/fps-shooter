@@ -8,7 +8,7 @@ import styles from "./CharacterShowcase.module.css";
 
 const CharacterStage = dynamic(() => import("./CharacterStage"), { ssr: false, loading: () => <div className={styles.viewport}><p className={styles.notice}>Preparing the stage…</p></div> });
 
-/** Blue stands on the left and Green on the right; Free for All keeps join order. */
+/** Blue stands on the left and Red on the right; Free for All keeps join order. */
 const teamOrder = (team: number) => team === 1 ? 0 : team === 2 ? 1 : 2;
 
 /** Fills its parent: the stage flexes, the showoff row stays fixed. Every player in the room is on stage together. */

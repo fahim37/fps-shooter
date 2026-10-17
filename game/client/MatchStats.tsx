@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { useHud } from "./core/hud";
 import styles from "./MatchStats.module.css";
 
@@ -11,7 +12,7 @@ const ICONS = {
 };
 
 /** Your own K / D / A for the match, top left. */
-export function MatchStats() {
+export const MatchStats = memo(function MatchStats() {
   const me = useHud((h) => h.players.find((p) => p.me));
   if (!me) return null;
   // Older servers do not replicate every stat yet: show 0, never "undefined".
@@ -29,4 +30,4 @@ export function MatchStats() {
       <dd>{value}</dd>
     </div>)}
   </dl>;
-}
+});

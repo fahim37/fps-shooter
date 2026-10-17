@@ -1,9 +1,10 @@
+import { memo } from "react";
 import { useHud } from "./core/hud";
 import { bearingYaw, relativeBearing, threatStrength } from "./core/minimap";
 import styles from "./DamageIndicator.module.css";
 
 /** Red arcs around the crosshair pointing at whoever is hitting you; they turn as you turn. */
-export function DamageIndicator({ now }: { now: number }) {
+export const DamageIndicator = memo(function DamageIndicator({ now }: { now: number }) {
   const threats = useHud((s) => s.threats);
   const self = useHud((s) => s.mapPlayers.find((player) => player.relation === "self"));
   if (!self || !threats.length) return null;
@@ -19,4 +20,4 @@ export function DamageIndicator({ now }: { now: number }) {
       </svg>;
     })}
   </div>;
-}
+});

@@ -14,7 +14,7 @@ The home screen previews the selected body. Waiting rooms replicate each player'
 
 The combined character download is 51% smaller. These are file-size measurements, not an FPS benchmark.
 
-- One lobby renderer shows every human in the room together (up to 20), capped at 30 FPS and 1.25 device pixel ratio, rendering only when something moves. Up to six stand in one row; larger rooms zig-zag across a front row and a raised back row, Blue on the left and Green on the right. The camera fits the whole formation and its name tags at any aspect ratio, and tags shorten (name only, then alternating lines) as slots narrow. Joins and leaves add or remove single actors instead of rebuilding the scene.
+- One lobby renderer shows every human in the room together (up to 20), capped at 30 FPS and 1.25 device pixel ratio, rendering only when something moves. Up to six stand in one row; larger rooms zig-zag across a front row and a raised back row, Blue on the left and Red on the right. The camera fits the whole formation and its name tags at any aspect ratio, and tags shorten (name only, then alternating lines) as slots narrow. Joins and leaves add or remove single actors instead of rebuilding the scene.
 - No world, physics, weapons, HDR environment, postprocessing or shadow maps loaded by the preview.
 - Only the visible character body and `lobby-anims.glb` are requested. Geometry/textures are cached and shared with gameplay; skeletons and mixers are independent.
 - Offscreen and hidden-tab rendering pauses. Reduced-motion preferences freeze animations; Pause motion and Hide preview are also available.

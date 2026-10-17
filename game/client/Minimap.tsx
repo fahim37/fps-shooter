@@ -28,7 +28,7 @@ const Terrain = memo(function Terrain({ map }: { map: MapId }) {
   </g>;
 });
 
-export function Minimap({ now, map }: { now: number; map: MapId }) {
+export const Minimap = memo(function Minimap({ now, map }: { now: number; map: MapId }) {
   const { half } = getMap(map);
   const players = useHud((state) => state.mapPlayers);
   const threats = useHud((state) => state.threats);
@@ -78,4 +78,4 @@ export function Minimap({ now, map }: { now: number; map: MapId }) {
     </svg>
     <div className={styles.legend}><span><i className={styles.selfKey} />YOU</span><span><i className={styles.allyKey} />SQUAD</span><span><i className={styles.threatKey} />HIT FROM</span></div>
   </section>;
-}
+});

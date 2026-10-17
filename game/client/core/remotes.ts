@@ -26,6 +26,8 @@ export class RemotePlayer {
   private snaps: Snap[] = [];
   team = -1;
   char = -1;
+  /** Outfit tint as the local player sees this one: 1 ally (blue), 2 enemy (red). */
+  private tint = -1;
   weapon: WeaponId = "ar";
   name = "";
   alive = false;
@@ -40,11 +42,14 @@ export class RemotePlayer {
   private vel = new THREE.Vector3();
   private reloadT = -1;
   private stepDist = 0;
+  private speed = 0;
   recoil = 0;
   /** Seconds since this player last fired / drew the current gun, for the rig's handling. */
   private sinceShot = Infinity;
   private sinceDraw = Infinity;
   readonly head = new THREE.Vector3();
+  /** Whether the character was posed this frame; off-screen ones skip animation and drawing. */
+  posed = false;
   private readable = false;
 
   constructor(readonly id: string) {}
@@ -62,12 +67,12 @@ export class RemotePlayer {
     if (this.snaps.length > 30) this.snaps.shift();
   }
 
-  ensureRig(templates: [CharacterTemplate, CharacterTemplate], weapons: Map<WeaponId, THREE.Object3D>, team: number, char: number, scene: THREE.Object3D) {
-    if (this.rig && this.team === team && this.char === char) return;
+  ensureRig(templates: [CharacterTemplate, CharacterTemplate], weapons: Map<WeaponId, THREE.Object3D>, tint: number, char: number, scene: THREE.Object3D) {
+    if (this.rig && this.tint === tint && this.char === char) return;
     this.rig?.dispose();
-    this.team = team;
+    this.tint = tint;
     this.char = char;
-    this.rig = new CharacterRig(templates[char === 1 ? 1 : 0], weapons, team, char === 0 && hash(this.id) % 2 === 0, "tpp");
+    this.rig = new CharacterRig(templates[char === 1 ? 1 : 0], weapons, tint, char === 0 && hash(this.id) % 2 === 0, "tpp");
     this.readable = false;
     this.rig.setWeapon(this.weapon);
     scene.add(this.rig.object);
@@ -97,6 +102,7 @@ export class RemotePlayer {
     return { x: this.pos.x, y: this.pos.y, z: this.pos.z, crouch: (this.flags & F_CROUCH) !== 0, yaw: this.yaw, lean: this.lean };
   }
 
+  /** Interpolates the network pose and plays footsteps; `animate` then poses the character. */
   update(dt: number, renderTime: number, listener: THREE.Vector3) {
     const s = this.snaps;
     if (s.length === 0 || !this.rig) return;
@@ -108,7 +114,7 @@ export class RemotePlayer {
         if (s[i - 1].t <= renderTime) { a = s[i - 1]; b = s[i]; break; }
       }
     }
-    const prev = this.pos.clone();
+    const prev = _prev.copy(this.pos);
     if (renderTime <= s[0].t) {
       const first = s[0];
       this.pos.set(first.x, first.y, first.z);
@@ -155,34 +161,17 @@ export class RemotePlayer {
     }
 
     if (dt > 0) {
-      const v = this.pos.clone().sub(prev).divideScalar(dt);
+      const v = prev.subVectors(this.pos, prev).divideScalar(dt);
       if (v.lengthSq() < 400) this.vel.lerp(v, Math.min(1, dt * 10));
       else this.vel.set(0, 0, 0);
     }
-    const speed = Math.hypot(this.vel.x, this.vel.z);
+    const speed = this.speed = Math.hypot(this.vel.x, this.vel.z);
     const reloading = (this.flags & F_RELOADING) !== 0;
     if (reloading) this.reloadT = this.reloadT < 0 ? 0 : this.reloadT + dt / (WEAPONS[this.weapon].reloadMs / 1000);
     else this.reloadT = -1;
     this.recoil = Math.max(0, this.recoil - dt * 8);
     this.sinceShot += dt;
     this.sinceDraw += dt;
-
-    this.rig.update(Math.min(dt, 0.05), {
-      x: this.pos.x, y: this.pos.y, z: this.pos.z,
-      yaw: this.yaw, pitch: this.pitch, lean: this.alive ? this.lean : 0,
-      speed, moveYaw: Math.atan2(-this.vel.x, -this.vel.z),
-      crouch: (this.flags & F_CROUCH) !== 0,
-      grounded: (this.flags & F_GROUNDED) !== 0 || speed < 0.1,
-      alive: this.alive,
-      sprint: (this.flags & F_SPRINT) ? 1 : 0,
-      ads: (this.flags & F_ADS) ? 1 : 0,
-      reload: this.reloadT >= 0 ? Math.min(this.reloadT, 1) : -1,
-      recoil: this.recoil, sinceShot: this.sinceShot, sinceDraw: this.sinceDraw,
-      emote: this.alive && isEmote(this.emote) ? this.emote : null,
-    });
-    const headBone = this.rig.inst?.bones.get("Head");
-    if (headBone) headBone.getWorldPosition(this.head).y += 0.1;
-    else this.head.set(this.pos.x, this.pos.y + ((this.flags & F_CROUCH) ? 1.15 : 1.64), this.pos.z);
 
     // Footsteps for nearby players.
     if (this.alive && speed > 0.6 && (this.flags & F_GROUNDED)) {
@@ -196,11 +185,40 @@ export class RemotePlayer {
     }
   }
 
+  /**
+   * Poses and shows the character. `inView` false (off-screen, casting no visible shadow) skips
+   * animating and drawing it; a dying body keeps animating so its fall is never caught mid-way.
+   */
+  animate(dt: number, inView: boolean) {
+    if (!this.rig || this.snaps.length === 0) return;
+    const speed = this.speed;
+    this.posed = inView || !this.alive;
+    this.rig.setVisible(this.posed);
+    if (this.posed) this.rig.update(Math.min(dt, 0.05), {
+      x: this.pos.x, y: this.pos.y, z: this.pos.z,
+      yaw: this.yaw, pitch: this.pitch, lean: this.alive ? this.lean : 0,
+      speed, moveYaw: Math.atan2(-this.vel.x, -this.vel.z),
+      crouch: (this.flags & F_CROUCH) !== 0,
+      grounded: (this.flags & F_GROUNDED) !== 0 || speed < 0.1,
+      alive: this.alive,
+      sprint: (this.flags & F_SPRINT) ? 1 : 0,
+      ads: (this.flags & F_ADS) ? 1 : 0,
+      reload: this.reloadT >= 0 ? Math.min(this.reloadT, 1) : -1,
+      recoil: this.recoil, sinceShot: this.sinceShot, sinceDraw: this.sinceDraw,
+      emote: this.alive && isEmote(this.emote) ? this.emote : null,
+    });
+    const headBone = this.posed ? this.rig.inst?.bones.get("Head") : undefined;
+    if (headBone) headBone.getWorldPosition(this.head).y += 0.1;
+    else this.head.set(this.pos.x, this.pos.y + ((this.flags & F_CROUCH) ? 1.15 : 1.64), this.pos.z);
+  }
+
   dispose() {
     this.rig?.dispose();
     this.rig = null;
   }
 }
+
+const _prev = new THREE.Vector3();
 
 function wrap(a: number) {
   return Math.atan2(Math.sin(a), Math.cos(a));

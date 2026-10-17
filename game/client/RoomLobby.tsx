@@ -32,11 +32,11 @@ interface RoomSnapshot {
 type Player = RoomSnapshot["players"][number];
 interface Side { key: string; team: number; title: string; players: Player[]; capacity: number }
 
-/** Team Deathmatch puts Blue left and Green right; Free for All splits the slots across both sides. */
+/** Team Deathmatch puts Blue left and Red right; Free for All splits the slots across both sides. */
 function rosterSides(s: RoomSnapshot): Side[] {
   const humans = s.players.filter((p) => !p.bot);
   const half = Math.ceil(s.maxPlayers / 2);
-  if (s.mode === "tdm") return [1, 2].map((team) => ({ key: `team-${team}`, team, title: team === 1 ? "Blue team" : "Green team", players: humans.filter((p) => p.team === team), capacity: half }));
+  if (s.mode === "tdm") return [1, 2].map((team) => ({ key: `team-${team}`, team, title: team === 1 ? "Blue team" : "Red team", players: humans.filter((p) => p.team === team), capacity: half }));
   return [[0, half], [half, s.maxPlayers]].map(([start, end]) => ({ key: `ffa-${start}`, team: 0, title: end - start === 1 ? `Player ${end}` : `Players ${start + 1}–${end}`, players: humans.slice(start, end), capacity: end - start }));
 }
 
@@ -76,7 +76,7 @@ export function ConnectedRoom({ room, onLeave }: { room: GameRoom; onLeave: () =
     {rosterSides(s).map((side, i) => {
       const canJoin = !!side.team && !disabled && me?.team !== side.team && side.players.length < side.capacity;
       const joinTeam = () => send("team", side.team);
-      return <section key={side.key} className={`room-roster ${i === 0 ? "roster-left" : "roster-right"} ${side.team === 1 ? "team-blue" : side.team === 2 ? "team-green" : "team-solo"}`} aria-label={side.title}>
+      return <section key={side.key} className={`room-roster ${i === 0 ? "roster-left" : "roster-right"} ${side.team === 1 ? "team-blue" : side.team === 2 ? "team-red" : "team-solo"}`} aria-label={side.title}>
       <div className="team-heading"><h2>{side.title}<span>{side.players.length}/{side.capacity}</span></h2>{!!side.team && <button type="button" className="text-button" disabled={!canJoin} onClick={joinTeam}>{me?.team === side.team ? "Your team" : "Join team"}</button>}</div>
       <div className="slot-list">{Array.from({ length: side.capacity }, (_, slot) => {
         const p = side.players[slot];

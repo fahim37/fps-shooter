@@ -19,13 +19,22 @@ import { Input } from "./input";
 import { Effects } from "./effects";
 import { audio } from "./audio";
 import { hud, useHud } from "./hud";
-import { useSettings } from "../settings";
+import { PRESETS, useSettings } from "../settings";
 import { enemyAlongRay } from "./targeting";
 import { useLoadout } from "../loadout";
 import { DeathCamera } from "./deathcam";
 import { THREAT_MS, addThreat, mapRelation, type MapPlayer } from "./minimap";
 import { buildSquad } from "./squad";
 import { updateSightMotion } from "./sightMotion";
+
+const _frustum = new THREE.Frustum();
+const _viewProjection = new THREE.Matrix4();
+/** Covers a character with arms and gun out, peeking or emoting, around its waist. */
+const _bounds = new THREE.Sphere(new THREE.Vector3(), 1.9);
+
+/** Outfit tints (TEAM_COLORS): allies and you are blue, opponents red, whatever your team. */
+const ALLY_TINT = 1;
+const ENEMY_TINT = 2;
 
 type V3 = [number, number, number];
 
@@ -183,8 +192,9 @@ export class Game {
       const key = `${me.team}:${me.char}`;
       if (key !== this.rigKey) {
         this.fpp?.dispose(); this.tpp?.dispose();
-        this.fpp = new CharacterRig(this.templates[me.char === 1 ? 1 : 0], this.weapons, me.team, false, "fpp");
-        this.tpp = new CharacterRig(this.templates[me.char === 1 ? 1 : 0], this.weapons, me.team, false, "tpp");
+        // Your own outfit is always blue; opponents are always red (see the remotes below).
+        this.fpp = new CharacterRig(this.templates[me.char === 1 ? 1 : 0], this.weapons, ALLY_TINT, false, "fpp");
+        this.tpp = new CharacterRig(this.templates[me.char === 1 ? 1 : 0], this.weapons, ALLY_TINT, false, "tpp");
         this.scene.add(this.fpp.object, this.tpp.object);
         this.rigKey = key;
       }
@@ -196,7 +206,9 @@ export class Game {
         if (!remote) { remote = new RemotePlayer(id); this.remotes.set(id, remote); }
         remote.name = p.name;
         remote.protectedUntil = p.protectedUntil;
-        remote.ensureRig(this.templates, this.weapons, p.team, p.char, this.scene);
+        remote.team = p.team;
+        const ally = mapRelation(id, p.team, this.room.sessionId, me?.team ?? 0, state.mode as GameMode) === "ally";
+        remote.ensureRig(this.templates, this.weapons, ally ? ALLY_TINT : ENEMY_TINT, p.char, this.scene);
         remote.setWeapon(p.weapon as WeaponId);
         remote.push(state.serverTime, p);
       });
@@ -210,12 +222,24 @@ export class Game {
       mode: state.mode as GameMode, phase: state.phase, phaseEndsAt: state.phaseEndsAt,
       team1: state.team1, team2: state.team2, scoreLimit: state.scoreLimit, winner: state.winner,
       roomName: state.roomName,
-      squad: buildSquad(state.players.entries(), this.room.sessionId, me?.team ?? 0, state.mode as GameMode),
-      players: Array.from(state.players.entries()).map(([id, p]) => ({
+      squad: this.stable("squad", buildSquad(state.players.entries(), this.room.sessionId, me?.team ?? 0, state.mode as GameMode)),
+      players: this.stable("players", Array.from(state.players.entries()).map(([id, p]) => ({
         id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, assists: p.assists ?? 0, score: p.score,
         ping: p.ping, bot: p.bot, alive: p.alive, me: id === this.room.sessionId, connected: p.connected,
-      })).sort((a, b) => b.score - a.score || b.kills - a.kills),
+      })).sort((a, b) => b.score - a.score || b.kills - a.kills)),
     });
+  }
+
+  private hudLists = new Map<string, string>();
+  /**
+   * The previous HUD list when nothing in it changed. State patches arrive 30 times a second,
+   * and a fresh array each time would re-render every panel that shows players.
+   */
+  private stable<K extends "squad" | "players">(key: K, next: ReturnType<typeof hud>[K]): ReturnType<typeof hud>[K] {
+    const signature = JSON.stringify(next);
+    if (this.hudLists.get(key) === signature) return hud()[key];
+    this.hudLists.set(key, signature);
+    return next;
   }
 
   traceFrom(origin: V3, dir: V3, range: number, players = true) {
@@ -259,7 +283,8 @@ export class Game {
     if (!WEAPONS[ev.weapon]) return;
     const remote = this.remotes.get(ev.id);
     remote?.onShot();
-    const from = remote?.rig?.muzzle ?? new THREE.Vector3(...ev.origin);
+    // A character skipped this frame (off-screen) has a stale muzzle; its eye is close enough.
+    const from = remote?.posed && remote.rig ? remote.rig.muzzle : new THREE.Vector3(...ev.origin);
     audio.shot(ev.weapon, from);
     if (ev.ends[0]) this.effects.muzzleFlash(from, new THREE.Vector3(...ev.ends[0]).sub(from).normalize(), 1, false);
     ev.ends.forEach((end, i) => {
@@ -343,6 +368,17 @@ export class Game {
     }
     const fov = local.alive ? local.currentFov() : 62;
     if (this.camera.fov !== fov) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
+    // Characters are skinned with culling off (their bounds don't follow the animation), so cull
+    // them here, against this frame's camera, with a sphere covering a gun, a peek or an emote.
+    // Off-screen ones are neither animated nor drawn unless they may cast a shadow into view.
+    this.camera.updateMatrixWorld();
+    _frustum.setFromProjectionMatrix(_viewProjection.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse));
+    const preset = PRESETS[useSettings.getState().quality];
+    const shadowReach = preset.shadows ? preset.shadowExtent + 4 : 0;
+    for (const remote of this.remotes.values()) {
+      _bounds.center.set(remote.pos.x, remote.pos.y + 1, remote.pos.z);
+      remote.animate(dt, _frustum.intersectsSphere(_bounds) || remote.pos.distanceTo(this.camera.position) < shadowReach);
+    }
     if (local.alive && local.ads > 0.4) updateSightMotion(dt, {
       swayX: local.sway.x, swayY: local.sway.y, bobX: local.bob.x, bobY: local.bob.y,
       strafe: local.ms.vx * Math.cos(local.yaw) - local.ms.vz * Math.sin(local.yaw), vy: local.ms.vy,
