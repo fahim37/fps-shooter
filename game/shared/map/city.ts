@@ -9,7 +9,7 @@ import type { MapData, MapOverview, MapRect, PlacedPiece, SpawnPoint } from "./t
  * at a central intersection. Prefab buildings line the streets; alleys between them lead to
  * walled courtyards, each with an enterable shop and rooftop access. Streets are the middle
  * lane, courtyards the flanks. The layout is 180°-rotationally symmetric, so the west (Blue)
- * and east (Red) halves are mirror images.
+ * and east (Green) halves are mirror images.
  *
  * Kit conventions (measured): street tiles keep asphalt 0.15 m below the sidewalk top; walls
  * are 2 m wide and 3 m tall with the exterior face at local z = 0 (+Z out) and thickness
@@ -320,7 +320,7 @@ export function buildCity(): MapData {
   for (const [x, z] of [[6.5, 6.5], [-6.5, 6.5], [6.5, -6.5], [-6.5, -6.5]]) world.piece("Prop_Planter_Single", x, 0, z);
   streetEnds(world);
 
-  // Spawns: east (Red) side authored here, west (Blue) is the 180° rotation.
+  // Spawns: east (Green) side authored here, west (Blue) is the 180° rotation.
   const spawns: SpawnPoint[] = [];
   const east: [number, number, number][] = [
     [42, -4.5, 0], [42, -1.5, 0], [42, 1.5, 0], [42, 4.5, 0],

@@ -315,8 +315,8 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     while (bots.length > want) {
       // Replace a bot on the crowded team so a late human can choose either side.
       const blue = [...this.players.values()].filter((p) => p.st.team === 1).length;
-      const red = [...this.players.values()].filter((p) => p.st.team === 2).length;
-      const crowded = blue > red ? 1 : 2;
+      const green = [...this.players.values()].filter((p) => p.st.team === 2).length;
+      const crowded = blue > green ? 1 : 2;
       const index = this.state.mode === "tdm" ? bots.findIndex((p) => p.st.team === crowded) : -1;
       const b = bots.splice(index < 0 ? bots.length - 1 : index, 1)[0];
       b.bot!.dispose();

@@ -171,7 +171,7 @@ export default function Shooter() {
           {tab === "join" && <>
             <div className="join-fields">
               <label>ROOM CODE OR INVITE LINK<input aria-label="Room code" placeholder="e.g. ABC23 or paste an invite" value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && parseRoomCode(code)) void join("code"); }} /></label>
-              <label>JOIN TEAM<select aria-label="Join team" value={joinTeam} onChange={(e) => setJoinTeam(Number(e.target.value) as 0 | 1 | 2)}><option value={0}>Auto assign</option><option value={1}>Blue team</option><option value={2}>Red team</option></select></label>
+              <label>JOIN TEAM<select aria-label="Join team" value={joinTeam} onChange={(e) => setJoinTeam(Number(e.target.value) as 0 | 1 | 2)}><option value={0}>Auto assign</option><option value={1}>Blue team</option><option value={2}>Green team</option></select></label>
             </div>
             <section className="room-browser" aria-label="Public rooms">
               <div className="browser-heading"><h3>Open rooms <span>{visibleRooms.length}</span></h3><button type="button" className="text-button" onClick={() => setRefreshKey((v) => v + 1)}>↻ Refresh</button></div>

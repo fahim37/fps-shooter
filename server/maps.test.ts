@@ -75,9 +75,9 @@ describe("downtown", () => {
 
   it("gives both teams mirror-image spawns", () => {
     const { spawns } = getMap("downtown");
-    const red = spawns.filter((s) => s.team === 2);
+    const green = spawns.filter((s) => s.team === 2);
     for (const s of spawns.filter((sp) => sp.team === 1)) {
-      expect(red.some((r) => Math.abs(r.x + s.x) < 1e-6 && Math.abs(r.z + s.z) < 1e-6)).toBe(true);
+      expect(green.some((r) => Math.abs(r.x + s.x) < 1e-6 && Math.abs(r.z + s.z) < 1e-6)).toBe(true);
     }
   });
 

@@ -39,3 +39,46 @@ it("waits for its own membership acknowledgement before creating peers with TURN
     expect(configurations).toEqual([{ iceServers: servers }]);
   } finally { voice.dispose(); }
 });
+
+function fakeVoice(mode: "tdm" | "ffa") {
+  const room = {
+    sessionId: "me", state: { mode, players: new Map([["me", { team: mode === "tdm" ? 1 : 0, connected: true }]]) },
+    onMessage: () => vi.fn(), onStateChange: Object.assign(vi.fn(), { remove: vi.fn() }),
+    onDrop: Object.assign(vi.fn(), { remove: vi.fn() }), onLeave: Object.assign(vi.fn(), { remove: vi.fn() }), send: vi.fn(),
+  } as unknown as GameRoom;
+  const track = { enabled: true, onended: null, stop: vi.fn() };
+  vi.stubGlobal("window", { isSecureContext: true });
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [track], getAudioTracks: () => [track] }) } });
+  return { room, send: room.send as ReturnType<typeof vi.fn> };
+}
+
+it("switches the transmit channel for a push-to-talk press in the same voice update", async () => {
+  const { room, send } = fakeVoice("tdm");
+  const voice = new VoiceClient(room, vi.fn());
+  try {
+    voice.talk(true, "all");
+    expect(send).not.toHaveBeenCalled(); // Not joined yet: nothing to transmit.
+    await voice.join();
+    send.mockClear();
+    voice.talk(true, "all");
+    voice.talk(true, "team");
+    voice.talk(true, "team");
+    voice.talk(false);
+    expect(send.mock.calls).toEqual([
+      ["voice:state", { enabled: true, channel: "all", talking: true }],
+      ["voice:state", { enabled: true, channel: "team", talking: true }],
+      ["voice:state", { enabled: true, channel: "team", talking: false }],
+    ]);
+  } finally { voice.dispose(); }
+});
+
+it("sends team push-to-talk to All in Free for All", async () => {
+  const { room, send } = fakeVoice("ffa");
+  const voice = new VoiceClient(room, vi.fn());
+  try {
+    await voice.join();
+    send.mockClear();
+    voice.talk(true, "team");
+    expect(send).toHaveBeenLastCalledWith("voice:state", { enabled: true, channel: "all", talking: true });
+  } finally { voice.dispose(); }
+});

@@ -11,14 +11,14 @@ import type { WeaponId } from "../../shared/weapons";
 
 const WEAPONS: WeaponId[] = ["ar", "smg", "shotgun", "sniper", "pistol"];
 
-function Rigs({ pitch, speed, reload, ads, shot, draw }: { pitch: number; speed: number; reload: number; ads: number; shot: number; draw: number }) {
+function Rigs({ pitch, speed, reload, ads, shot, draw, solo, move, weapon }: { pitch: number; speed: number; reload: number; ads: number; shot: number; draw: number; solo: boolean; move: number; weapon: WeaponId }) {
   const [male, female] = use(loadCharacters());
   const weapons = use(loadWeapons());
-  const rigs = useMemo(() => WEAPONS.flatMap((w) => [male, female].map((template, gender) => {
+  const rigs = useMemo(() => (solo ? [weapon] : WEAPONS).flatMap((w) => (solo ? [male] : [male, female]).map((template, gender) => {
     const r = new CharacterRig(template, weapons, gender + 1, gender === 0, "tpp");
     r.setWeapon(w);
     return r;
-  })), [male, female, weapons]);
+  })), [male, female, weapons, solo, weapon]);
   const scene = useThree((s) => s.scene);
   useEffect(() => {
     (window as unknown as { __rigs: CharacterRig[]; THREE: typeof THREE }).__rigs = rigs;
@@ -29,7 +29,7 @@ function Rigs({ pitch, speed, reload, ads, shot, draw }: { pitch: number; speed:
   useFrame((_, dt) => {
     rigs.forEach((r, i) => {
       const s: RigState = {
-        x: (Math.floor(i / 2) - 2) * 1.3, y: 0, z: (i % 2) * 1.7, yaw: Math.PI * 0.75, pitch, speed, moveYaw: Math.PI * 0.75,
+        x: solo ? 0 : (Math.floor(i / 2) - 2) * 1.3, y: 0, z: solo ? 0 : (i % 2) * 1.7, yaw: Math.PI * 0.75, pitch, speed, moveYaw: Math.PI * 0.75 + move,
         crouch: false, grounded: true, alive: true, sprint: 0, ads, reload, recoil: 0, sinceShot: shot, sinceDraw: draw,
       };
       r.update(Math.min(dt, 0.05), s);
@@ -71,7 +71,7 @@ function FppRig({ weapon, ads, pitch, reload, orbit, shot, draw }: { weapon: Wea
   return null;
 }
 
-export default function RigViewer(props: { fpp: boolean; orbit: boolean; weapon: WeaponId; pitch: number; speed: number; reload: number; ads: number; shot: number; draw: number; fov: number; cam: [number, number, number]; target?: [number, number, number] }) {
+export default function RigViewer(props: { fpp: boolean; orbit: boolean; solo: boolean; move: number; weapon: WeaponId; pitch: number; speed: number; reload: number; ads: number; shot: number; draw: number; fov: number; cam: [number, number, number]; target?: [number, number, number] }) {
   return (
     <div style={{ position: "fixed", inset: 0 }}>
       <Canvas shadows camera={{ position: props.cam, fov: props.fpp && !props.orbit ? props.fov : 40, near: 0.02 }} gl={{ preserveDrawingBuffer: true }}>

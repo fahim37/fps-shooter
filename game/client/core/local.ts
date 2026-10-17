@@ -388,9 +388,17 @@ export class LocalPlayer {
     return OPTICS[this.optic].zoom > 1 && this.ads > 0.7 && this.alive;
   }
 
+  /**
+   * Aiming looks through the sight itself: always for magnified optics, and in third person
+   * for a red dot too, whose dot only makes sense seen through its glass.
+   */
+  get throughSight() {
+    return this.scoped || (this.thirdPerson && !this.emote && this.optic === "red-dot" && this.ads > 0.5 && this.alive);
+  }
+
   /** Where the camera sits and looks (FPP eye, or over-the-shoulder in TPP). */
   camera(cam: THREE.PerspectiveCamera, dt: number, eye = this.viewEye) {
-    if (!this.thirdPerson && !this.emote || this.scoped) {
+    if (!this.thirdPerson && !this.emote || this.throughSight) {
       cam.position.copy(eye);
       cam.quaternion.copy(this.viewQuat);
       return;
@@ -463,7 +471,7 @@ export class LocalPlayer {
 
     const eye: V3 = [this.eye.x, this.eye.y, this.eye.z];
     let aim = aimDir(this.yaw + this.kickYaw, this.pitch + this.kickPitch);
-    if (this.thirdPerson) {
+    if (this.thirdPerson && !this.throughSight) {
       this.camera(this.game.camera, 0, this.eye);
       // Aim where the crosshair points from the camera, but fire from the character's eye.
       const cam = this.game.camera.position;

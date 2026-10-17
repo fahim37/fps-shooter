@@ -78,12 +78,12 @@ async function main() {
     await p2.leave(); await p3.leave();
     await until(() => doubles.state.players.size === 2);
     const blue = await peer(doubles, "Late Blue", 1);
-    const red = await peer(doubles, "Late Red", 2);
+    const green = await peer(doubles, "Late Green", 2);
     await until(() => doubles.state.players.size === 4);
-    assert.equal(blue.state.phase, "live"); assert.equal(red.state.phase, "live");
+    assert.equal(blue.state.phase, "live"); assert.equal(green.state.phase, "live");
     assert.equal(doubles.state.players.get(blue.sessionId)?.team, 1);
-    assert.equal(doubles.state.players.get(red.sessionId)?.team, 2);
-    for (const r of [blue, red]) {
+    assert.equal(doubles.state.players.get(green.sessionId)?.team, 2);
+    for (const r of [blue, green]) {
       const p = doubles.state.players.get(r.sessionId)!;
       assert.equal(p.alive, true); assert.equal(p.ready, true);
       assert.ok(p.protectedUntil > doubles.state.serverTime, "Late joins receive spawn protection");
@@ -96,7 +96,7 @@ async function main() {
     mover.send("team", 1); await until(() => sticky.state.players.get(mover.sessionId)?.team === 1);
     assert.ok([...sticky.state.players.values()].every((p) => p.ready), "Team changes preserve readiness");
     await assert.rejects(client.joinById(sticky.roomId, { name: "Full", team: 1, char: 0 }).then(async (r) => {
-      // Fill the final blue slot, then reject the next blue join while red has room.
+      // Fill the final blue slot, then reject the next blue join while green has room.
       track(r); await until(() => sticky.state.players.size === 3);
       return client.joinById(sticky.roomId, { name: "Overflow", team: 1, char: 0 });
     }), /team is full/i);

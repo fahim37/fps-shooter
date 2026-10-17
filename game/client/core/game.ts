@@ -227,7 +227,7 @@ export class Game {
   }
 
   onLocalShot(weapon: WeaponId, origin: V3, dirs: V3[]) {
-    const rig = this.local?.thirdPerson ? this.tpp : this.fpp;
+    const rig = this.local?.thirdPerson && !this.local.throughSight ? this.tpp : this.fpp;
     // The scoped viewmodel is hidden and not animated; its old muzzle is stale.
     const muzzle = this.local?.scoped ? new THREE.Vector3(...origin) : rig?.muzzle ?? new THREE.Vector3(...origin);
     if (!this.local?.scoped) this.effects.muzzleFlash(muzzle, new THREE.Vector3(...dirs[0]));
@@ -360,8 +360,9 @@ export class Game {
     if (local.emote) s.yaw = local.emoteYaw;
     this.fpp?.setWeapon(local.weapon); this.tpp?.setWeapon(local.weapon);
     // Emoting pulls the camera out so you can see yourself.
-    this.fpp?.setVisible(local.alive && !local.thirdPerson && !local.emote && !local.scoped);
-    this.tpp?.setVisible(((local.thirdPerson || !!local.emote) && !local.scoped) || !local.alive);
+    // A red dot in third person is aimed through the sight with the first-person arms.
+    this.fpp?.setVisible(local.alive && (!local.thirdPerson || local.throughSight) && !local.emote && !local.scoped);
+    this.tpp?.setVisible(((local.thirdPerson || !!local.emote) && !local.throughSight) || !local.alive);
     if (this.fpp?.object.visible) this.fpp.update(dt, s);
     if (this.tpp?.object.visible) this.tpp.update(dt, s);
     this.room.state.grenades?.forEach((g, id) => {
@@ -404,7 +405,7 @@ export class Game {
         const direction = this.camera.getWorldDirection(new THREE.Vector3()).toArray() as V3;
         const sight = this.traceFrom(origin, direction, local.def.range);
         enemyInSight = !!sight.target;
-        if (enemyInSight && local.thirdPerson) {
+        if (enemyInSight && local.thirdPerson && !local.throughSight) {
           // A shoulder camera can see around cover that still blocks the actual shot.
           const shotDir = new THREE.Vector3(...sight.point).sub(local.eye).normalize().toArray() as V3;
           enemyInSight = this.traceFrom(local.eye.toArray() as V3, shotDir, local.def.range).target === sight.target;

@@ -101,6 +101,19 @@ function filterClip(clip: THREE.AnimationClip, keep: (bone: string) => boolean) 
 }
 
 const teamMaterials = new Map<string, THREE.Material>();
+const hairMaterials = new Map<string, THREE.Material>();
+/** Facial hair ships near-white; tinted to a dark brown that reads as hair, not age. */
+const FACIAL_HAIR = new THREE.Color("#5a3a26");
+
+function facialHairMaterial(src: THREE.MeshStandardMaterial) {
+  let m = hairMaterials.get(src.uuid);
+  if (!m) {
+    const c = src.clone();
+    c.color.copy(FACIAL_HAIR);
+    hairMaterials.set(src.uuid, m = c);
+  }
+  return m;
+}
 
 /** Ranger outfit tinted per team; skin, eyes and hair keep their own materials. */
 function outfitMaterial(src: THREE.MeshStandardMaterial, team: number) {
@@ -154,6 +167,7 @@ export function instantiateCharacter(template: CharacterTemplate, team: number, 
       if (m.name === "Beard") m.visible = beard;
       const mat = m.material as THREE.MeshStandardMaterial;
       if (/Ranger/i.test(mat.name)) m.material = outfitMaterial(mat, team);
+      else if (m.name === "Beard" || m.name === "Eyebrows") m.material = facialHairMaterial(mat);
     }
   });
   shareSkeleton(template, meshes);

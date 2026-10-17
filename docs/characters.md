@@ -1,6 +1,6 @@
 # Characters and lobby showoffs
 
-The two playable Rangers use Quaternius Universal Base Characters (male/female faces, eyes and brows; optional male beard) with the existing Modular Character Outfits Ranger clothing. Both use the same animation skeleton as Universal Animation Library. Gameplay keeps its existing layered locomotion, aiming and weapon IK.
+The two playable Rangers use Quaternius Universal Base Characters (male/female faces, eyes and brows; optional male beard; beard and brows are tinted dark brown) with the existing Modular Character Outfits Ranger clothing. Both use the same animation skeleton as Universal Animation Library. Gameplay keeps its existing layered locomotion, aiming and weapon IK.
 
 The home screen previews the selected body. Waiting rooms replicate each player's showoff to everyone, including late joiners. At ease, Dance, Talk and Spell stance loop until changed or the match starts. Showoffs never affect readiness, movement, damage or hitboxes. The server accepts only these four IDs in the waiting phase, at most once every 750 ms.
 
@@ -14,7 +14,7 @@ The home screen previews the selected body. Waiting rooms replicate each player'
 
 The combined character download is 51% smaller. These are file-size measurements, not an FPS benchmark.
 
-- One lobby renderer, up to six visible characters together per page, capped at 30 FPS and 1.25 device pixel ratio. Larger rooms page through groups of six; the camera fits the entire visible lineup, including narrow screens.
+- One lobby renderer shows every human in the room together (up to 20), capped at 30 FPS and 1.25 device pixel ratio, rendering only when something moves. Up to six stand in one row; larger rooms zig-zag across a front row and a raised back row, Blue on the left and Green on the right. The camera fits the whole formation and its name tags at any aspect ratio, and tags shorten (name only, then alternating lines) as slots narrow. Joins and leaves add or remove single actors instead of rebuilding the scene.
 - No world, physics, weapons, HDR environment, postprocessing or shadow maps loaded by the preview.
 - Only the visible character body and `lobby-anims.glb` are requested. Geometry/textures are cached and shared with gameplay; skeletons and mixers are independent.
 - Offscreen and hidden-tab rendering pauses. Reduced-motion preferences freeze animations; Pause motion and Hide preview are also available.

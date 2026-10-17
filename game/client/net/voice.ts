@@ -99,10 +99,12 @@ export class VoiceClient {
     this.patch({ channel: this.room.state.mode === "tdm" ? channel : "all", talking: false });
     this.syncPeers(); this.publish();
   }
-  talk(talking: boolean) {
+  /** Push-to-talk. A channel switches where this transmission goes; it becomes the selected channel. */
+  talk(talking: boolean, channel?: VoiceChannel) {
     talking = talking && this.state.enabled && !this.state.micMuted && !this.state.deafened;
-    if (talking === this.state.talking) return;
-    this.patch({ talking }); this.syncPeers(); this.publish();
+    const next = talking && channel ? (this.room.state.mode === "tdm" ? channel : "all") : this.state.channel;
+    if (talking === this.state.talking && next === this.state.channel) return;
+    this.patch({ talking, channel: next }); this.syncPeers(); this.publish();
   }
   muteMic() { this.talk(false); this.patch({ micMuted: !this.state.micMuted }); }
   deafen() { this.talk(false); this.patch({ deafened: !this.state.deafened }); this.syncPeers(); }

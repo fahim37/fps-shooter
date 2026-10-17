@@ -88,16 +88,34 @@ const _scale = new THREE.Vector3();
 const _handTarget = new THREE.Matrix4();
 /** Share of the wrist's roll taken by the forearm; there are no twist bones to spread it. */
 const FOREARM_ROLL = 0.75;
-/** Longest wrist reach, as a share of the arm, that still leaves the elbow softly bent (~135°). */
-const COMFORT_REACH = 0.92;
+/** Longest wrist reach, as a share of the arm, that still leaves the elbow clearly bent (~118°). */
+const COMFORT_REACH = 0.855;
 /** A pistol is pushed out on nearly straight arms (~155°). */
 const PISTOL_REACH = 0.97;
 /** How far (rad) the clavicle may swing to carry the shoulder after a far hand. */
-const MAX_SHRUG = 0.42;
+const MAX_SHRUG = 0.5;
 /** Long-gun stance: chest turned right of the aim (rad) so the support shoulder leads. */
 const RIFLE_STANCE = 0.28;
+/** Ground speed (m/s) of each movement clip at normal playback, measured from its planted toe. */
+const CLIP_SPEED = { walk: 1.04, jog: 6.2, sprint: 9.5, crouchWalk: 0.77 };
+/** Movement clips switch from walking to running at this speed (m/s). */
+const RUN_SPEED = 2.6;
+/** Legs turn this far (rad) toward a sideways move; past BACKPEDAL they run the clip backwards. */
+const MAX_LEG_YAW = 1.25;
+const BACKPEDAL = (105 * Math.PI) / 180;
+/** Forward lean (rad) of the chest while running and sprinting. */
+const RUN_LEAN = 0.1;
+const SPRINT_LEAN = 0.17;
+/** Seconds after a shot before a moving rifleman drops back to a relaxed carry. */
+const CARRY_AFTER_SHOT = 0.6;
+/** How far out (m, beside a point 0.75 m below the shoulder) the long-gun support elbow points. */
+const SUPPORT_ELBOW_OUT = 0.32;
 /** TPP: the butt sits in the shoulder pocket, this far in from the shoulder joint. */
 const STOCK_POCKET = 0.05;
+/** TPP chest, seen from above, that a lowered gun's butt must stay out of (m). */
+const TORSO_HALF_WIDTH = 0.15;
+const TORSO_HALF_DEPTH = 0.12;
+const TORSO_SKIN = 0.02;
 
 /** Head position in the aim pose, model space: the FPP body hangs from it behind the camera. */
 function headRef(template: CharacterTemplate) {
@@ -144,6 +162,9 @@ export class CharacterRig {
   private weapon: WeaponId | null = null;
   private legYaw = 0;
   private stance = 0;
+  /** 0..1 forward lean while moving fast and relaxed low-ready carry while moving (TPP). */
+  private run = 0;
+  private carry = 0;
   private dead = false;
   private deadTime = 0;
   private animationPose: { bone: THREE.Bone; quaternion: THREE.Quaternion }[];
@@ -284,6 +305,15 @@ export class CharacterRig {
       const neck = this.inst.bones.get("neck_01");
       if (neck && this.stance > 1e-4) rotateBoneWorld(neck, _q.setFromAxisAngle(UP, this.stance), true);
     }
+    if (this.mode === "tpp" && this.run > 1e-3) {
+      // Running leans the chest into the stride; the neck takes most of it back so the head
+      // keeps looking where the player aims.
+      _v.set(-Math.cos(s.yaw), 0, Math.sin(s.yaw)); // left of the aim: + tips the chest forward
+      rotateBoneWorld(this.inst.bones.get("spine_01")!, _q.setFromAxisAngle(_v, this.run * 0.6), true);
+      rotateBoneWorld(this.inst.bones.get("spine_03")!, _q.setFromAxisAngle(_v, this.run * 0.4), true);
+      const neck = this.inst.bones.get("neck_01");
+      if (neck) rotateBoneWorld(neck, _q.setFromAxisAngle(_v, -this.run * 0.75), true);
+    }
     const lean = s.lean ?? 0;
     if (this.mode === "tpp" && Math.abs(lean) > 1e-3) {
       // Peek: tilt the torso around the aim axis from the hips, matching the shared hitboxes.
@@ -337,21 +367,32 @@ export class CharacterRig {
     const moving = s.speed > 0.4 && s.grounded;
     let rel = wrapAngle(s.moveYaw - s.yaw);
     let backwards = false;
-    if (Math.abs(rel) > (100 * Math.PI) / 180) {
+    if (Math.abs(rel) > BACKPEDAL) {
       backwards = true;
       rel = wrapAngle(rel - Math.PI);
     }
-    const targetLeg = moving ? THREE.MathUtils.clamp(rel, -1.1, 1.1) : 0;
+    const targetLeg = moving ? THREE.MathUtils.clamp(rel, -MAX_LEG_YAW, MAX_LEG_YAW) : 0;
     this.legYaw += (targetLeg - this.legYaw) * Math.min(1, dt * 8);
 
+    // Clips play at the rate that keeps the planted foot still on the ground. The walk and
+    // crouch clips have short steps, so faster moves speed them up past normal more.
     let pick: ClipName;
-    let rate = 1;
+    const minRate = 0.6;
+    let rate = 1, maxRate = 1.6;
     if (!s.grounded) pick = "jumpLoop";
-    else if (s.crouch) { pick = moving ? "crouchWalk" : "crouchIdle"; rate = s.speed / 2.2; }
+    else if (s.crouch) { pick = moving ? "crouchWalk" : "crouchIdle"; rate = s.speed / CLIP_SPEED.crouchWalk; maxRate = 2.4; }
     else if (!moving) pick = "idle";
-    else if (s.speed < 3.4) { pick = "walk"; rate = s.speed / 1.7; }
-    else if (s.speed < 6.6 || backwards) { pick = "jog"; rate = s.speed / 4.6; }
-    else { pick = "sprint"; rate = s.speed / 7; }
+    else if (s.speed < RUN_SPEED) { pick = "walk"; rate = s.speed / CLIP_SPEED.walk; maxRate = 2.2; }
+    else if (s.speed < 6.6 || backwards) { pick = "jog"; rate = s.speed / CLIP_SPEED.jog; }
+    else { pick = "sprint"; rate = s.speed / CLIP_SPEED.sprint; }
+
+    const running = moving && !s.crouch && s.speed >= RUN_SPEED;
+    const lean = running ? (pick === "sprint" ? SPRINT_LEAN : RUN_LEAN) * (backwards ? -0.4 : 1) : 0;
+    this.run += (lean - this.run) * Math.min(1, dt * 6);
+    const sinceShot = s.sinceShot ?? -1;
+    const relaxed = moving && s.ads < 0.5 && s.reload < 0 && s.sprint < 0.5 && !(sinceShot >= 0 && sinceShot < CARRY_AFTER_SHOT);
+    // Raising the gun to fire is quicker than lowering it again.
+    this.carry += ((relaxed ? 1 : 0) - this.carry) * Math.min(1, dt * (relaxed ? 4 : 14));
 
     const k = Math.min(1, dt * 9);
     for (const [name, a] of this.loco) {
@@ -363,7 +404,7 @@ export class CharacterRig {
       this.locoWeights.set(name, w);
       a.setEffectiveWeight(w);
       if (name === pick && name !== "idle" && name !== "crouchIdle" && name !== "jumpLoop") {
-        a.timeScale = THREE.MathUtils.clamp(rate, 0.5, 1.6) * (backwards ? -1 : 1);
+        a.timeScale = THREE.MathUtils.clamp(rate, minRate, maxRate) * (backwards ? -1 : 1);
       }
     }
   }
@@ -412,23 +453,45 @@ export class CharacterRig {
     } else {
       // Stock in the right shoulder, pointing along the aim.
       const shoulder = _v.setFromMatrixPosition(this.inst.bones.get(pistol ? "neck_01" : "upperarm_r")!.matrixWorld);
-      _e.set(s.pitch + s.recoil * (pistol ? 0.075 : 0.035) + hPitch * 0.5 - sprint * 0.6, s.yaw + sprint * 0.6 + hYaw, hRoll - (s.lean ?? 0) * LEAN_ANGLE * 0.6, "YXZ");
+      // Moving without aiming, the gun rides a little lower with the muzzle dipped (low ready).
+      const carry = this.carry * (1 - sprint);
+      _e.set(s.pitch + s.recoil * (pistol ? 0.075 : 0.035) + hPitch * 0.5 - sprint * 0.6 - carry * (pistol ? 0.25 : 0.32), s.yaw + sprint * 0.6 + hYaw + carry * 0.12, hRoll - (s.lean ?? 0) * LEAN_ANGLE * 0.6, "YXZ");
       _q.setFromEuler(_e);
       const fwd = _v2.set(0, 0, -1).applyQuaternion(_q);
       const reach = pistol ? 0.43 : meta.max[2] + 0.02;
       shoulder.addScaledVector(fwd, reach - s.recoil * 0.015);
-      shoulder.y += (pistol ? -0.06 : -0.035) + s.ads * 0.03 - sprint * 0.12;
+      shoulder.y += (pistol ? -0.06 : -0.035) + s.ads * 0.03 - sprint * 0.12 - carry * 0.06;
       // Handling lifts the gun into the first-person view; seen from outside, the same move
-      // brings it down and in to the chest.
+      // lowers it in front of the chest, the stock dropping toward the right armpit. It never
+      // comes back toward the body: the first-person pull toward the eye would bury the stock.
       const lift = Math.max(0, hy) * 1.5;
-      shoulder.add(_v2.set(hx + (pistol ? 0.02 : -STOCK_POCKET), Math.min(0, hy) - lift, hz + lift).applyAxisAngle(UP, s.yaw));
+      shoulder.add(_v2.set(hx * 0.5 + (pistol ? 0.02 : -STOCK_POCKET) + lift * 0.3, Math.min(0, hy) - lift * 1.1, Math.min(0, hz) - lift * 0.4).applyAxisAngle(UP, s.yaw));
       this.gunPivot.position.copy(shoulder);
       this.gunPivot.quaternion.copy(_q);
+      if (!pistol) this.clearTorso(meta.max[2], s.yaw);
     }
     this.placeParts();
     this.gunPivot.updateMatrixWorld(true);
     this.muzzle.set(...meta.muzzle).applyMatrix4(this.gunPivot.matrixWorld);
     this.muzzleDir.set(0, 0, -1).applyQuaternion(this.gunPivot.quaternion);
+  }
+
+  /**
+   * TPP: slides the gun forward along the aim until its butt is outside the chest. The torso is
+   * an ellipse around the upper spine (seen from above), between the hips and the neck.
+   */
+  private clearTorso(stock: number, yaw: number) {
+    const chest = _ta.setFromMatrixPosition(this.inst.bones.get("spine_03")!.matrixWorld);
+    const hips = this.inst.bones.get("pelvis")!.matrixWorld.elements[13];
+    const butt = _tb.set(0, 0, stock).applyQuaternion(this.gunPivot.quaternion).add(this.gunPivot.position);
+    if (butt.y < hips - 0.1 || butt.y > chest.y + 0.3) return;
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    const dx = butt.x - chest.x, dz = butt.z - chest.z;
+    const side = (dx * -fz + dz * fx) / TORSO_HALF_WIDTH;
+    if (Math.abs(side) >= 1) return;
+    const ahead = dx * fx + dz * fz;
+    const push = TORSO_HALF_DEPTH * Math.sqrt(1 - side * side) + TORSO_SKIN - ahead;
+    if (push > 0) this.gunPivot.position.add(_v2.set(fx * push, 0, fz * push));
   }
 
   /** Seats the moving parts on the gun; held ones are moved with the hand after the IK. */
@@ -465,7 +528,9 @@ export class CharacterRig {
 
     _pole.setFromMatrixPosition(b("upperarm_r").matrixWorld).addScaledVector(bodyLeft, -0.18).addScaledVector(DOWN, 0.75);
     this.placeHand("r", this.handTarget(h.right, grip.right, bodyLeft), _pole, comfort);
-    _pole.setFromMatrixPosition(b("upperarm_l").matrixWorld).addScaledVector(bodyLeft, 0.06).addScaledVector(DOWN, 0.75);
+    // The support elbow hangs down and a little out, so the forearm meets the handguard on a
+    // diagonal and the wrist turns under it instead of continuing the forearm's line.
+    _pole.setFromMatrixPosition(b("upperarm_l").matrixWorld).addScaledVector(bodyLeft, w === "pistol" ? 0.06 : SUPPORT_ELBOW_OUT).addScaledVector(DOWN, 0.75);
     this.placeHand("l", this.handTarget(h.left, grip.left, bodyLeft), _pole, comfort);
 
     // Fingers are written absolutely each frame, so held clips cannot accumulate them.

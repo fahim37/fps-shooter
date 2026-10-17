@@ -10,9 +10,9 @@ export function startBlockReason(room: { format: string; mode: string; maxPlayer
   } else if (Math.max(humans.length, room.botFill) < 2) return "Invite another player or create a room with practice bots.";
   if (room.mode === "tdm" && room.botFill === 0) {
     const blue = humans.filter((p) => p.team === 1).length;
-    const red = humans.filter((p) => p.team === 2).length;
-    if (!blue || !red) return "Choose at least one player for each team.";
-    if (room.format !== "custom" && blue !== red) return "Choose teams with the same number of players.";
+    const green = humans.filter((p) => p.team === 2).length;
+    if (!blue || !green) return "Choose at least one player for each team.";
+    if (room.format !== "custom" && blue !== green) return "Choose teams with the same number of players.";
   }
   if (humans.some((p) => !p.ready)) return "Waiting for everyone to ready up.";
   return "";

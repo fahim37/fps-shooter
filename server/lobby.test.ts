@@ -55,7 +55,7 @@ describe("persistent lobby readiness and late joins", () => {
   it("replaces a bot on the crowded team when a human chooses that side", () => {
     const { room } = fixture();
     room.state.phase = "live"; room.botTarget = 4;
-    for (const [id, team] of [["human2", 2], ["late", 2], ["bot-blue", 1], ["bot-red", 2]] as const) {
+    for (const [id, team] of [["human2", 2], ["late", 2], ["bot-blue", 1], ["bot-green", 2]] as const) {
       const st = new PlayerState(); st.team = team;
       const p = room.newPlayer(id, st);
       if (id.startsWith("bot")) { st.bot = true; p.bot = { dispose: vi.fn() }; }
@@ -63,7 +63,7 @@ describe("persistent lobby readiness and late joins", () => {
     }
     delete room.balanceBots;
     room.balanceBots();
-    expect(room.players.has("bot-red")).toBe(false);
+    expect(room.players.has("bot-green")).toBe(false);
     expect(room.players.has("bot-blue")).toBe(true);
     expect([...room.players.values()].map((p: { st: PlayerState }) => p.st.team).sort()).toEqual([1, 1, 2, 2]);
   });

@@ -43,5 +43,5 @@ export const MODE_INFO: Record<GameMode, { name: string; scoreLimit: number; min
 export const WARMUP_MS = 8000;
 export const END_SCREEN_MS = 12000;
 
-export const TEAM_COLORS = ["#e8e8e8", "#3f86ff", "#ff4d3d"] as const;
-export const TEAM_NAMES = ["", "Blue", "Red"] as const;
+export const TEAM_COLORS = ["#e8e8e8", "#3f86ff", "#2fc25b"] as const;
+export const TEAM_NAMES = ["", "Blue", "Green"] as const;

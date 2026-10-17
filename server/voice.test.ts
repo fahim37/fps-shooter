@@ -4,7 +4,7 @@ import { createHmac } from "node:crypto";
 import { canHearVoice, isVoiceSignal } from "../game/shared/voice";
 
 function fixture(mode = "tdm") {
-  const available = new Set(["blue", "red"]);
+  const available = new Set(["blue", "green"]);
   const transport = { available: (id: string) => available.has(id), mode: () => mode, send: vi.fn(), broadcast: vi.fn() };
   const relay = new VoiceRelay(transport);
   const join = (id: string) => relay.state(id, { enabled: true, channel: "team", talking: false });
@@ -16,11 +16,11 @@ describe("voice membership and signaling", () => {
   it("relays only between opted-in players in the same match, stamping the sender", () => {
     const { relay, join, transport } = fixture();
     join("blue");
-    relay.signal("blue", { to: "red", signal: offer });
+    relay.signal("blue", { to: "green", signal: offer });
     expect(transport.send).not.toHaveBeenCalled();
-    join("red");
-    relay.signal("blue", { to: "red", from: "spoof", signal: offer });
-    expect(transport.send).toHaveBeenCalledWith("red", "voice:signal", { from: "blue", signal: offer });
+    join("green");
+    relay.signal("blue", { to: "green", from: "spoof", signal: offer });
+    expect(transport.send).toHaveBeenCalledWith("green", "voice:signal", { from: "blue", signal: offer });
     transport.send.mockClear();
     relay.signal("blue", { to: "outside-room", signal: offer });
     relay.signal("outside-room", { to: "blue", signal: offer });
@@ -29,28 +29,28 @@ describe("voice membership and signaling", () => {
   });
   it("removes disconnected players and ignores malformed or oversized messages", () => {
     const { relay, join, transport, available } = fixture();
-    join("blue"); join("red");
+    join("blue"); join("green");
     relay.state("outsider", { enabled: true, channel: "all", talking: true });
     relay.state("blue", { enabled: true, channel: "unknown", talking: true });
     expect(transport.broadcast).toHaveBeenLastCalledWith("voice:members", [
-      { id: "blue", channel: "team", talking: false }, { id: "red", channel: "team", talking: false },
+      { id: "blue", channel: "team", talking: false }, { id: "green", channel: "team", talking: false },
     ]);
-    for (const signal of [null, {}, { description: { type: "offer", sdp: "x".repeat(16_001) } }, { candidate: { candidate: "ice", sdpMLineIndex: -1 } }]) relay.signal("blue", { to: "red", signal });
-    available.delete("red");
-    relay.signal("blue", { to: "red", signal: offer });
+    for (const signal of [null, {}, { description: { type: "offer", sdp: "x".repeat(16_001) } }, { candidate: { candidate: "ice", sdpMLineIndex: -1 } }]) relay.signal("blue", { to: "green", signal });
+    available.delete("green");
+    relay.signal("blue", { to: "green", signal: offer });
     expect(transport.send).not.toHaveBeenCalled();
-    relay.remove("red");
+    relay.remove("green");
     expect(transport.broadcast).toHaveBeenLastCalledWith("voice:members", [{ id: "blue", channel: "team", talking: false }]);
     relay.state("blue", { enabled: false, channel: "team", talking: false });
     expect(transport.broadcast).toHaveBeenLastCalledWith("voice:members", []);
   });
   it("uses All for free-for-all and bounds signaling traffic", () => {
     const { relay, join, transport } = fixture("ffa");
-    join("blue"); join("red");
+    join("blue"); join("green");
     expect(transport.broadcast).toHaveBeenLastCalledWith("voice:members", [
-      { id: "blue", channel: "all", talking: false }, { id: "red", channel: "all", talking: false },
+      { id: "blue", channel: "all", talking: false }, { id: "green", channel: "all", talking: false },
     ]);
-    for (let i = 0; i < 600; i++) relay.signal("blue", { to: "red", signal: offer });
+    for (let i = 0; i < 600; i++) relay.signal("blue", { to: "green", signal: offer });
     expect(transport.send.mock.calls.length).toBeLessThanOrEqual(500);
   });
 });

@@ -4,6 +4,11 @@
 .voice button:hover:not(:disabled), .voice button[aria-pressed=true] { background: #344c22; }
 .voice button.talking { background: #d9ed79; color: #17210e; }
 .bar button { touch-action: none; user-select: none; }
+.voice button.enable { display: inline-flex; align-items: center; gap: 6px; border-color: #d9ed7988; color: #e9f5a8; }
+.voice button.enable:disabled { color: #b6c5ab; border-style: dashed; }
+.keys { margin: 5px 0 0; color: #b6c5ab; font-size: 10px; letter-spacing: .04em; text-shadow: 0 1px 2px #000c; }
+.keys kbd { display: inline-block; min-width: 16px; padding: 1px 4px; border: 1px solid #d9ed7955; border-bottom-width: 2px; border-radius: 3px; background: #111c16cc; color: #d9ed79; font: inherit; text-align: center; }
+.error { max-width: 280px; padding: 6px 8px; margin: 6px 0 0; background: #2a1512e6; color: #ffc9b8; line-height: 1.5; }
 .panel { display: grid; gap: 10px; max-height: min(500px, calc(100dvh - 140px)); overflow: auto; margin-top: 7px; padding: 14px; background: #101b16f5; border: 1px solid #ffffff30; }
 .panel p { margin: 0; color: #b6c5ab; font-size: 10px; line-height: 1.5; }
 .panel label { display: grid; gap: 6px; font-size: 10px; }
@@ -13,4 +18,5 @@
 .member span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .member button { padding: 5px 8px; }
 .speakers { max-width: 280px; padding: 6px 8px; margin: 6px 0 0; background: #111c16dc; color: #d9ed79; line-height: 1.5; }
+@media (pointer: coarse) { .keys { display: none; } }
 @media (pointer: coarse), (max-width: 700px) { .voice { top: 72px; left: 10px; max-width: min(290px, calc(100vw - 20px)); font-size: 10px; } .voice button { padding: 9px 7px; } .panel { max-height: calc(100dvh - 130px); } }

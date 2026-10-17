@@ -46,11 +46,14 @@ function pistolGrip(center: V3, half: V3, pitch: number, trigger: readonly [numb
   };
 }
 
-/** Support hand cradling a handguard (or pump, or forend) from below, thumb along its left side. */
-function cradle(center: V3, half: V3, frame?: HandFrame): HandGrip {
+/**
+ * Support hand cradling a handguard (or pump, or forend) from below, thumb along its left side.
+ * `back` slides the palm toward the receiver, which keeps the support elbow bent.
+ */
+function cradle(center: V3, half: V3, frame?: HandFrame, back = 0): HandGrip {
   return {
     part: { center, half, round: 0.012 },
-    palm: [-(half[0] + 0.01), center[1] - half[1] - 0.002, center[2] + 0.02],
+    palm: [-(half[0] + 0.01), center[1] - half[1] - 0.002, center[2] + 0.02 + back],
     facing: [0.75, 1, 0],
     thumbSide: [-0.25, 0.1, -1],
     thumb: [-0.1, 0.05, -1],
@@ -87,7 +90,7 @@ const GRIPS: Record<WeaponId, { right: Partial<Record<RightPose, HandGrip>> & { 
       },
     },
     left: {
-      support: cradle([0, 0.1, -0.33], [0.014, 0.032, 0.075]),
+      support: cradle([0, 0.1, -0.33], [0.014, 0.032, 0.075], "gun", 0.035),
       mag: magGrip([0, -0.035, -0.2], [0.013, 0.07, 0.026], 0.42),
       // Under-hand rack: palm against the right of the receiver, fingers hooked over the handle.
       charge: {
@@ -119,7 +122,7 @@ const GRIPS: Record<WeaponId, { right: Partial<Record<RightPose, HandGrip>> & { 
       },
     },
     left: {
-      support: cradle([0, 0.006, -0.32], [0.015, 0.025, 0.093], "pump"),
+      support: cradle([0, 0.006, -0.32], [0.015, 0.025, 0.093], "pump", 0.04),
       shell: { ...cradle(SHELL_PORT, [0.011, 0.011, 0.03], "shell"), facing: [0.6, 1, 0] },
     },
   },
@@ -137,7 +140,7 @@ const GRIPS: Record<WeaponId, { right: Partial<Record<RightPose, HandGrip>> & { 
       },
     },
     left: {
-      support: cradle([0, 0.022, -0.31], [0.02, 0.017, 0.08]),
+      support: cradle([0, 0.022, -0.31], [0.02, 0.017, 0.08], "gun", 0.035),
       mag: magGrip([0, -0.006, -0.152], [0.012, 0.018, 0.034], 0),
     },
   },
