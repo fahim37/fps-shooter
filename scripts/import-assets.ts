@@ -4,12 +4,14 @@ import { ready } from "./assets/common";
 import { KITS, importKit } from "./assets/kits";
 import { importWeapons } from "./assets/weapons";
 import { importCharacters } from "./assets/characters";
+import { importIndustrial } from "./assets/industrial";
 
 const STAGES: Record<string, () => Promise<void>> = {
   village: () => importKit(KITS.village),
   nature: () => importKit(KITS.nature),
   props: () => importKit(KITS.props),
   city: () => importKit(KITS.city),
+  industrial: importIndustrial,
   weapons: importWeapons,
   characters: importCharacters,
 };

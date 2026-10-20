@@ -1,4 +1,4 @@
-// Browser check for map selection and both maps in real matches (web + game server running).
+// Browser check for map selection and every map in real matches (web + game server running).
 // Usage: npx tsx scripts/dev/map-test.ts http://localhost:3000
 import { chromium, type Page } from "playwright-core";
 import assert from "node:assert/strict";
@@ -50,7 +50,7 @@ async function main() {
 
     // 1. Quick play on Downtown: bots fill the match and fight on the city navmesh.
     await page.getByRole("tab", { name: "Quick play" }).click();
-    assert.equal(await page.getByRole("radiogroup", { name: "Map" }).getByRole("radio").count(), 2, "both maps are offered");
+    assert.equal(await page.getByRole("radiogroup", { name: "Map" }).getByRole("radio").count(), 3, "every map is offered");
     await page.locator('[data-map="downtown"]').click();
     assert.equal(await page.locator('[data-map="downtown"]').getAttribute("aria-checked"), "true");
     await page.getByRole("button", { name: "QUICK PLAY" }).click();
@@ -83,6 +83,27 @@ async function main() {
     assert.ok(kills > 0, "bots fight on Downtown");
     await leave(page);
     console.log("Downtown quick play passed", report);
+
+    // 1b. Quick play on the Freight Yard: bots use its navmesh (and the trailer-top stairs).
+    await page.getByRole("tab", { name: "Quick play" }).click();
+    await page.locator('[data-map="industrial"]').click();
+    await page.getByRole("button", { name: "QUICK PLAY" }).click();
+    await enterMatch(page);
+    await page.waitForTimeout(9000);
+    assert.match(await page.locator('[aria-label="Minimap"]').innerText(), /FREIGHT YARD/);
+    assert.ok((await scoreboard(page)).length >= 8, "bots fill the Freight Yard match");
+    await page.keyboard.down("KeyW"); await page.waitForTimeout(1500); await page.keyboard.up("KeyW");
+    const yardAmmo = parseInt(await ammo.innerText());
+    await page.mouse.down(); await page.waitForTimeout(400); await page.mouse.up();
+    assert.ok(parseInt(await ammo.innerText()) < yardAmmo, "firing works on the Freight Yard");
+    report.freightYardFps = await fps(page);
+    await page.screenshot({ path: `${OUT}/map-industrial.png` });
+    await page.waitForTimeout(40000);
+    const yardKills = (await scoreboard(page)).reduce((n, r) => n + (r.kills || 0), 0);
+    report.freightYardKillsIn50s = yardKills;
+    assert.ok(yardKills > 0, "bots fight on the Freight Yard");
+    await leave(page);
+    console.log("Freight Yard quick play passed", report);
 
     // 2. Custom room: host switches the map in the waiting room; a friend sees it; both load it.
     await page.getByRole("tab", { name: "With friends" }).click();

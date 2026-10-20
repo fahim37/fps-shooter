@@ -40,6 +40,8 @@ const GRADE = `
 export function Ground({ map }: { map: MapId }) {
   // The city is paved edge to edge with kit tiles; this plane only fills the distance, so it
   // stays untextured and sits below the asphalt (which is at y = 0) to avoid z-fighting.
+  // The freight yard brings its own ground: the kit's floating-island terrain, asphalt at y = 0.
+  if (map === "industrial") return null;
   if (map === "downtown") return <mesh rotation-x={-Math.PI / 2} position-y={-0.06} receiveShadow>
     <planeGeometry args={[SIZE, SIZE]} />
     <meshStandardMaterial color="#3d4044" roughness={1} />

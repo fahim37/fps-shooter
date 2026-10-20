@@ -1,6 +1,6 @@
 # Hollowmere
 
-A browser multiplayer shooter built with Next.js, Three.js, Rapier and Colyseus. Two maps, Village and Downtown, support first- and third-person play, team deathmatch and free-for-all, bot-filled matches, room codes, five weapons, grenades, respawns and scoreboards.
+A browser multiplayer shooter built with Next.js, Three.js, Rapier and Colyseus. Three maps, Village, Downtown and Freight Yard, support first- and third-person play, team deathmatch and free-for-all, bot-filled matches, room codes, five weapons, grenades, respawns and scoreboards.
 
 Play at https://fahimstack.tech/fps. Create a room, then use **Copy invite link** in the match menu. Friends can open that link and press **Join this room**, or paste the link/code into the lobby. Quick play matches the selected game mode. Press Esc during a match to find the invite controls again.
 
@@ -19,6 +19,7 @@ Open the web URL printed by Next.js (normally http://localhost:3000). The game s
 
 - **Village**: timber houses around a market plaza, open lanes and forest edges.
 - **Downtown**: a city crossing with prefab buildings along a 4-lane avenue and cross street, alleys into walled courtyards, and an enterable corner shop with rooftop stairs in each courtyard. The layout is 180° symmetric, so Blue (west) and Red (east) get mirror-image halves.
+- **Freight Yard**: an industrial zone on a floating island, mirrored across the middle so Blue (west) and Red (east) get identical halves. Three lanes run between the bases: the north **Yard** of parked trailers, the middle **Dock** with a cargo-filled open canopy at the center, and the south **Works** of solid buildings and alleys. Each team has two trailer-top overlooks reached by steel stairs (one over the yard edge, one between the dock and the works); they see the whole middle lane and are open to fire from it. Cargo, skips and gas tanks keep every spawn out of sight of the enemy spawns (`server/industrial.test.ts` checks this, along with bot paths onto the overlooks and walking the stairs).
 
 Pick the map on the lobby's map cards when creating a room or using Quick play (Quick play matches rooms on that map); the choice is remembered in the browser. The room host can switch maps in the waiting room until the match starts, and everyone sees the change. Room listings show each room's map.
 
@@ -86,6 +87,8 @@ The room state lives in memory. Restarting the game server ends current matches.
 The asset import scripts document the original packs and transformations: Quaternius characters, animation, environment kits and weapons, plus Poly Haven environment textures and HDR skies. `scripts/import-assets.ts` rebuilds optimized assets from the ignored `assets-raw` directory. See the source scripts for pack names and download sources.
 
 Downtown uses the Downtown City MegaKit (Standard, CC0) by Quaternius. Put the unzipped pack at `assets-raw/city` and run `npx tsx scripts/import-assets.ts city`. The importer keeps only the pieces the map places, strips the pack's vertex-color shader masks, opens modular windows and doors (removing glass and fake-interior cards that would hide players), halves normal and ORM maps to 512 px, simplifies the prefab buildings by about 40%, and writes box collision for their bodies. `server/maps.test.ts` checks every map's spawns, floors and bot paths against the real collision data and navmeshes.
+
+Freight Yard uses the Low Poly Industrial Zone pack: a single FBX holding one merged diorama mesh. Put it at `assets-raw/industrial` (`source/lowpoly asset.fbx` and `textures/`) and run `npx tsx scripts/import-assets.ts industrial`. The importer parses the FBX with three's FBXLoader, cuts the scene back into 40 kit pieces by source-space boxes around one instance of each object (trailers, barriers, spools, canopies, buildings), keeps the island terrain as one more piece, squares and recenters them on the asphalt, wires the palette texture and tiling normal maps to glTF materials, adds procedural steel stairs, and writes a 0.9 MB kit with trimesh collision (a smooth ramp for the stairs).
 
 Male and female Rangers have animated selection previews and shared lobby showoffs (At ease, Dance, Talk and Spell stance). See [character assets and lobby showoffs](docs/characters.md) for optimization budgets, pack overrides, and validation commands.
 

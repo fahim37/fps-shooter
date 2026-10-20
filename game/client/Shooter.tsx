@@ -143,7 +143,7 @@ export default function Shooter() {
     <nav className="play-tabs" role="tablist" aria-label="Play options">{TABS.map(([id, label]) => <button key={id} type="button" role="tab" id={`tab-${id}`} aria-controls="play-panel" aria-selected={tab === id} disabled={!!busy} onClick={() => { setTab(id); setError(""); }}>{label}</button>)}</nav>
 
     <section className="lobby-operator" aria-label="Your ranger">
-      <div className="operator-intro"><span className="eyebrow">YOUR FRIENDS. YOUR TEAMS. YOUR MATCH.</span><h1>Better with <em>friends</em><span className="title-dot">.</span></h1><p>A village and a downtown block. Two teams. A little friendly rivalry.</p></div>
+      <div className="operator-intro"><span className="eyebrow">YOUR FRIENDS. YOUR TEAMS. YOUR MATCH.</span><h1>Better with <em>friends</em><span className="title-dot">.</span></h1><p>A village, a downtown block and a freight yard. Two teams. A little friendly rivalry.</p></div>
       <fieldset className="operator-fields" disabled={!!busy}>
         <label>CALLSIGN<span className="callsign"><input value={name} onChange={(e) => setName(e.target.value)} maxLength={NAME_MAX} autoComplete="nickname" /><button type="button" aria-label="Random callsign" title="Random callsign" onClick={() => setName(randomName())}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="3.5" /><circle cx="8.5" cy="8.5" r="1.4" /><circle cx="15.5" cy="8.5" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle cx="8.5" cy="15.5" r="1.4" /><circle cx="15.5" cy="15.5" r="1.4" /></svg></button></span></label>
         <div className="character-field"><span className="field-caption">CHARACTER</span><CharacterPicker value={character} onChange={setCharacter} /></div>
