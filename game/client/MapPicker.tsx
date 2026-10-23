@@ -22,6 +22,7 @@ export function MapPicker({ value, onChange, disabled, compact = false }: { valu
           <strong>{map.name}</strong>
           <small>{map.tagline}</small>
           <em>{map.style}</em>
+          {map.credit && !compact && <small className={styles.credit}>Map: {map.credit}</small>}
         </span>
       </button>;
     })}

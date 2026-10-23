@@ -5,6 +5,7 @@ import naturePieces from "./generated/nature-pieces.json";
 import propsPieces from "./generated/props-pieces.json";
 import cityPieces from "./generated/city-pieces.json";
 import industrialPieces from "./generated/industrial-pieces.json";
+import outpostPieces from "./generated/outpost-pieces.json";
 import { GRAVITY } from "./constants";
 
 export type Rapier = typeof RAPIER_NS;
@@ -18,6 +19,7 @@ export const PIECES: Record<KitName, PiecesJson> = {
   props: propsPieces as PiecesJson,
   city: cityPieces as PiecesJson,
   industrial: industrialPieces as PiecesJson,
+  outpost: outpostPieces as PiecesJson,
 };
 
 export interface KitCollision {

@@ -33,3 +33,5 @@
   .body strong { font-size: 12px; }
   .body em { font-size: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
+
+.body .credit { font-size: 8px; color: #8c9682; letter-spacing: .02em; }
