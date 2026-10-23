@@ -651,24 +651,26 @@ function createHandGrenade() {
   const hand = new THREE.Group();
   const glove = new THREE.MeshStandardMaterial({ color: "#2e3229", roughness: 0.85 });
   const sleeve = new THREE.MeshStandardMaterial({ color: "#3b5f93", roughness: 0.9 });
-  const box = (w: number, h: number, d: number, x: number, y: number, z: number, rx = 0, rz = 0, mat = glove) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  const part = (geometry: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0) => {
+    const m = new THREE.Mesh(geometry, mat);
     m.position.set(x, y, z);
-    m.rotation.set(rx, 0, rz);
+    m.rotation.set(rx, ry, rz);
     hand.add(m);
+    return m;
   };
-  // Palm behind and below the grenade, four fingers curled over its front, thumb on the side.
-  box(0.075, 0.03, 0.085, 0.004, -0.04, 0.02, -0.25);
-  for (let i = 0; i < 4; i++) box(0.017, 0.05, 0.019, -0.026 + i * 0.018, -0.008 + (i === 0 || i === 3 ? -0.006 : 0), -0.03, 0.35);
-  box(0.019, 0.045, 0.02, 0.04, -0.005, 0.005, 0, -0.6);
-  // Wrist and sleeve, angled back toward the lower right corner of the screen.
-  const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.036, 0.06, 10), glove);
-  cuff.position.set(0.02, -0.07, 0.06);
-  cuff.rotation.set(1.1, 0, -0.35);
-  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.048, 0.32, 10), sleeve);
-  arm.position.set(0.075, -0.13, 0.2);
-  arm.rotation.set(1.1, 0, -0.35);
-  hand.add(cuff, arm);
+  // A rounded palm cupped under the grenade, four capsule fingers curled over its front and a
+  // thumb across the side, then wrist and sleeve running back to the lower right of the view.
+  const palm = part(new THREE.SphereGeometry(0.042, 14, 10), glove, 0.006, -0.038, 0.018);
+  palm.scale.set(1.05, 0.55, 1.15);
+  const finger = new THREE.CapsuleGeometry(0.0085, 0.034, 4, 8);
+  for (let i = 0; i < 4; i++) {
+    const x = -0.024 + i * 0.016;
+    part(finger, glove, x, -0.004 - Math.abs(i - 1.5) * 0.004, -0.032, 0.5, 0, 0);
+    part(new THREE.SphereGeometry(0.0088, 8, 6), glove, x, 0.02 - Math.abs(i - 1.5) * 0.004, -0.025);
+  }
+  part(new THREE.CapsuleGeometry(0.0095, 0.03, 4, 8), glove, 0.036, -0.004, 0.004, 0.2, 0, -0.7);
+  part(new THREE.CylinderGeometry(0.03, 0.034, 0.07, 14), glove, 0.016, -0.068, 0.06, 1.15, 0, -0.3);
+  part(new THREE.CylinderGeometry(0.038, 0.05, 0.34, 14), sleeve, 0.07, -0.13, 0.21, 1.15, 0, -0.3);
   const steel = new THREE.MeshStandardMaterial({ color: "#8a8d86", roughness: 0.4, metalness: 0.6 });
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.034, 14, 10), new THREE.MeshStandardMaterial({ color: "#4e593c", roughness: 0.65 }));
   body.scale.set(1, 1.18, 1);
