@@ -31,12 +31,12 @@ async function main() {
     host.send("start", {}); await until(() => host.state.phase === "live");
     await page.addInitScript(() => localStorage.setItem("hollowmere.settings.v1", JSON.stringify({ quality: "low", adaptiveResolution: false })));
     await page.goto(`${base}/?room=${host.roomId}`);
-    await page.getByRole("combobox", { name: "Join team", exact: true }).selectOption("2");
+    await page.getByRole("radio", { name: "Red team", exact: true }).click();
     await page.getByRole("button", { name: /JOIN (THIS )?ROOM/ }).click();
     await page.getByRole("button", { name: "PLAY IN A WINDOW" }).waitFor({ timeout: 90000 });
     await until(() => [...host.state.players.values()].some((p) => p.name === "Ranger" && p.team === 2 && p.alive));
     await page.getByRole("button", { name: "RETURN TO LOBBY" }).click();
-    await page.getByRole("combobox", { name: "Join team", exact: true }).selectOption("1");
+    await page.getByRole("radio", { name: "Blue team", exact: true }).click();
     await page.getByRole("button", { name: /Refresh/ }).click();
     const row = page.locator(".room-row").filter({ hasText: host.state.roomName });
     await row.waitFor(); assert.match(await row.innerText(), /In progress/); assert.equal(await row.isEnabled(), true);

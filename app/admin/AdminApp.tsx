@@ -84,7 +84,7 @@ function Login({ onDone }: { onDone: (s: AdminStatus) => void }) {
   return (
     <div className={s.center}>
       <form className={s.loginCard} onSubmit={submit}>
-        <span className={s.eyebrow}>HOLLOWMERE · ADMIN</span>
+        <span className={s.eyebrow}>STRIKELINE · ADMIN</span>
         <h1>Sign in</h1>
         <label className={s.field}>
           <span>Email</span>
@@ -148,7 +148,7 @@ function Dashboard({ user, onSignedOut }: { user: string; onSignedOut: () => voi
     <div className={s.root}>
       <header className={s.topbar}>
         <div className={s.brand}>
-          <b>HOLLOWMERE</b>
+          <b>STRIKELINE</b>
           <small>Admin</small>
         </div>
         <nav className={s.tabs} aria-label="Sections">

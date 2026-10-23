@@ -3,7 +3,7 @@ export const SHOWOFFS = [
   { id: "idle", label: "At ease", source: "Idle_Loop" },
   { id: "dance", label: "Dance", source: "Dance_Loop" },
   { id: "talk", label: "Talk", source: "Idle_Talking_Loop" },
-  { id: "magic", label: "Spell stance", source: "Spell_Simple_Idle_Loop" },
+  { id: "magic", label: "Power stance", source: "Spell_Simple_Idle_Loop" },
 ] as const;
 
 export type ShowoffId = typeof SHOWOFFS[number]["id"];
@@ -21,7 +21,7 @@ export function canShowoff(phase: string, connected: boolean, value: unknown, la
 export const EMOTES = [
   { id: "dance", label: "Dance" },
   { id: "talk", label: "Talk" },
-  { id: "magic", label: "Spell stance" },
+  { id: "magic", label: "Power stance" },
   { id: "idleFoldArms", label: "Arms folded" },
 ] as const;
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
 import { assetUrl } from "./assets/url";
 import { createRoom, joinByCode, joinErrorMessage, leaveCurrentRoom, listRooms, quickPlay, type GameRoom, type PublicRoom } from "./net/session";
@@ -9,6 +9,7 @@ import { MAX_PLAYERS, MODE_INFO, SCORE_LIMITS, scoreLimitFor, type GameMode } fr
 import type { JoinOptions } from "../shared/messages";
 import { audio } from "./core/audio";
 import { parseRoomCode } from "./net/invite";
+import { LobbySounds } from "./lobbyAudio";
 import { ConnectedRoom } from "./RoomLobby";
 import { LobbyTools, SettingsDialog } from "./SettingsDialog";
 import { CharacterShowcase } from "./CharacterShowcase";
@@ -28,23 +29,38 @@ function savedMap(): MapId {
 type PlayTab = "friends" | "quick" | "join";
 type Format = "1v1" | "2v2" | "custom";
 
-const TABS = [["friends", "With friends"], ["quick", "Quick play"], ["join", "Join room"]] as const;
-const FORMATS = [["1v1", "Duel", "2 players"], ["2v2", "Doubles", "4 players"], ["custom", "Your rules", `Up to ${MAX_PLAYERS}`]] as const;
-const ROOM_SIZES = Array.from({ length: MAX_PLAYERS / 2 }, (_, i) => (i + 1) * 2);
-const HEADINGS: Record<PlayTab, [eyebrow: string, title: string, text: string]> = {
-  friends: ["MAKE IT YOUR MATCH", "Play with your people.", "Pick a format and a map. Friends join with your code or invite link."],
-  quick: ["STRAIGHT INTO THE ACTION", "Jump into a match.", "A public match. Bots fill empty slots so you can play right away."],
-  join: ["MEET IN THE SAME ROOM", "Join a room.", "Paste a code or invite link, or pick an open room."],
+const TABS = [["quick", "Quick play"], ["friends", "With friends"], ["join", "Join room"]] as const;
+/** Each play option gets an icon, and the operator strikes a pose to match when you switch to it. */
+const TAB_ICONS: Record<PlayTab, ReactNode> = {
+  quick: <path d="M13 2 5 13h6l-1 9 8-11h-6Z" />,
+  friends: <><circle cx="9" cy="8" r="3.2" /><circle cx="16.5" cy="9" r="2.6" /><path d="M3 20c.5-3.8 3-5.8 6-5.8s5.5 2 6 5.8M15 14.6c3.2-.4 5.4 1.4 6 4.8" /></>,
+  join: <><path d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5" /><path d="M3 12h12M11 7.5 15.5 12 11 16.5" /></>,
 };
+const TAB_POSES: Record<PlayTab, ShowoffId> = { quick: "magic", friends: "dance", join: "talk" };
+
+/** Every option on show at once, as a row of buttons, rather than hidden in a dropdown. */
+function Choices<T extends string | number>({ label, hint, value, options, onChange, wide = false }: {
+  label: string; hint?: string; value: T; options: readonly { value: T; text: string; name?: string }[]; onChange: (value: T) => void; wide?: boolean;
+}) {
+  return <div className={`choice-field ${wide ? "wide" : ""}`}>
+    <span className="field-caption">{label}{hint && <em>{hint}</em>}</span>
+    <div className="choice-row" role="radiogroup" aria-label={label.charAt(0) + label.slice(1).toLowerCase()}>
+      {options.map((o) => <button type="button" role="radio" key={String(o.value)} aria-checked={o.value === value} aria-label={o.name} onClick={() => onChange(o.value)}>{o.text}</button>)}
+    </div>
+  </div>;
+}
+const FORMATS = [["1v1", "Duel", "2 players"], ["2v2", "Doubles", "4 players"], ["custom", "Your rules", `Up to ${MAX_PLAYERS}`]] as const;
+/** A handful of room sizes: 2v2 up to 10v10 (or that many players in Free for All). */
+const ROOM_SIZES = [4, 8, 12, 16, MAX_PLAYERS];
 
 function CharacterPicker({ value, onChange }: { value: number; onChange: (char: number) => void }) {
   return <div className="character-picker" role="radiogroup" aria-label="Character">
-    {(["Male", "Female"] as const).map((label, char) => <button key={char} type="button" role="radio" aria-checked={value === char} aria-label={`${label} Ranger`} onClick={() => onChange(char)}>
+    {(["Male", "Female"] as const).map((label, char) => <button key={char} type="button" role="radio" aria-checked={value === char} aria-label={`${label} Operator`} onClick={() => onChange(char)}>
       <svg viewBox="0 0 48 48" aria-hidden="true">
         {char === 1 && <path className="hair" d="M13.5 22c-1-9 4-15.5 10.5-15.5S35.5 13 34.5 22c-.3 5.5 1.5 9 4 11.5-5 1.2-9.5-.3-11.5-3.5h-5c-2 3.2-6.5 4.7-11.5 3.5 2.5-2.5 4.3-6 4-11.5z" />}
         <path d="M7 47c1-10.5 7.5-15.5 17-15.5S40 36.5 41 47z" /><circle cx="24" cy="19" r="9" />
       </svg>
-      <strong>{label}</strong><small>RANGER</small>
+      <strong>{label}</strong><small>OPERATOR</small>
     </button>)}
   </div>;
 }
@@ -62,12 +78,12 @@ export default function Shooter() {
     return fresh;
   });
   const [code, setCode] = useState(() => parseRoomCode(window.location.href));
-  const [invited] = useState(() => !!parseRoomCode(window.location.href));
-  const [tab, setTab] = useState<PlayTab>(() => parseRoomCode(window.location.href) ? "join" : "friends");
+  // New players start with Quick play: one click into a match, no friend needed.
+  const [tab, setTab] = useState<PlayTab>(() => parseRoomCode(window.location.href) ? "join" : "quick");
   const [mode, setMode] = useState<GameMode>("tdm");
   const [map, setMapState] = useState<MapId>(savedMap);
   const setMap = (next: MapId) => { setMapState(next); try { window.localStorage.setItem(MAP_KEY, next); } catch { /* not persisted */ } };
-  const [format, setFormat] = useState<Format>("1v1");
+  const [format, setFormat] = useState<Format>("custom");
   const [character, setCharacter] = useState(0);
   const [joinTeam, setJoinTeam] = useState<0 | 1 | 2>(0);
   const [emote, setEmote] = useState<ShowoffId>("idle");
@@ -124,50 +140,57 @@ export default function Shooter() {
   if (room) return <ConnectedRoom room={room} onLeave={() => void leave()} />;
 
   const visibleRooms = rooms.filter((r) => (filter !== "humans" || r.botFill === 0) && (filter !== "waiting" || r.phase === "waiting") && `${r.name} ${r.code} ${r.format}`.toLowerCase().includes(search.toLowerCase()));
-  const [eyebrow, title, text] = invited && tab === "join" ? ["YOU’RE INVITED", "Meet your friends.", "Your invite code is filled in. Pick a team and join."] : HEADINGS[tab];
   const roomMode: GameMode = format === "custom" ? mode : "tdm";
-  const scoreSelect = <label>SCORE TO WIN<select aria-label="Score to win" value={scoreLimitFor(roomMode, scoreTarget)} onChange={(e) => setScoreTarget(Number(e.target.value))}>{SCORE_LIMITS[roomMode].map((n) => <option key={n} value={n}>{n} kills</option>)}</select></label>;
-  const modeSelect = <label>MODE<select aria-label="Game mode" value={mode} onChange={(e) => setMode(e.target.value as GameMode)}><option value="tdm">Team Deathmatch</option><option value="ffa">Free for All</option></select></label>;
-  return <main className="lobby home-lobby" data-tab={tab}>
+  const scoreSelect = <Choices label="SCORE TO WIN" hint="kills" value={scoreLimitFor(roomMode, scoreTarget)} onChange={setScoreTarget}
+    options={SCORE_LIMITS[roomMode].map((n) => ({ value: n, text: String(n), name: `${n} kills` }))} />;
+  const modeSelect = <Choices<GameMode> label="MODE" value={mode} onChange={setMode}
+    options={[{ value: "tdm", text: "Team DM", name: "Team Deathmatch" }, { value: "ffa", text: "Free for All" }]} />;
+  return <main className="lobby home-lobby" data-tab={tab} data-format={tab === "friends" ? format : undefined}>
+    <LobbySounds />
     <div className="lobby-grain" aria-hidden="true" />
     <header className="lobby-top">
-      <span className="wordmark" aria-label="Hollowmere">
-        <Image src={assetUrl("/brand/hollowmere-emblem.png")} alt="" width={48} height={48} unoptimized priority />
-        <span className="brand-name">HOLLOWMERE<small>VILLAGE & CITY COMBAT</small></span>
+      <span className="wordmark" aria-label="Strikeline">
+        <Image src={assetUrl("/brand/strikeline-emblem.png")} alt="" width={48} height={48} unoptimized priority />
+        <span className="brand-name">STRIKELINE<small>SQUAD COMBAT · FOUR FRONTS</small></span>
       </span>
       <div className="top-tools">
         <span className={online ? "status online" : "status"}>{online === null ? "CHECKING SERVER…" : online ? "SERVER ONLINE" : "SERVER OFFLINE"}</span>
         <LobbyTools onHelp={() => setHelp(true)} onSettings={() => setSettings(true)} />
       </div>
     </header>
-    <nav className="play-tabs" role="tablist" aria-label="Play options">{TABS.map(([id, label]) => <button key={id} type="button" role="tab" id={`tab-${id}`} aria-controls="play-panel" aria-selected={tab === id} disabled={!!busy} onClick={() => { setTab(id); setError(""); }}>{label}</button>)}</nav>
+    <nav className="play-tabs" role="tablist" aria-label="Play options">{TABS.map(([id, label]) => <button key={id} type="button" role="tab" id={`tab-${id}`} aria-controls="play-panel" aria-selected={tab === id} disabled={!!busy} onClick={() => { if (tab !== id) setEmote(TAB_POSES[id]); setTab(id); setError(""); }}><svg viewBox="0 0 24 24" aria-hidden="true">{TAB_ICONS[id]}</svg><span>{label}</span></button>)}</nav>
 
-    <section className="lobby-operator" aria-label="Your ranger">
-      <div className="operator-intro"><span className="eyebrow">YOUR FRIENDS. YOUR TEAMS. YOUR MATCH.</span><h1>Better with <em>friends</em><span className="title-dot">.</span></h1><p>A village, a downtown block and a freight yard. Two teams. A little friendly rivalry.</p></div>
+    <section className="lobby-operator" aria-label="Your operator">
+      <div className="operator-intro"><span className="eyebrow">SQUAD UP. LOCK IN. STRIKE FIRST.</span><h1>Hold the <em>line</em><span className="title-dot">.</span></h1><p>Four fronts: a village, a downtown block, a freight yard and an outpost. Two squads, one scoreboard.</p></div>
       <fieldset className="operator-fields" disabled={!!busy}>
         <label>CALLSIGN<span className="callsign"><input value={name} onChange={(e) => setName(e.target.value)} maxLength={NAME_MAX} autoComplete="nickname" /><button type="button" aria-label="Random callsign" title="Random callsign" onClick={() => setName(randomName())}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="3.5" /><circle cx="8.5" cy="8.5" r="1.4" /><circle cx="15.5" cy="8.5" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle cx="8.5" cy="15.5" r="1.4" /><circle cx="15.5" cy="15.5" r="1.4" /></svg></button></span></label>
         <div className="character-field"><span className="field-caption">CHARACTER</span><CharacterPicker value={character} onChange={setCharacter} /></div>
       </fieldset>
-      <ol className="lobby-steps"><li><b>01</b>Create a room</li><li><b>02</b>Invite your friends</li><li><b>03</b>Ready up & play</li></ol>
+      <ol className="lobby-steps"><li><b>01</b>Pick a front</li><li><b>02</b>Squad up with friends or bots</li><li><b>03</b>Strike first</li></ol>
     </section>
 
-    <div className="lobby-stage"><CharacterShowcase preview players={[{ id: "preview", name: name.trim() || "Ranger", char: character, team: 0, emote }]} me="preview" onShowoff={setEmote} /></div>
+    <div className="lobby-stage"><CharacterShowcase preview players={[{ id: "preview", name: name.trim() || "Operator", char: character, team: 0, emote }]} me="preview" onShowoff={setEmote} /></div>
 
     <section className="lobby-panel" role="tabpanel" id="play-panel" aria-labelledby={`tab-${tab}`}>
-      <div className="panel-body">
-        <div className="play-heading"><span className="eyebrow">{eyebrow}</span><h2>{title}</h2><p>{text}</p></div>
+      <div className="panel-body" key={tab}>
         <fieldset disabled={!!busy}>
           {tab === "friends" && <>
-            <span className="field-caption">MATCH FORMAT</span>
             <div className="format-options" role="group" aria-label="Match format">{FORMATS.map(([id, label, count]) => <button key={id} type="button" className={format === id ? "selected" : ""} aria-pressed={format === id} onClick={() => setFormat(id)}><strong>{id === "custom" ? "Custom" : id}</strong><span>{label}</span><small>{count}</small></button>)}</div>
-            <p className="format-note">{format === "custom" ? "Up to 10v10. Uneven teams welcome. Optional practice bots." : `${format === "1v1" ? "One friend. One rival." : "Bring three friends."} Players only, no bots.`}</p>
-            <span className="field-caption">MAP</span>
             <MapPicker value={map} onChange={setMap} />
-            <div className="custom-fields">{format === "custom" && <>{modeSelect}<label>ROOM SIZE<select value={maxPlayers} onChange={(e) => { const max = Number(e.target.value); setMaxPlayers(max); setBots(Math.min(bots, max)); }}>{ROOM_SIZES.map((n) => <option key={n} value={n}>{n} players{mode === "tdm" ? ` · Up to ${n / 2}v${n / 2}` : ""}</option>)}</select></label><label>FILL MATCH TO<select value={bots} onChange={(e) => setBots(Number(e.target.value))}><option value={0}>No bots · Players only</option>{ROOM_SIZES.filter((n) => n <= maxPlayers).map((n) => <option key={n} value={n}>{n} players · Practice bots fill empty slots</option>)}</select></label></>}{scoreSelect}</div>
-            <div className="room-options"><label><span>ROOM NAME <span className="optional">· OPTIONAL</span></span><input value={roomName} maxLength={32} placeholder={`${name.trim() || "Ranger"}'s room`} onChange={(e) => setRoomName(e.target.value)} /></label><label className="check-label toggle-label" title="Only people with your invite can join."><input type="checkbox" checked={privateRoom} onChange={(e) => setPrivateRoom(e.target.checked)} /> Private room</label></div>
+            <div className="custom-fields">{format === "custom" && <>{modeSelect}{scoreSelect}
+              <Choices wide label="ROOM SIZE" hint={`${maxPlayers} players`} value={maxPlayers}
+                onChange={(max) => { setMaxPlayers(max); if (bots) setBots(max); }}
+                options={ROOM_SIZES.map((n) => ({ value: n, text: mode === "tdm" ? `${n / 2}v${n / 2}` : String(n), name: `${n} players` }))} />
+            </>}{format !== "custom" && scoreSelect}</div>
+            <div className="room-options">
+              <input aria-label="Room name (optional)" value={roomName} maxLength={32} placeholder={`Room name: ${name.trim() || "Operator"}'s room`} onChange={(e) => setRoomName(e.target.value)} />
+              <div className="room-checks">
+                <label className="check-label" title="Only people with your invite can join."><input type="checkbox" checked={privateRoom} onChange={(e) => setPrivateRoom(e.target.checked)} /> Private room</label>
+                {format === "custom" && <label className="check-label" title="Practice bots fill the empty slots."><input type="checkbox" checked={bots > 0} onChange={(e) => setBots(e.target.checked ? maxPlayers : 0)} /> Practice bots</label>}
+              </div>
+            </div>
           </>}
           {tab === "quick" && <>
-            <span className="field-caption">MAP</span>
             <MapPicker value={map} onChange={setMap} />
             {modeSelect}
             <div className="quick-summary"><strong>Public matchmaking</strong><span>{MAPS[map].name} · Up to {MAX_PLAYERS} players · Practice bots enabled</span><span>Want a match without bots? Choose With friends.</span></div>
@@ -175,7 +198,8 @@ export default function Shooter() {
           {tab === "join" && <>
             <div className="join-fields">
               <label>ROOM CODE OR INVITE LINK<input aria-label="Room code" placeholder="e.g. ABC23 or paste an invite" value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && parseRoomCode(code)) void join("code"); }} /></label>
-              <label>JOIN TEAM<select aria-label="Join team" value={joinTeam} onChange={(e) => setJoinTeam(Number(e.target.value) as 0 | 1 | 2)}><option value={0}>Auto assign</option><option value={1}>Blue team</option><option value={2}>Red team</option></select></label>
+              <Choices<0 | 1 | 2> label="JOIN TEAM" value={joinTeam} onChange={setJoinTeam}
+                options={[{ value: 0, text: "Auto", name: "Auto assign" }, { value: 1, text: "Blue", name: "Blue team" }, { value: 2, text: "Red", name: "Red team" }]} />
             </div>
             <section className="room-browser" aria-label="Public rooms">
               <div className="browser-heading"><h3>Open rooms <span>{visibleRooms.length}</span></h3><button type="button" className="text-button" onClick={() => setRefreshKey((v) => v + 1)}>↻ Refresh</button></div>
@@ -191,7 +215,6 @@ export default function Shooter() {
         {tab === "friends" && <button type="button" className="primary-button" onClick={() => void join("create")}>{busy || `CREATE ${format === "custom" ? "CUSTOM" : format.toUpperCase()} ROOM`}<span>→</span></button>}
         {tab === "quick" && <button type="button" className="primary-button" onClick={() => void join("quick")}>{busy || "QUICK PLAY"}<span>→</span></button>}
         {tab === "join" && <button type="button" className="primary-button" disabled={!parseRoomCode(code)} onClick={() => void join("code")}>{busy || "JOIN ROOM →"}</button>}
-        <p className="action-help">{tab === "friends" ? "You’ll wait in a room lobby. The match starts when everyone is ready." : tab === "quick" ? "You’ll drop straight into a live match." : "You can join a match that has already started."}</p>
       </fieldset>
     </section>
     {help && <HowToPlay onClose={() => setHelp(false)} touch={window.matchMedia("(pointer: coarse)").matches} />}

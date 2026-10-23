@@ -34,7 +34,7 @@ import { SquadPanel } from "./SquadPanel";
 import { DamageIndicator } from "./DamageIndicator";
 import { MatchStats } from "./MatchStats";
 import { HowToPlay } from "./HowToPlay";
-import { VoiceChat } from "./VoiceChat";
+import { VoiceChat, type VoiceSession } from "./VoiceChat";
 
 class SceneBoundary extends Component<{ children: ReactNode; onLeave: () => void }, { error: string }> {
   state = { error: "" };
@@ -57,7 +57,7 @@ function Runtime({ room, map, onGame }: { room: GameRoom; map: MapId; onGame: (g
   return null;
 }
 
-export default function GameView({ room, map: mapId, onLeave }: { room: GameRoom; map: MapId; onLeave: () => void }) {
+export default function GameView({ room, map: mapId, onLeave, voice }: { room: GameRoom; map: MapId; onLeave: () => void; voice: VoiceSession | null }) {
   const map = useMemo(() => getMap(mapId), [mapId]);
   const quality = useSettings((s) => s.quality);
   const p = PRESETS[quality];
@@ -77,7 +77,7 @@ export default function GameView({ room, map: mapId, onLeave }: { room: GameRoom
       </Canvas>
       <MatchHud game={game} map={map.id} onLeave={onLeave} />
       <GraphicsControl />
-      <VoiceChat room={room} />
+      {voice && <VoiceChat room={room} session={voice} />}
       {game?.input.touch && <MobileScreen message={screenMessage} setMessage={setScreenMessage} onLeave={onLeave} />}
     </SceneBoundary>
   </div>;
@@ -153,7 +153,7 @@ function MatchHud({ game, map, onLeave }: { game: Game | null; map: MapId; onLea
     {(!h.ready || failed || h.conn === "reconnecting" || (paused && !scoreboard)) && (h.ready && !failed && h.conn !== "reconnecting" ? <div className="modal-shade"><div className="match-modal deploy-modal">
       {/* Two columns so everything before deploying fits on one screen. */}
       <div className="deploy-main">
-        <span className="eyebrow">HOLLOWMERE / {h.code}</span>
+        <span className="eyebrow">STRIKELINE / {h.code}</span>
         <h2>Ready to deploy?</h2>
         <p>{h.roomName} · {MODE_INFO[h.mode].name} · {MAPS[map].name}</p>
         {/* On a computer fullscreen comes first: only there can the game keep browser shortcuts
@@ -174,7 +174,7 @@ function MatchHud({ game, map, onLeave }: { game: Game | null; map: MapId; onLea
       </div>
       {game && <div className="deploy-loadout"><span className="eyebrow">FIELD LOADOUT</span><LoadoutPicker game={game} /></div>}
     </div>{settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}</div> : <div className="modal-shade"><div className="match-modal">
-      <span className="eyebrow">HOLLOWMERE / {h.code}</span>
+      <span className="eyebrow">STRIKELINE / {h.code}</span>
       <h2>{failed ? "Connection interrupted" : h.conn === "reconnecting" ? "Reconnecting…" : `Loading ${MAPS[map].name}…`}</h2>
       {failed ? <p role="alert">{h.error}</p> : !h.ready ? <p>Preparing terrain, collision and character rigs.</p> : <p>Waiting for the game server.</p>}
       <button className="outline-button" onClick={onLeave}>RETURN TO LOBBY</button>

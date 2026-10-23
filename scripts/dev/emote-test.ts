@@ -60,7 +60,7 @@ async function main() {
     // The click that ends an emote brings the gun up instead of firing it.
     await page.keyboard.press("KeyT"); await page.keyboard.press("Digit3");
     await hint.waitFor({ timeout: 2000 });
-    await until(() => seen() === "magic", "other players see the spell stance");
+    await until(() => seen() === "magic", "other players see the power stance");
     const ammo = page.locator(".ammo strong");
     const before = parseInt(await ammo.innerText());
     await page.mouse.down(); await sleep(60); await page.mouse.up();

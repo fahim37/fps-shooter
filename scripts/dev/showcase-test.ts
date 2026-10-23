@@ -53,6 +53,8 @@ async function main() {
     await offline.route("**/models/char_*.glb", (route) => route.abort());
     await offline.goto(url);
     await offline.getByRole("button", { name: "Retry preview", exact: true }).waitFor();
+    await offline.getByRole("tab", { name: "With friends" }).click();
+    await offline.getByRole("button", { name: /^1v1/ }).click();
     assert.ok(await offline.getByRole("button", { name: "CREATE 1V1 ROOM" }).isEnabled(), "Preview failures do not block room creation");
     await offline.unroute("**/models/char_*.glb");
     await offline.getByRole("button", { name: "Retry preview", exact: true }).click();

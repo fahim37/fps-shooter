@@ -19,12 +19,14 @@ async function main() {
     await host.goto(url);
     await host.getByText("SERVER ONLINE", { exact: true }).waitFor({ timeout: 60000 });
     await host.locator('[data-stage-status="ready"]').waitFor({ timeout: 60000 });
-    await host.getByRole("radio", { name: "Female Ranger", exact: true }).click();
+    await host.getByRole("radio", { name: "Female Operator", exact: true }).click();
     await host.locator('[data-stage-status="ready"]').waitFor();
     await host.getByRole("button", { name: "Dance", exact: true }).click();
     await host.waitForTimeout(900);
     await host.screenshot({ path: "out/qa/lobby-desktop.png", fullPage: true });
     await host.getByLabel("CALLSIGN", { exact: true }).fill("Host Ranger");
+    await host.getByRole("tab", { name: "With friends" }).click();
+    await host.getByRole("button", { name: /^1v1/ }).click();
     await host.getByRole("button", { name: "CREATE 1V1 ROOM" }).click();
     await host.getByRole("button", { name: "READY UP", exact: true }).waitFor();
     await host.locator('[data-stage-status="ready"]').waitFor({ timeout: 60000 });
@@ -41,9 +43,9 @@ async function main() {
     await guest.getByRole("button", { name: "READY UP", exact: true }).waitFor();
     await host.locator('[data-stage-status="ready"]').waitFor();
     await host.getByRole("button", { name: "Dance", exact: true }).click();
-    await guest.getByText("Female Ranger · Dance", { exact: true }).waitFor();
-    await guest.getByRole("button", { name: "Spell stance", exact: true }).click();
-    await host.getByText("Male Ranger · Spell stance", { exact: true }).waitFor();
+    await guest.getByText("Female Operator · Dance", { exact: true }).waitFor();
+    await guest.getByRole("button", { name: "Power stance", exact: true }).click();
+    await host.getByText("Male Operator · Power stance", { exact: true }).waitFor();
     await host.getByRole("button", { name: "CANCEL READY", exact: true }).waitFor();
     assert.equal(await host.locator(".player-slot.occupied").count(), 2);
     assert.equal(await guest.getByRole("button", { name: "START MATCH" }).count(), 0);

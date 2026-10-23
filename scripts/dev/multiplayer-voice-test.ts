@@ -63,8 +63,9 @@ async function main() {
     await guide.screenshot({ path: "out/qa/how-to-play-voice.png" });
     await host.getByRole("button", { name: "Close how to play", exact: true }).click();
     await host.getByLabel("CALLSIGN", { exact: true }).fill("Voice Host");
+    await host.getByRole("tab", { name: "With friends" }).click();
     await host.getByRole("button", { name: /Custom Your rules/ }).click();
-    await host.getByRole("combobox", { name: /ROOM SIZE/ }).selectOption("20");
+    await host.getByRole("radio", { name: "20 players", exact: true }).click();
     await host.getByRole("radio", { name: /Downtown/ }).click();
     await host.getByRole("button", { name: "CREATE CUSTOM ROOM" }).click();
     await host.getByRole("button", { name: "READY UP", exact: true }).waitFor();
@@ -73,7 +74,7 @@ async function main() {
     for (const [page, name] of [[blue, "Voice Blue"], [red, "Voice Red"]] as const) {
       await page.goto(invite);
       await page.getByLabel("CALLSIGN", { exact: true }).fill(name);
-      await page.getByLabel("Join team", { exact: true }).selectOption("2");
+      await page.getByRole("radio", { name: "Red team", exact: true }).click();
       await page.getByRole("button", { name: /JOIN ROOM/ }).click();
       await page.getByRole("button", { name: "READY UP", exact: true }).waitFor();
     }

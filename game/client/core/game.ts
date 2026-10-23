@@ -165,7 +165,9 @@ export class Game {
 
   async init() {
     // Capture spawn messages while assets load; initial state also recovers a missed join message.
-    const physics = await loadClientWorld(getMap(this.room.state?.map));
+    const map = getMap(this.room.state?.map);
+    audio.setMap(map.id);
+    const physics = await loadClientWorld(map);
     if (this.disposed) { physics.world.free(); return; }
     this.R = physics.R;
     this.world = physics.world;

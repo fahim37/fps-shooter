@@ -119,3 +119,82 @@ describe("audio updates", () => {
     expect(legacy.setOrientation).toHaveBeenCalledExactlyOnceWith(0, 0, -1, 0, 1, 0);
   });
 });
+
+describe("ambient beds", () => {
+  type FakeBed = { key: string; out: { gain: { linearRampToValueAtTime: ReturnType<typeof vi.fn> } }; sources: { stop: ReturnType<typeof vi.fn> }[]; timers: Set<unknown> };
+  function engine() {
+    const p = () => ({
+      value: 0, setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn(),
+      cancelScheduledValues: vi.fn(), cancelAndHoldAtTime: vi.fn(), setTargetAtTime: vi.fn(),
+    });
+    const node = (extra: object = {}) => ({
+      connect: (to: object) => to, disconnect: vi.fn(), gain: p(), frequency: p(), Q: p(), pan: p(), playbackRate: p(),
+      start: vi.fn(), stop: vi.fn(), type: "", ...extra,
+    });
+    const ctx = {
+      currentTime: 0, state: "running", listener: listener(),
+      createGain: () => node(), createBiquadFilter: () => node(), createStereoPanner: () => node(),
+      createBufferSource: () => node(), createOscillator: () => node(), createPanner: () => node(),
+    };
+    const audio = new AudioEngine();
+    Object.assign(audio, { ctx, master: node(), sfx: node(), reverb: node(), noise: {} });
+    const bed = () => (audio as unknown as { bed: FakeBed | null }).bed;
+    return { audio, ctx, bed };
+  }
+
+  it("plays one bed at a time and crossfades between the lobby and a map", () => {
+    vi.useFakeTimers();
+    try {
+      const { audio, bed } = engine();
+      audio.lobby(true);
+      const lobby = bed()!;
+      expect(lobby.key).toBe("lobby");
+      audio.setMap("downtown");
+      expect(bed()!.key).toBe("downtown");
+      // The lobby bed fades out and its sources and timers stop.
+      expect(lobby.out.gain.linearRampToValueAtTime).toHaveBeenLastCalledWith(0, expect.any(Number));
+      for (const s of lobby.sources) expect(s.stop).toHaveBeenCalled();
+      expect(lobby.timers.size).toBe(0);
+      // A lobby screen unmounting during the match leaves the match bed alone.
+      audio.lobby(false);
+      expect(bed()!.key).toBe("downtown");
+      audio.dispose();
+      expect(bed()).toBeNull();
+      // Back in the lobby without a new context.
+      audio.lobby(true);
+      expect(bed()!.key).toBe("lobby");
+      // Leaving a match after the lobby bed already came back keeps it.
+      audio.dispose();
+      expect(bed()!.key).toBe("lobby");
+      audio.lobby(false);
+      expect(bed()).toBeNull();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("waits for an unlocked context before starting a bed", () => {
+    const audio = new AudioEngine();
+    audio.setMap("outpost");
+    audio.lobby(true);
+    expect((audio as unknown as { bed: unknown }).bed).toBeNull();
+  });
+
+  it("builds every bed and its occasional events, and cuts finished ones", () => {
+    vi.useFakeTimers();
+    try {
+      const { audio, ctx, bed } = engine();
+      for (const id of ["village", "downtown", "industrial", "outpost"] as const) {
+        audio.setMap(id);
+        expect(bed()!.key).toBe(id);
+        vi.advanceTimersByTime(240_000);
+        expect(bed()!.timers.size).toBeGreaterThan(0);
+      }
+      audio.lobby(true);
+      vi.advanceTimersByTime(60_000);
+      audio.uiHover(); audio.uiClick(); audio.uiTab(); audio.uiSting();
+      ctx.currentTime = 1000;
+      audio.uiHover();
+      const voices = (audio as unknown as { voices: unknown[] }).voices;
+      expect(voices.length).toBe(1); // the rest were swept once finished
+    } finally { vi.useRealTimers(); }
+  });
+});

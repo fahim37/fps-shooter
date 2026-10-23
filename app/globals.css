@@ -25,7 +25,7 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* Hollowmere interface */
+/* Strikeline interface */
 :root { --background: #111812; --foreground: #eeeede; --accent: #d9ed79; }
 * { box-sizing: border-box; }
 body { margin: 0; font-family: var(--font-geist-sans), Arial, sans-serif; }
@@ -537,3 +537,202 @@ small { display: block; }
   .panel-body .custom-fields:has(> label:nth-child(4)) select { padding: 8px 4px 8px 7px; font-size: 11px; letter-spacing: 0; }
   .panel-body .custom-fields:has(> label:nth-child(4)) label { font-size: 9px; }
 }
+
+/*
+ * Lobby motion, Valorant-style: panels wipe in on a stagger, the grid drifts, a scan line passes
+ * now and then, buttons catch a light sweep on hover. All of it stays out of reduced motion.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes lobby-drop { from { opacity: 0; transform: translateY(-14px); } }
+  @keyframes lobby-rise { from { opacity: 0; transform: translateY(18px); } }
+  @keyframes lobby-wipe-left { from { opacity: 0; transform: translateX(-28px); clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+  @keyframes lobby-wipe-right { from { opacity: 0; transform: translateX(28px); clip-path: inset(0 0 0 100%); } to { clip-path: inset(0 0 0 0); } }
+  @keyframes lobby-zoom { from { opacity: 0; transform: scale(1.05); filter: blur(6px); } }
+  @keyframes lobby-grid-drift { to { background-position: 64px 64px, 64px 64px; } }
+  @keyframes lobby-scan { 0%, 72% { transform: translateY(-30vh); opacity: 0; } 76% { opacity: 1; } 100% { transform: translateY(130vh); opacity: 0; } }
+  @keyframes lobby-sheen { from { transform: translateX(-120%) skewX(-20deg); } to { transform: translateX(260%) skewX(-20deg); } }
+  @keyframes lobby-glow { 50% { box-shadow: 0 0 0 1px #d9ed7966, 0 0 22px #d9ed7940; } }
+  @keyframes lobby-ready { 0% { transform: scale(.7); opacity: 0; } 60% { transform: scale(1.12); } }
+
+  /* Ambient: the grid creeps, a faint scan line sweeps down every few seconds. */
+  .lobby-grain { animation: lobby-grid-drift 18s linear infinite; }
+  .lobby::after, .waiting-room::after { content: ""; z-index: -1; position: absolute; left: 0; right: 0; top: 0; height: 22vh; pointer-events: none;
+    background: linear-gradient(180deg, transparent, #d9ed790c 70%, #d9ed7926 98%, transparent); animation: lobby-scan 9s ease-in 1.2s infinite; }
+
+  /* Entrance: header drops, the setup panels wipe in from the sides, the operator zooms in. */
+  .lobby-top { animation: lobby-drop .5s cubic-bezier(.2, .8, .2, 1) both; }
+  .play-tabs button { animation: lobby-rise .45s cubic-bezier(.2, .8, .2, 1) both; }
+  .play-tabs button:nth-child(1) { animation-delay: .12s; }
+  .play-tabs button:nth-child(2) { animation-delay: .18s; }
+  .play-tabs button:nth-child(3) { animation-delay: .24s; }
+  .lobby-operator > * { animation: lobby-wipe-left .6s cubic-bezier(.2, .8, .2, 1) both; }
+  .lobby-operator > :nth-child(1) { animation-delay: .15s; }
+  .lobby-operator > :nth-child(2) { animation-delay: .25s; }
+  .lobby-operator > :nth-child(3) { animation-delay: .35s; }
+  .lobby-stage, .room-stage { animation: lobby-zoom .8s cubic-bezier(.2, .8, .2, 1) .1s both; }
+  .lobby-panel { animation: lobby-wipe-right .6s cubic-bezier(.2, .8, .2, 1) .2s both; }
+  /* Switching tabs replays the panel's content (it is keyed by tab). */
+  .panel-body > * { animation: lobby-rise .35s cubic-bezier(.2, .8, .2, 1) both; }
+  .panel-body > :nth-child(2) { animation-delay: .05s; }
+  .panel-body > :nth-child(3) { animation-delay: .1s; }
+  .play-tabs button::after { transition: transform .25s cubic-bezier(.2, .8, .2, 1); }
+
+  /* Waiting room: rosters slide in from their sides, slots fill in one by one, the bar rises. */
+  .roster-left { animation: lobby-wipe-left .6s cubic-bezier(.2, .8, .2, 1) .15s both; }
+  .roster-right { animation: lobby-wipe-right .6s cubic-bezier(.2, .8, .2, 1) .15s both; }
+  .slot-list > * { animation: lobby-rise .4s cubic-bezier(.2, .8, .2, 1) both; }
+  .slot-list > :nth-child(2) { animation-delay: .05s; } .slot-list > :nth-child(3) { animation-delay: .1s; }
+  .slot-list > :nth-child(4) { animation-delay: .15s; } .slot-list > :nth-child(5) { animation-delay: .2s; }
+  .slot-list > :nth-child(n+6) { animation-delay: .25s; }
+  .room-bar > * { animation: lobby-rise .5s cubic-bezier(.2, .8, .2, 1) both; }
+  .room-bar > :nth-child(2) { animation-delay: .08s; } .room-bar > :nth-child(3) { animation-delay: .16s; }
+  .ready-badge.is-ready { animation: lobby-ready .35s cubic-bezier(.2, .8, .2, 1) both; }
+  .room-start .primary-button:not(:disabled) { animation: lobby-glow 2.2s ease-in-out infinite; }
+
+  /* Hover: buttons catch a sweep of light; choices lift a little. */
+  .primary-button { position: relative; overflow: hidden; transition: background .2s, transform .15s; }
+  .primary-button::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 40%; pointer-events: none;
+    background: linear-gradient(90deg, transparent, #ffffff8c, transparent); transform: translateX(-120%) skewX(-20deg); }
+  .primary-button:hover:not(:disabled)::after { animation: lobby-sheen .7s ease-out; }
+  .primary-button:active:not(:disabled) { transform: translateY(1px) scale(.995); }
+  .outline-button, .format-options button, .character-picker button, .room-row, .player-slot, .icon-button { transition: transform .18s cubic-bezier(.2, .8, .2, 1), border-color .15s, background .15s, color .15s; }
+  .format-options button:hover, .character-picker button:hover, .room-row:not(:disabled):hover, .open-slot:hover:not(:disabled) { transform: translateY(-2px); }
+  .outline-button:hover:not(:disabled) { transform: translateX(2px); }
+}
+
+/* Narrow screens: the room title gets its own row under Leave and the voice / tool buttons. */
+@media (max-width: 900px) {
+  .room-top { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "leave tools" "heading heading"; row-gap: 2px; align-items: center; }
+  .room-top .leave-button { grid-area: leave; }
+  .room-top .room-heading { grid-area: heading; }
+  .room-top .top-tools { grid-area: tools; }
+}
+
+/* Play options: big, lit buttons with an icon, the chosen one filled in. */
+.play-tabs { gap: 6px; padding: 6px 0; }
+.play-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 48px; padding: 0 clamp(14px, 1.6vw, 26px); border: 1px solid #d9ed7930; background: linear-gradient(180deg, #d9ed7908, #d9ed7914); color: #cdd8c2; font-size: 13px;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%); transition: background .2s, color .2s, border-color .2s, transform .18s cubic-bezier(.2, .8, .2, 1); }
+.play-tabs button svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.play-tabs button:hover:not(:disabled) { border-color: #d9ed7980; background: #d9ed7922; color: #f4f8ec; }
+.play-tabs button[aria-selected=true] { border-color: var(--accent); background: var(--accent); color: var(--ink); box-shadow: 0 0 24px #d9ed7940; }
+.play-tabs button[aria-selected=true] svg { stroke-width: 2.2; }
+.play-tabs button::after { display: none; }
+@media (max-width: 520px) { .play-tabs button { gap: 6px; padding: 0 8px; font-size: 11px; letter-spacing: .06em; } .play-tabs button svg { width: 15px; height: 15px; } }
+
+/* The main action of each screen: tall, full-width, hard to miss. */
+.panel-action .primary-button { min-height: 66px; font-size: 17px; }
+.panel-action .primary-button span { font-size: 22px; }
+.room-start .primary-button, .room-start .outline-button { min-height: 60px; font-size: 14px; }
+.deploy-main .primary-button { min-height: 60px; font-size: 14px; }
+/* Open rooms: each row is a big target with its own Join button. */
+.room-row { min-height: 58px; padding: 10px 12px; }
+.room-row b { padding: 8px 14px; background: var(--accent); color: var(--ink); font-size: 12px; letter-spacing: .08em; clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%); }
+.room-row:disabled b { background: #ffffff14; color: #8c9983; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .play-tabs button:hover:not(:disabled) { transform: translateY(-2px); }
+  .play-tabs button[aria-selected=true] { animation: tab-pick .35s cubic-bezier(.2, .8, .2, 1); }
+  @keyframes tab-pick { 0% { transform: scale(.94); } 60% { transform: scale(1.04); } }
+  /* Switching tabs sweeps light across the operator (a new animation name per tab restarts it). */
+  .lobby-stage { position: relative; }
+  .lobby-stage::after { content: ""; position: absolute; inset: 14px 0 0; pointer-events: none; z-index: 3; background: linear-gradient(100deg, transparent 30%, #d9ed7922 45%, #f4ffc455 50%, #d9ed7922 55%, transparent 70%); background-size: 250% 100%; background-position: 150% 0; opacity: 0; }
+  .home-lobby[data-tab=quick] .lobby-stage::after { animation: stage-sweep-a .9s cubic-bezier(.2, .8, .2, 1); }
+  .home-lobby[data-tab=friends] .lobby-stage::after { animation: stage-sweep-b .9s cubic-bezier(.2, .8, .2, 1); }
+  .home-lobby[data-tab=join] .lobby-stage::after { animation: stage-sweep-c .9s cubic-bezier(.2, .8, .2, 1); }
+  @keyframes stage-sweep-a { from { opacity: 1; background-position: 150% 0; } to { opacity: 1; background-position: -50% 0; } }
+  @keyframes stage-sweep-b { from { opacity: 1; background-position: 150% 0; } to { opacity: 1; background-position: -50% 0; } }
+  @keyframes stage-sweep-c { from { opacity: 1; background-position: 150% 0; } to { opacity: 1; background-position: -50% 0; } }
+  /* The panel heading slides in with each switch too. */
+  .play-heading { animation: lobby-wipe-right .45s cubic-bezier(.2, .8, .2, 1) both; }
+  /* The big callsign behind the operator drifts slowly. */
+  .lobby-stage [aria-hidden=true][style*="--chars"], .room-stage [aria-hidden=true][style*="--chars"] { animation: callsign-drift 14s ease-in-out infinite alternate; }
+  @keyframes callsign-drift { from { transform: translateX(-3%); } to { transform: translateX(3%); } }
+}
+
+/* Phones keep the play options compact (these come after the big-tab styles above). */
+@media (max-width: 760px) and (min-height: 521px) {
+  .play-tabs { gap: 4px; padding: 4px 0; }
+  .play-tabs button { min-height: 44px; gap: 5px; padding: 0 6px; font-size: 11px; letter-spacing: .06em; }
+  .play-tabs button svg { width: 15px; height: 15px; }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  .play-tabs { gap: 4px; padding: 3px 0; }
+  .play-tabs button { min-height: 36px; gap: 5px; padding: 0 9px; font-size: 10px; letter-spacing: .06em; }
+  .play-tabs button svg { width: 14px; height: 14px; }
+}
+@media (max-height: 520px) and (orientation: landscape) and (max-width: 640px) {
+  .play-tabs button svg { display: none; }
+  .play-tabs button { padding: 0 6px; }
+}
+/* Where the tabs sit in a column (tablets and phones), they share its width evenly. */
+@media (max-width: 1100px) {
+  .play-tabs button { flex: 1 1 0; min-width: 0; padding: 0 8px; }
+  .play-tabs button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* Choices shown as a row of buttons (mode, room size, bots, score, team), the picked one lit. */
+.choice-field { margin-top: 14px; min-width: 0; }
+.choice-field .field-caption { margin: 0 0 7px; }
+.choice-field .field-caption em { margin-left: 8px; font-style: normal; color: var(--muted); letter-spacing: .04em; text-transform: none; }
+.choice-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.choice-row button { flex: 1 0 auto; min-width: 44px; min-height: 42px; padding: 0 12px; border: 1px solid var(--line-strong); background: #ffffff05; color: var(--soft); font-size: 13px; font-weight: 700; letter-spacing: .02em;
+  transition: background .15s, border-color .15s, color .15s, transform .15s cubic-bezier(.2, .8, .2, 1); }
+.choice-row button:hover { border-color: #d9ed7980; background: #d9ed7914; color: #f4f8ec; }
+.choice-row button[aria-checked=true] { border-color: var(--accent); background: var(--accent); color: var(--ink); box-shadow: 0 0 16px #d9ed7930; }
+.custom-fields { grid-template-columns: minmax(0, 1fr); }
+.join-fields { grid-template-columns: minmax(0, 1fr); }
+@media (prefers-reduced-motion: no-preference) {
+  .choice-row button:hover { transform: translateY(-2px); }
+  .choice-row button[aria-checked=true] { animation: tab-pick .3s cubic-bezier(.2, .8, .2, 1); }
+}
+
+/* The custom room setup fits without scrolling: two-choice rows share a line, wide ones span it. */
+.custom-fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 10px; }
+.custom-fields > .wide { grid-column: 1 / -1; }
+.choice-field { margin-top: 11px; }
+.choice-row button { min-height: 38px; padding: 0 10px; }
+.home-lobby[data-format=custom] .play-heading p { display: none; }
+.home-lobby[data-format=custom] .format-options button { padding: 7px 10px; }
+
+/* Leaner setup panel: no heading text, compact format buttons, checkboxes for private and bots. */
+.custom-fields > .choice-field:only-child { grid-column: 1 / -1; }
+.format-options button { grid-template-columns: auto minmax(0, 1fr); align-items: baseline; column-gap: 8px; padding: 8px 10px; }
+.format-options strong { font-size: 18px; }
+.format-options small { display: none; }
+.panel-body .map-picker { margin-top: 12px; }
+.room-options { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; margin-top: 12px; }
+.room-options > input { min-width: 0; height: 40px; }
+.room-checks { display: grid; gap: 4px; }
+.room-checks .check-label { margin: 0; font-size: 11px; white-space: nowrap; }
+
+/* The setup panel fills its height: the map cards take whatever space is left (and give it back on short screens). */
+.panel-body { display: flex; flex-direction: column; }
+.panel-body > fieldset { flex: 1 1 auto; min-height: 0; }
+.home-lobby:not([data-tab=join]) .panel-body .map-picker { flex: 1 1 auto; min-height: 0; max-height: 380px; display: flex; flex-direction: column; }
+.home-lobby:not([data-tab=join]) .panel-body .map-picker > [role=radiogroup] { flex: 1 1 auto; min-height: 0; grid-auto-rows: minmax(58px, 1fr); }
+.home-lobby:not([data-tab=join]) .panel-body .map-picker [data-map] { height: 100%; }
+.home-lobby:not([data-tab=join]) .panel-body .map-picker [data-map] > span:first-child { aspect-ratio: auto; height: 100%; }
+/* Phones: tighter choice rows. */
+@media (max-width: 760px) and (min-height: 521px) {
+  .choice-field { margin-top: 8px; }
+  .choice-field .field-caption { margin-bottom: 4px; font-size: 9px; }
+  .choice-row { gap: 4px; }
+  .choice-row button { min-height: 34px; padding: 0 6px; font-size: 12px; }
+  .room-options { margin-top: 8px; }
+  .room-options > input { height: 36px; }
+  .panel-body .map-picker { margin-top: 8px; }
+}
+
+/* Match format: the big label on top, its subtext underneath. */
+.format-options button { grid-template-columns: minmax(0, 1fr); justify-items: start; align-content: center; row-gap: 3px; min-height: 58px; padding: 8px 12px; }
+.format-options strong { font-size: 20px; line-height: 1; }
+.format-options span { font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.format-options button.selected span { color: var(--accent); }
+@media (max-width: 760px) and (min-height: 521px) { .format-options button { min-height: 48px; padding: 6px 9px; } .format-options strong { font-size: 17px; } }
+/* Each choice row stays on one line; the buttons share it evenly. */
+.choice-row { flex-wrap: nowrap; }
+.choice-row button { flex: 1 1 0; min-width: 0; padding: 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.custom-fields > .choice-field:not(.wide):not(:only-child) .choice-row button { font-size: 12px; }
+/* Narrow phones: tab labels only, so "With friends" fits. */
+@media (max-width: 440px) { .play-tabs button svg { display: none; } }
+.play-tabs button[aria-selected=true]:hover:not(:disabled) { border-color: var(--accent); background: var(--accent); color: var(--ink); }

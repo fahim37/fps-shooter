@@ -25,5 +25,12 @@
 .member button { padding: 5px 8px; }
 .speakers { max-width: 280px; padding: 5px 8px; margin: 5px 0 0; border-radius: 4px; background: #111c16dc; color: #d9ed79; line-height: 1.5; text-align: center; }
 @media (max-width: 800px) { .voice { top: 66px; } }
+/* Waiting room: in the header beside help and settings, the panel dropping down below it. */
+.voice.room { position: relative; top: auto; left: auto; transform: none; align-items: flex-end; z-index: 6; }
+.room .bar { align-items: center; }
+.room .panel { position: absolute; top: 100%; right: 0; }
+.room .speakers, .room .error { position: absolute; top: 100%; right: 0; width: max-content; }
+.caption { padding: 0 4px 0 6px; color: #8f9c88; font-size: 9px; letter-spacing: .14em; }
 /* Touch: compact, so it fits between the score and the top-right tool buttons. */
 @media (pointer: coarse) { .voice { top: max(58px, calc(env(safe-area-inset-top) + 50px)); font-size: 10px; } .bar { gap: 3px; padding: 2px; } .bar button { width: 32px; height: 32px; } .bar .more { width: 24px; } .panel { max-height: calc(100dvh - 130px); } }
+@media (max-width: 900px) { .caption { display: none; } }

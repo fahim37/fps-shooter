@@ -78,6 +78,8 @@ async function main() {
   async function createMatch() {
     await peer?.leave();
     await page.getByText("SERVER ONLINE", { exact: true }).waitFor({ timeout: 60000 });
+    await page.getByRole("tab", { name: "With friends" }).tap();
+    await page.getByRole("button", { name: /^1v1/ }).tap();
     await page.getByRole("button", { name: /CREATE 1V1 ROOM/ }).tap();
     const invite = await page.getByLabel("Invite link", { exact: true }).inputValue();
     const roomCode = new URL(invite).searchParams.get("room")!;

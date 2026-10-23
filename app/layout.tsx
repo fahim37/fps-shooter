@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Hollowmere — Village & City Combat",
-  description: "A multiplayer first- and third-person shooter. Gear up and fight across The Village and Downtown city maps.",
+  title: "Strikeline — Squad Combat",
+  description: "A multiplayer first- and third-person squad shooter. Team up and fight across four fronts: a village, a downtown block, a freight yard and a military outpost.",
 };
 
 export const viewport: Viewport = {

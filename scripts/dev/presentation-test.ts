@@ -20,7 +20,7 @@ async function main() {
       localStorage.setItem("hollowmere.optics.v1", JSON.stringify({ ar: "4x" }));
     });
     await page.goto(base);
-    assert.equal(await page.title(), "Hollowmere — Village & City Combat");
+    assert.equal(await page.title(), "Strikeline — Squad Combat");
     await page.locator(".wordmark img").waitFor();
     await page.screenshot({ path: "out/qa/brand-desktop.png" });
     await page.setViewportSize({ width: 320, height: 800 });

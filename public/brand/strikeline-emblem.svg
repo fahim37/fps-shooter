@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22341f"/>
+      <stop offset="1" stop-color="#0f1a12"/>
+    </linearGradient>
+    <linearGradient id="bolt" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f1ffa6"/>
+      <stop offset="1" stop-color="#b7d64a"/>
+    </linearGradient>
+  </defs>
+  <!-- Shield plate with a lime rim and an inner bevel. -->
+  <path d="M64 5 116 21v46c0 26-21 44-52 56C33 111 12 93 12 67V21Z" fill="url(#plate)" stroke="#d9ed79" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M64 15 106 28v39c0 20-16 35-42 46-26-11-42-26-42-46V28Z" fill="none" stroke="#d9ed79" stroke-opacity=".22" stroke-width="2"/>
+  <!-- The line: a horizon broken where the strike crosses it. -->
+  <path d="M22 64H50M80 64H106" stroke="#d9ed79" stroke-width="5" stroke-linecap="square"/>
+  <!-- The strike. -->
+  <path d="M76 20 42 68h20l-10 40 38-52H69Z" fill="url(#bolt)" stroke="#0f1a12" stroke-width="3" stroke-linejoin="round"/>
+</svg>

@@ -13,6 +13,9 @@ import { MapPicker } from "./MapPicker";
 import { MAPS, mapId } from "../shared/map/maps";
 import type { MapId } from "../shared/map/types";
 
+import { audio } from "./core/audio";
+import { LobbySounds } from "./lobbyAudio";
+import { VoiceChat, useVoiceSession } from "./VoiceChat";
 const GameView = dynamic(() => import("./GameView"), { ssr: false, loading: () => <main className="boot-screen">Loading the match…</main> });
 
 function snapshot(room: GameRoom) {
@@ -58,7 +61,13 @@ export function ConnectedRoom({ room, onLeave }: { room: GameRoom; onLeave: () =
     const ignore = room.onMessage("*", () => {});
     return () => { room.onDrop.remove(drop); room.onReconnect.remove(reconnect); room.onLeave.remove(leave); room.onError.remove(fail); unsubscribe(); ignore(); };
   }, [room]);
-  if (s.phase && s.phase !== "waiting") return <GameView room={room} map={s.map} onLeave={onLeave} />;
+  // Voice starts as soon as you're in the room and carries on into the match.
+  const voice = useVoiceSession(room);
+  // A sting when you ready up, and when the match is found and starts.
+  const meReady = !!s.players.find((p) => p.id === room.sessionId)?.ready;
+  const started = !!s.phase && s.phase !== "waiting";
+  useEffect(() => { if (meReady || started) audio.uiSting(); }, [meReady, started]);
+  if (s.phase && s.phase !== "waiting") return <GameView room={room} map={s.map} onLeave={onLeave} voice={voice} />;
   const me = s.players.find((p) => p.id === room.sessionId);
   const isHost = s.host === room.sessionId;
   const reason = startBlockReason(s, s.players);
@@ -66,11 +75,12 @@ export function ConnectedRoom({ room, onLeave }: { room: GameRoom; onLeave: () =
   function send(type: string, data: unknown) { setError(""); room.send(type, data); }
   const humans = s.players.filter((p) => !p.bot);
   return <main className="waiting-room" data-mode={s.mode}>
+    <LobbySounds />
     <div className="lobby-grain" aria-hidden="true" />
     <header className="lobby-top room-top">
       <button type="button" className="text-button leave-button" onClick={onLeave}>← Leave room</button>
       <section className="room-heading"><span className="eyebrow">{s.privateRoom ? "INVITE ONLY" : "PUBLIC ROOM"} · {humans.length} / {s.maxPlayers} PLAYERS</span><h1>{s.name || "Joining room…"}</h1><p>{s.format === "custom" ? MODE_INFO[s.mode].name : `${s.format} · Team Deathmatch`} <span>·</span> {MAPS[s.map].name} <span>·</span> {s.scoreLimit > 0 && <>First to {s.scoreLimit} · {matchMinutes(s.mode, s.scoreLimit)} min <span>·</span> </>}{s.botFill ? `Bots fill to ${s.botFill}` : "No bots"}</p></section>
-      <div className="top-tools"><LobbyTools onHelp={() => setHelp(true)} onSettings={() => setSettings(true)} /></div>
+      <div className="top-tools">{voice && <VoiceChat room={room} session={voice} placement="room" />}<LobbyTools onHelp={() => setHelp(true)} onSettings={() => setSettings(true)} /></div>
     </header>
 
     {rosterSides(s).map((side, i) => {
@@ -86,14 +96,14 @@ export function ConnectedRoom({ room, onLeave }: { room: GameRoom; onLeave: () =
         </button>;
         return <div key={p?.id ?? `empty-${slot}`} className={`player-slot ${p ? "occupied" : ""} ${p?.id === room.sessionId ? "is-me" : ""}`}>
           <span className="player-avatar" aria-hidden="true">{p ? p.name.slice(0, 1).toUpperCase() : "+"}</span>
-          <div><strong>{p ? `${p.name}${p.id === room.sessionId ? " (you)" : ""}` : "Open slot"}</strong><small>{p ? `${p.id === s.host ? "Host · " : ""}${p.char === 1 ? "Female" : "Male"} Ranger` : "Invite a friend"}</small></div>
+          <div><strong>{p ? `${p.name}${p.id === room.sessionId ? " (you)" : ""}` : "Open slot"}</strong><small>{p ? `${p.id === s.host ? "Host · " : ""}${p.char === 1 ? "Female" : "Male"} Operator` : "Invite a friend"}</small></div>
           {p && <span className={`ready-badge ${p.ready && p.connected ? "is-ready" : ""}`}>{!p.connected ? "Reconnecting" : p.ready ? "Ready" : "Not ready"}</span>}
         </div>;
       })}</div>
     </section>;
     })}
 
-    <div className="room-stage"><CharacterShowcase players={humans} me={room.sessionId} onShowoff={(id) => send("emote", id)} disabled={disabled} /></div>
+    <div className="room-stage"><CharacterShowcase players={humans} me={room.sessionId} onShowoff={(id) => send("emote", id)} disabled={disabled} title={s.name} /></div>
 
     <footer className="room-bar">
       <RoomInvite code={room.roomId} />

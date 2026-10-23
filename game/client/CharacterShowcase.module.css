@@ -2,8 +2,8 @@
 .showcase button { cursor: pointer; font: inherit; color: inherit; }
 .showcase button:focus-visible { outline: 2px solid #d4eea4; outline-offset: -2px; }
 .showcase button:disabled { cursor: default; opacity: .4; }
-/* Big callsign behind the ranger, like an agent-select splash. */
-.watermark { position: absolute; z-index: -1; left: 0; right: 0; top: 30%; overflow: hidden; text-align: center; white-space: nowrap; text-transform: uppercase; font-size: clamp(44px, 16cqi, 170px); font-weight: 900; line-height: 1; letter-spacing: -.03em; color: transparent; -webkit-text-stroke: 1px #d9ed792e; pointer-events: none; user-select: none; }
+/* Big callsign (or room name) behind the operators, like an agent-select splash; long text shrinks to fit. */
+.watermark { position: absolute; z-index: -1; left: 0; right: 0; top: 30%; overflow: hidden; text-align: center; white-space: nowrap; text-transform: uppercase; font-size: clamp(32px, min(16cqi, calc(165cqi / var(--chars, 10))), 170px); font-weight: 900; line-height: 1; letter-spacing: -.03em; color: transparent; -webkit-text-stroke: 1px #d9ed792e; pointer-events: none; user-select: none; }
 .heading { position: absolute; z-index: 2; top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 8px 8px 14px; font: 10px var(--font-geist-mono), monospace; letter-spacing: .16em; color: #c8d5b8; background: linear-gradient(#0c120ecc, transparent); }
 .tools { display: flex; align-items: center; gap: 2px; margin-left: auto; }
 .tools > button { min-height: 32px; border: 0; background: transparent; color: #b9c6ab; font-size: 11px; letter-spacing: normal; padding: 4px 8px; }

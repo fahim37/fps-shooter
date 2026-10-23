@@ -1,6 +1,19 @@
 import type { WeaponId } from "../../shared/weapons";
+import type { MapId } from "../../shared/map/types";
 
 type V3 = { x: number; y: number; z: number };
+
+/** What the ambient bed plays: a map's soundscape, the menu drone, or nothing. */
+type BedKey = MapId | "lobby";
+type Timer = ReturnType<typeof setTimeout>;
+
+/** One ambient bed: looping sources into one fader, plus timers for its occasional events. */
+interface Bed { key: BedKey; out: GainNode; sources: AudioScheduledSourceNode[]; timers: Set<Timer> }
+
+/** The menu bed sits under the match beds, which already sit far under gunfire. */
+const LOBBY_LEVEL = 0.7;
+/** Events that unlock audio in browsers (touch only counts on release). */
+const GESTURES = ["pointerdown", "pointerup", "keydown", "touchend"] as const;
 
 interface ShotVoice {
   crack: number; // high-frequency snap level
@@ -31,7 +44,7 @@ const SHOTS: Record<WeaponId, ShotVoice> = {
 
 /**
  * Procedural sound engine (no audio files): layered gunshots with an outdoor echo, spatial
- * panning with distance filtering, footsteps, UI ticks and an ambient wind/bird bed.
+ * panning with distance filtering, footsteps, UI sounds, a per-map ambient bed and a menu bed.
  */
 export class AudioEngine {
   ctx: AudioContext | null = null;
@@ -40,7 +53,11 @@ export class AudioEngine {
   private reverb!: ConvolverNode;
   private reverbGain!: GainNode;
   private noise!: AudioBuffer;
-  private ambience: { stop: () => void } | null = null;
+  /** Which bed should play: set by `lobby()` and `setMap()`, started once audio is unlocked. */
+  private mode: "off" | "lobby" | "match" = "off";
+  private map: MapId = "village";
+  private bed: Bed | null = null;
+  private disarm: (() => void) | null = null;
   private listener = { x: 0, y: 0, z: 0 };
   private forward = { x: 0, y: 0, z: -1 };
   private listenerSynced = false;
@@ -75,7 +92,8 @@ export class AudioEngine {
     this.noise = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = this.noise.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-    this.startAmbience();
+    ctx.onstatechange = () => { if (ctx.state === "running") this.disarm?.(); };
+    this.applyBed();
   }
 
   setVolume(v: number) {
@@ -84,12 +102,51 @@ export class AudioEngine {
     if (this.ctx) this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05);
   }
 
+  /**
+   * Ends a match's sound: its ambience fades out and every playing sound is cut. The context is
+   * kept, so the lobby bed and UI sounds work straight away without another gesture; a lobby bed
+   * that is already playing keeps going.
+   */
   dispose() {
-    this.ambience?.stop();
-    void this.ctx?.close();
-    this.ctx = null;
+    if (this.mode === "match") this.mode = "off";
+    this.applyBed();
+    for (const v of this.voices) for (const n of v.nodes) n.disconnect();
     this.voices = [];
     this.listenerSynced = false;
+  }
+
+  /** Crossfades to `id`'s ambience (the match bed replaces the lobby bed). */
+  setMap(id: MapId) {
+    this.map = id;
+    this.mode = "match";
+    this.armUnlock();
+    this.applyBed();
+  }
+
+  /** Starts or stops the menu bed; it starts on the first gesture if audio is still locked. */
+  lobby(on: boolean) {
+    if (on) {
+      this.mode = "lobby";
+      this.armUnlock();
+    } else if (this.mode === "lobby") {
+      this.mode = "off";
+      this.disarm?.();
+    }
+    this.applyBed();
+  }
+
+  /** Unlocks audio on the next pointer or key press, until the context is running. */
+  private armUnlock() {
+    if (this.disarm || typeof document === "undefined" || this.ctx?.state === "running") return;
+    const gesture = () => {
+      this.unlock();
+      if (this.ctx?.state === "running") this.disarm?.();
+    };
+    for (const e of GESTURES) document.addEventListener(e, gesture, true);
+    this.disarm = () => {
+      for (const e of GESTURES) document.removeEventListener(e, gesture, true);
+      this.disarm = null;
+    };
   }
 
   /**
@@ -421,57 +478,464 @@ export class AudioEngine {
     this.click(2200, 0.15);
   }
 
-  private startAmbience() {
+  /** A soft tick for pointing at a menu control. */
+  uiHover() {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const [bus] = this.eventBus(this.sfx, 0.06);
+    this.blip(bus, "triangle", 2100 * (0.97 + Math.random() * 0.06), ctx.currentTime + 0.001, 0.03, 0.002, 0.03);
+  }
+
+  /** Confirm: a short upward blip on a click. */
+  uiClick() {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime + 0.001;
+    const [bus] = this.eventBus(this.sfx, 0.12);
+    this.blip(bus, "sine", 1180, t, 0.07, 0.003, 0.06, 1560);
+    this.burst(bus, "bandpass", 2600, 3, t, 0.08, 0.001, 0.025);
+  }
+
+  /** Switching tabs: a quick downward slide and a light tick. */
+  uiTab() {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime + 0.001;
+    const [bus] = this.eventBus(this.sfx, 0.12);
+    this.blip(bus, "triangle", 1500, t, 0.05, 0.002, 0.05, 1050);
+    this.blip(bus, "sine", 2400, t + 0.035, 0.025, 0.002, 0.04);
+  }
+
+  /** Ready / match found: a rising major arpeggio over a sub hit. */
+  uiSting() {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime + 0.01;
+    const [bus] = this.eventBus(this.sfx, 1.6, 0, 0.7);
+    this.blip(bus, "sine", 110, t, 0.12, 0.004, 0.45, 55);
+    this.burst(bus, "highpass", 5000, 0.7, t, 0.03, 0.002, 0.25);
+    [440, 554.37, 659.25, 880].forEach((f, i) => {
+      const s = t + i * 0.075;
+      this.blip(bus, "triangle", f, s, 0.05, 0.004, 0.5 + i * 0.25);
+      this.blip(bus, "sine", f * 2, s, 0.015, 0.004, 0.4 + i * 0.2);
+    });
+  }
+
+  /** Starts, crossfades or stops the ambient bed to match the mode. Needs an unlocked context. */
+  private applyBed() {
+    if (!this.ctx) return;
+    const want: BedKey | null = this.mode === "lobby" ? "lobby" : this.mode === "match" ? this.map : null;
+    if ((this.bed?.key ?? null) === want) return;
+    if (this.bed) this.fadeOutBed(this.bed, want ? 1.4 : 0.8);
+    this.bed = want ? this.startBed(want) : null;
+  }
+
+  private startBed(key: BedKey): Bed {
     const ctx = this.ctx!;
-    // Wind: slowly modulated low-passed noise.
+    const t = ctx.currentTime;
+    const out = ctx.createGain();
+    out.gain.setValueAtTime(0, t);
+    out.gain.linearRampToValueAtTime(key === "lobby" ? LOBBY_LEVEL : 1, t + (key === "lobby" ? 1.5 : 2.5));
+    out.connect(this.master);
+    const bed: Bed = { key, out, sources: [], timers: new Set() };
+    switch (key) {
+      case "lobby": this.lobbyBed(bed); break;
+      case "downtown": this.downtownBed(bed); break;
+      case "industrial": this.freightBed(bed); break;
+      case "outpost": this.outpostBed(bed); break;
+      default: this.villageBed(bed);
+    }
+    return bed;
+  }
+
+  private fadeOutBed(bed: Bed, seconds: number) {
+    const t = this.ctx!.currentTime;
+    for (const id of bed.timers) clearTimeout(id);
+    bed.timers.clear();
+    const g = bed.out.gain;
+    if (g.cancelAndHoldAtTime) g.cancelAndHoldAtTime(t);
+    else { g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); }
+    g.linearRampToValueAtTime(0, t + seconds);
+    for (const s of bed.sources) s.stop(t + seconds + 0.05);
+    setTimeout(() => bed.out.disconnect(), (seconds + 0.2) * 1000);
+  }
+
+  // --- Bed building blocks: a few long-lived nodes per bed, events from timers. ---
+
+  /** Looping filtered noise from the shared buffer; `rate` below 1 darkens and decorrelates it. */
+  private loopNoise(bed: Bed, type: BiquadFilterType, freq: number, q: number, level: number, rate = 1) {
+    const ctx = this.ctx!;
     const src = ctx.createBufferSource();
     src.buffer = this.noise;
     src.loop = true;
+    src.playbackRate.value = rate;
+    const f = ctx.createBiquadFilter();
+    f.type = type;
+    f.frequency.value = freq;
+    f.Q.value = q;
+    const g = ctx.createGain();
+    g.gain.value = level;
+    src.connect(f).connect(g).connect(bed.out);
+    src.start(0, Math.random() * 2);
+    bed.sources.push(src);
+    return g;
+  }
+
+  /** A steady oscillator at `level` into `dest`; returns its gain for modulation. */
+  private drone(bed: Bed, type: OscillatorType, freq: number, level: number, dest: AudioNode = bed.out) {
+    const ctx = this.ctx!;
+    const o = ctx.createOscillator();
+    o.type = type;
+    o.frequency.value = freq;
+    const g = ctx.createGain();
+    g.gain.value = level;
+    o.connect(g).connect(dest);
+    o.start();
+    bed.sources.push(o);
+    return g;
+  }
+
+  /** Adds a slow wobble of ±`depth` to `param` (keep depth below the base value). */
+  private lfo(bed: Bed, rate: number, depth: number, param: AudioParam, type: OscillatorType = "sine") {
+    const ctx = this.ctx!;
+    const o = ctx.createOscillator();
+    o.type = type;
+    o.frequency.value = rate;
+    const g = ctx.createGain();
+    g.gain.value = depth;
+    o.connect(g).connect(param);
+    o.start();
+    bed.sources.push(o);
+  }
+
+  private lowpass(freq: number, q: number, dest: AudioNode) {
+    const f = this.ctx!.createBiquadFilter();
+    f.type = "lowpass";
+    f.frequency.value = freq;
+    f.Q.value = q;
+    f.connect(dest);
+    return f;
+  }
+
+  /** Runs `play` every `minMs`–`maxMs` while `bed` is the current bed. */
+  private every(bed: Bed, minMs: number, maxMs: number, play: () => void, firstMs = minMs) {
+    const schedule = (ms: number) => {
+      const id = setTimeout(() => {
+        bed.timers.delete(id);
+        if (this.bed !== bed || !this.ctx) return;
+        play();
+        schedule(minMs + Math.random() * (maxMs - minMs));
+      }, ms);
+      bed.timers.add(id);
+    };
+    schedule(firstMs);
+  }
+
+  /** Input for a short non-spatial sound, panned and optionally sent to the echo; cut once done. */
+  private eventBus(out: AudioNode, seconds: number, pan = 0, reverb = 0): [GainNode, StereoPannerNode] {
+    const ctx = this.ctx!;
+    if (this.voices.length > 16) this.sweep();
+    const bus = ctx.createGain();
+    const panner = ctx.createStereoPanner();
+    panner.pan.value = pan;
+    bus.connect(panner).connect(out);
+    const nodes: AudioNode[] = [bus, panner];
+    if (reverb) {
+      const send = ctx.createGain();
+      send.gain.value = reverb;
+      bus.connect(send).connect(this.reverb);
+      nodes.push(send);
+    }
+    this.voices.push({ end: ctx.currentTime + seconds + 0.1, nodes, spatial: false, hrtf: false });
+    return [bus, panner];
+  }
+
+  /** One enveloped tone, optionally gliding to `glideTo`. */
+  private blip(dest: AudioNode, type: OscillatorType, freq: number, t: number, peak: number, attack: number, decay: number, glideTo?: number) {
+    const ctx = this.ctx!;
+    const o = ctx.createOscillator();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (glideTo) o.frequency.exponentialRampToValueAtTime(glideTo, t + attack + decay);
+    const g = ctx.createGain();
+    this.env(g, t, peak, attack, decay);
+    o.connect(g).connect(dest);
+    o.start(t);
+    o.stop(t + attack + decay + 0.02);
+  }
+
+  /** A looped noise source from `t` for `seconds` (safe for sounds longer than the buffer). */
+  private noiseLoop(t: number, seconds: number, rate = 1) {
+    const src = this.ctx!.createBufferSource();
+    src.buffer = this.noise;
+    src.loop = true;
+    src.playbackRate.value = rate;
+    src.start(t, Math.random() * 2);
+    src.stop(t + seconds + 0.05);
+    return src;
+  }
+
+  /** One enveloped, filtered noise hit. */
+  private burst(dest: AudioNode, type: BiquadFilterType, freq: number, q: number, t: number, peak: number, attack: number, decay: number) {
+    const ctx = this.ctx!;
+    const f = ctx.createBiquadFilter();
+    f.type = type;
+    f.frequency.value = freq;
+    f.Q.value = q;
+    const g = ctx.createGain();
+    this.env(g, t, peak, attack, decay);
+    this.noiseLoop(t, attack + decay).connect(f).connect(g).connect(dest);
+  }
+
+  /** Linear swell from silence to `peak` at `t + rise` and back to silence at `t + length`. */
+  private swell(g: GainNode, t: number, peak: number, rise: number, length: number) {
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(peak, t + rise);
+    g.gain.linearRampToValueAtTime(0, t + length);
+  }
+
+  private side(spread: number) {
+    return (Math.random() * 2 - 1) * spread;
+  }
+
+  // --- Beds ---
+
+  /** Village: wind through the trees and birdsong. */
+  private villageBed(b: Bed) {
+    const wind = this.loopNoise(b, "lowpass", 420, 1, 0.05);
+    this.lfo(b, 0.07, 0.03, wind.gain);
+    this.every(b, 2500, 9500, () => this.birdCall(b), 2000);
+  }
+
+  private birdCall(b: Bed) {
+    const t = this.ctx!.currentTime;
+    const n = 2 + Math.floor(Math.random() * 4);
+    const base = 2400 + Math.random() * 1800;
+    const [bus] = this.eventBus(b.out, n * 0.15 + 0.1, this.side(1));
+    for (let i = 0; i < n; i++) {
+      const st = t + i * (0.09 + Math.random() * 0.05);
+      const up = base * (1.2 + Math.random() * 0.4);
+      this.blip(bus, "sine", base, st, 0.018, 0.005, 0.06, up);
+    }
+  }
+
+  /** Downtown: distant traffic rumble, a city hum, passing cars, far horns and sirens. */
+  private downtownBed(b: Bed) {
+    const rumble = this.loopNoise(b, "lowpass", 160, 0.7, 0.065, 0.5);
+    this.lfo(b, 0.05, 0.025, rumble.gain);
+    const wash = this.loopNoise(b, "bandpass", 420, 0.7, 0.025, 0.8);
+    this.lfo(b, 0.11, 0.01, wash.gain);
+    this.drone(b, "sine", 118, 0.0025);
+    this.every(b, 5000, 14000, () => {
+      const r = Math.random();
+      if (r < 0.55) this.carPass(b); else if (r < 0.85) this.carHorn(b); else this.siren(b);
+    }, 3000);
+  }
+
+  private carPass(b: Bed) {
+    const ctx = this.ctx!;
+    const t = ctx.currentTime + 0.05;
+    const len = 3 + Math.random() * 2;
+    const from = Math.random() < 0.5 ? -0.8 : 0.8;
+    const [bus, pan] = this.eventBus(b.out, len, from);
+    pan.pan.setValueAtTime(from, t);
+    pan.pan.linearRampToValueAtTime(-from, t + len);
+    const f = ctx.createBiquadFilter();
+    f.type = "bandpass";
+    f.Q.value = 0.8;
+    f.frequency.setValueAtTime(280, t);
+    f.frequency.linearRampToValueAtTime(620, t + len * 0.5);
+    f.frequency.linearRampToValueAtTime(300, t + len);
+    const g = ctx.createGain();
+    this.swell(g, t, 0.03 + Math.random() * 0.02, len * 0.5, len);
+    this.noiseLoop(t, len, 0.7).connect(f).connect(g).connect(bus);
+  }
+
+  private carHorn(b: Bed) {
+    const ctx = this.ctx!;
+    const t = ctx.currentTime + 0.05;
+    const [bus] = this.eventBus(b.out, 1.2, this.side(0.8), 0.6);
+    const lp = this.lowpass(1100, 0.7, bus);
+    const pitch = 0.9 + Math.random() * 0.2;
+    const honks = Math.random() < 0.5 ? [[0, 0.16], [0.24, 0.4]] : [[0, 0.5]];
+    for (const [at, dur] of honks) {
+      const s = t + at;
+      for (const freq of [405, 510]) {
+        const o = ctx.createOscillator();
+        o.type = "sawtooth";
+        o.frequency.value = freq * pitch;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0, s);
+        g.gain.linearRampToValueAtTime(0.004, s + 0.02);
+        g.gain.setValueAtTime(0.004, s + dur);
+        g.gain.linearRampToValueAtTime(0, s + dur + 0.05);
+        o.connect(g).connect(lp);
+        o.start(s);
+        o.stop(s + dur + 0.08);
+      }
+    }
+  }
+
+  private siren(b: Bed) {
+    const ctx = this.ctx!;
+    const t = ctx.currentTime + 0.05;
+    const len = 9;
+    const [bus] = this.eventBus(b.out, len, this.side(0.7), 0.7);
+    const o = ctx.createOscillator();
+    o.type = "triangle";
+    o.frequency.value = 760;
+    const wail = ctx.createOscillator();
+    wail.frequency.value = 0.2;
+    const depth = ctx.createGain();
+    depth.gain.value = 170;
+    wail.connect(depth).connect(o.frequency);
+    const g = ctx.createGain();
+    this.swell(g, t, 0.006, len * 0.45, len);
+    o.connect(g).connect(this.lowpass(1500, 0.7, bus));
+    for (const n of [o, wail]) { n.start(t); n.stop(t + len); }
+  }
+
+  /** Freight yard: machinery hum, light wind, metal clanks, container bangs, a far train horn. */
+  private freightBed(b: Bed) {
+    this.loopNoise(b, "lowpass", 110, 0.7, 0.075, 0.5);
+    const hum = this.lowpass(180, 0.7, b.out);
+    this.drone(b, "sawtooth", 50, 0.007, hum);
+    this.drone(b, "sine", 100, 0.0025);
+    const wind = this.loopNoise(b, "lowpass", 520, 1, 0.03);
+    this.lfo(b, 0.06, 0.018, wind.gain);
+    this.every(b, 3500, 10000, () => { if (Math.random() < 0.7) this.clank(b); else this.containerBang(b); }, 2500);
+    this.every(b, 35000, 90000, () => this.trainHorn(b), 15000 + Math.random() * 20000);
+  }
+
+  private clank(b: Bed) {
+    const t = this.ctx!.currentTime + 0.02;
+    const [bus] = this.eventBus(b.out, 1.6, this.side(0.8), 0.8);
+    const hits = Math.random() < 0.4 ? 2 + Math.floor(Math.random() * 2) : 1;
+    const base = 280 + Math.random() * 420;
+    let s = t;
+    for (let i = 0; i < hits; i++) {
+      const level = i ? 0.5 : 1;
+      for (const [ratio, peak, decay] of [[1, 0.012, 0.7], [2.76, 0.007, 0.45], [5.4, 0.004, 0.25]]) {
+        this.blip(bus, "sine", base * ratio, s, peak * level, 0.002, decay);
+      }
+      this.burst(bus, "bandpass", 3200, 1.5, s, 0.03 * level, 0.001, 0.02);
+      s += 0.1 + Math.random() * 0.15;
+    }
+  }
+
+  private containerBang(b: Bed) {
+    const t = this.ctx!.currentTime + 0.02;
+    const [bus] = this.eventBus(b.out, 2, this.side(0.8), 1.2);
+    this.burst(bus, "lowpass", 260, 0.7, t, 0.15, 0.004, 0.9);
+    this.blip(bus, "sine", 70, t, 0.035, 0.003, 0.6, 36);
+    this.blip(bus, "sine", 183, t, 0.004, 0.003, 1.4);
+    this.blip(bus, "sine", 417, t, 0.0025, 0.003, 1);
+  }
+
+  private trainHorn(b: Bed) {
+    const ctx = this.ctx!;
+    const t = ctx.currentTime + 0.05;
+    const blasts = Math.random() < 0.5 ? [[0, 2.2]] : [[0, 1.6], [2, 0.7]];
+    const [bus] = this.eventBus(b.out, 4, this.side(0.5), 0.9);
+    const lp = this.lowpass(900, 0.7, bus);
+    for (const [at, dur] of blasts) {
+      const s = t + at;
+      for (const freq of [311, 370, 466]) {
+        const o = ctx.createOscillator();
+        o.type = "sawtooth";
+        o.frequency.value = freq * (1 + Math.random() * 0.004);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0, s);
+        g.gain.linearRampToValueAtTime(0.003, s + 0.35);
+        g.gain.setValueAtTime(0.003, s + dur);
+        g.gain.linearRampToValueAtTime(0, s + dur + 0.8);
+        o.connect(g).connect(lp);
+        o.start(s);
+        o.stop(s + dur + 0.85);
+      }
+    }
+  }
+
+  /** Outpost: dry desert wind with sand hiss, a far generator, radio squelch, helicopter passes. */
+  private outpostBed(b: Bed) {
+    const wind = this.loopNoise(b, "bandpass", 750, 0.5, 0.035, 0.9);
+    this.lfo(b, 0.09, 0.022, wind.gain);
+    const sand = this.loopNoise(b, "bandpass", 3200, 0.7, 0.008);
+    this.lfo(b, 0.13, 0.006, sand.gain);
+    const generator = this.drone(b, "sawtooth", 55, 0.006, this.lowpass(240, 0.7, b.out));
+    this.lfo(b, 6.5, 0.0025, generator.gain);
+    this.every(b, 14000, 32000, () => this.radio(b), 7000);
+    this.every(b, 50000, 110000, () => this.helicopter(b), 25000 + Math.random() * 20000);
+  }
+
+  private radio(b: Bed) {
+    const ctx = this.ctx!;
+    const t = ctx.currentTime + 0.02;
+    const len = 0.15 + Math.random() * 0.3;
+    const [bus] = this.eventBus(b.out, len + 0.2, this.side(0.7), 0.3);
+    const f = ctx.createBiquadFilter();
+    f.type = "bandpass";
+    f.frequency.value = 1900;
+    f.Q.value = 1.2;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.035, t + 0.004);
+    g.gain.setValueAtTime(0.035, t + len);
+    g.gain.linearRampToValueAtTime(0, t + len + 0.02);
+    this.noiseLoop(t, len + 0.03).connect(f).connect(g).connect(bus);
+    this.blip(bus, "sine", 1350, t + len + 0.05, 0.005, 0.003, 0.07);
+  }
+
+  private helicopter(b: Bed) {
+    const ctx = this.ctx!;
+    const t = ctx.currentTime + 0.05;
+    const len = 10 + Math.random() * 4;
+    const from = Math.random() < 0.5 ? -0.9 : 0.9;
+    const [bus, pan] = this.eventBus(b.out, len, from, 0.4);
+    pan.pan.setValueAtTime(from, t);
+    pan.pan.linearRampToValueAtTime(-from, t + len);
+    // Blade slap: noise chopped by a square wave a little slower as it goes (Doppler).
+    const chop = ctx.createGain();
+    chop.gain.value = 0.5;
+    const rotor = ctx.createOscillator();
+    rotor.type = "square";
+    rotor.frequency.setValueAtTime(12.5, t);
+    rotor.frequency.linearRampToValueAtTime(11, t + len);
+    const depth = ctx.createGain();
+    depth.gain.value = 0.5;
+    rotor.connect(depth).connect(chop.gain);
+    rotor.start(t);
+    rotor.stop(t + len);
     const lp = ctx.createBiquadFilter();
     lp.type = "lowpass";
-    lp.frequency.value = 420;
+    lp.frequency.setValueAtTime(260, t);
+    lp.frequency.linearRampToValueAtTime(650, t + len * 0.5);
+    lp.frequency.linearRampToValueAtTime(280, t + len);
     const g = ctx.createGain();
-    g.gain.value = 0.05;
-    const lfo = ctx.createOscillator();
-    lfo.frequency.value = 0.07;
-    const lfoGain = ctx.createGain();
-    lfoGain.gain.value = 0.03;
-    lfo.connect(lfoGain).connect(g.gain);
-    src.connect(lp).connect(g).connect(this.master);
-    src.start();
-    lfo.start();
-    // Birds: occasional chirps.
-    let timer = 0;
-    const chirp = () => {
-      if (!this.ctx) return;
-      const t = ctx.currentTime;
-      const n = 2 + Math.floor(Math.random() * 4);
-      const base = 2400 + Math.random() * 1800;
-      const pan = ctx.createStereoPanner();
-      pan.pan.value = Math.random() * 2 - 1;
-      pan.connect(this.master);
-      this.voices.push({ end: t + n * 0.15 + 0.2, nodes: [pan], spatial: false, hrtf: false });
-      for (let i = 0; i < n; i++) {
-        const o = ctx.createOscillator();
-        o.type = "sine";
-        const st = t + i * (0.09 + Math.random() * 0.05);
-        o.frequency.setValueAtTime(base, st);
-        o.frequency.exponentialRampToValueAtTime(base * (1.2 + Math.random() * 0.4), st + 0.05);
-        const og = ctx.createGain();
-        this.env(og, st, 0.018, 0.005, 0.06);
-        o.connect(og).connect(pan);
-        o.start(st);
-        o.stop(st + 0.1);
-      }
-      timer = window.setTimeout(chirp, 2500 + Math.random() * 7000);
-    };
-    timer = window.setTimeout(chirp, 2000);
-    this.ambience = {
-      stop: () => {
-        clearTimeout(timer);
-        try { src.stop(); lfo.stop(); } catch { /* already stopped */ }
-      },
-    };
+    this.swell(g, t, 0.09, len * 0.5, len);
+    this.noiseLoop(t, len, 0.5).connect(chop).connect(lp).connect(g).connect(bus);
+  }
+
+  /** Lobby: a low detuned drone under a soft minor pad, a slow pulse and distant pings. */
+  private lobbyBed(b: Bed) {
+    const lp = this.lowpass(300, 3, b.out);
+    this.lfo(b, 0.035, 140, lp.frequency);
+    this.drone(b, "sawtooth", 55, 0.008, lp);
+    this.drone(b, "sawtooth", 55.35, 0.008, lp);
+    this.drone(b, "triangle", 82.41, 0.006, lp);
+    const pad = this.ctx!.createGain();
+    pad.connect(b.out);
+    this.lfo(b, 0.06, 0.45, pad.gain);
+    for (const f of [220, 261.63, 329.63]) this.drone(b, "triangle", f, 0.0035, pad);
+    const pulse = this.drone(b, "sawtooth", 110, 0.006, this.lowpass(220, 1, b.out));
+    this.lfo(b, 0.5, 0.006, pulse.gain);
+    this.every(b, 7000, 14000, () => {
+      const t = this.ctx!.currentTime + 0.02;
+      const [bus] = this.eventBus(b.out, 2.6, this.side(0.5), 1);
+      const note = [659.25, 880, 1318.5, 1760][Math.floor(Math.random() * 4)];
+      this.blip(bus, "sine", note, t, 0.006, 0.01, 2.5);
+      this.blip(bus, "sine", note * 2, t, 0.002, 0.01, 1.6);
+    }, 4000);
   }
 
   private impulse(seconds: number, decay: number) {

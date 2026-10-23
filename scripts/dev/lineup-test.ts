@@ -74,8 +74,9 @@ async function main() {
     await page.goto(process.argv[2] || "http://localhost:3000");
     await page.getByText("SERVER ONLINE", { exact: true }).waitFor({ timeout: 60_000 });
     await page.getByLabel("CALLSIGN", { exact: true }).fill("Lineup Host");
+    await page.getByRole("tab", { name: "With friends" }).click();
     await page.getByRole("button", { name: /Custom Your rules/ }).click();
-    await page.getByRole("combobox", { name: /ROOM SIZE/ }).selectOption("20");
+    await page.getByRole("radio", { name: "20 players", exact: true }).click();
     await page.getByRole("button", { name: "CREATE CUSTOM ROOM" }).click();
     const invite = await page.getByLabel("Invite link", { exact: true }).inputValue();
     code = new URL(invite).searchParams.get("room")!;
