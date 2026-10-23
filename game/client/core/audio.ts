@@ -16,6 +16,11 @@ const LOBBY_LEVEL = 0.7;
 /** The menu theme (a mastered track, so far louder than the synth beds) and its level in the bed. */
 const LOBBY_THEME = "/audio/lobby-theme.mp3";
 const LOBBY_THEME_LEVEL = 0.55;
+/**
+ * How long the menu bed outlives the menu screen that asked for it: going from the home lobby to a
+ * room's waiting room swaps screens, and the next one picks the theme up without a restart.
+ */
+const LOBBY_HANDOFF_MS = 400;
 /** Events that unlock audio in browsers (touch only counts on release). */
 const GESTURES = ["pointerdown", "pointerup", "keydown", "touchend"] as const;
 
@@ -62,6 +67,7 @@ export class AudioEngine {
   private map: MapId = "village";
   private bed: Bed | null = null;
   private disarm: (() => void) | null = null;
+  private lobbyOff: Timer | null = null;
   private listener = { x: 0, y: 0, z: 0 };
   private forward = { x: 0, y: 0, z: -1 };
   private listenerSynced = false;
@@ -139,14 +145,23 @@ export class AudioEngine {
    * for sites you often play sound on), otherwise from the first click or key press.
    */
   lobby(on: boolean) {
+    if (this.lobbyOff) clearTimeout(this.lobbyOff);
+    this.lobbyOff = null;
     if (on) {
       this.mode = "lobby";
       void this.fetchTheme();
       this.armUnlock();
       if (typeof window !== "undefined") this.unlock();
     } else if (this.mode === "lobby") {
-      this.mode = "off";
-      this.disarm?.();
+      // Another menu screen may take over straight away; stop only if none does.
+      this.lobbyOff = setTimeout(() => {
+        this.lobbyOff = null;
+        if (this.mode !== "lobby") return;
+        this.mode = "off";
+        this.disarm?.();
+        this.applyBed();
+      }, LOBBY_HANDOFF_MS);
+      return;
     }
     this.applyBed();
   }

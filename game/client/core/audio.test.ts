@@ -166,7 +166,16 @@ describe("ambient beds", () => {
       // Leaving a match after the lobby bed already came back keeps it.
       audio.dispose();
       expect(bed()!.key).toBe("lobby");
+      // Swapping one menu screen for another (home lobby to waiting room) keeps the same bed.
+      const theme = bed();
       audio.lobby(false);
+      audio.lobby(true);
+      vi.advanceTimersByTime(1000);
+      expect(bed()).toBe(theme);
+      // Leaving the menus for good stops it once no screen takes over.
+      audio.lobby(false);
+      expect(bed()).toBe(theme);
+      vi.advanceTimersByTime(1000);
       expect(bed()).toBeNull();
     } finally { vi.useRealTimers(); }
   });
