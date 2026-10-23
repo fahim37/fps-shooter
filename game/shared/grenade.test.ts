@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { GRENADE, grenadeArc, grenadeVelocity } from "./weapons";
+import { GRENADE } from "./weapons";
+import { grenadeFlight, grenadeVelocity } from "./grenade";
 
+type V3 = [number, number, number];
 /** Flat ground at y = 0. */
-const ground = (from: [number, number, number], dir: [number, number, number], distance: number) => {
+const ground = (from: V3, dir: V3, distance: number) => {
   if (dir[1] >= 0) return null;
   const t = -from[1] / dir[1];
-  return t <= distance ? { distance: t, normal: [0, 1, 0] as [number, number, number] } : null;
+  return t <= distance ? { distance: t, normal: [0, 1, 0] as V3 } : null;
 };
 
 describe("grenade throws", () => {
@@ -14,20 +16,32 @@ describe("grenade throws", () => {
     expect(grenadeVelocity([2, 0, 0], GRENADE.lobPower, [4, 0, 0])[0]).toBeCloseTo(GRENADE.throwSpeed * GRENADE.lobPower + 2);
     // Strength is clamped between a lob and a full throw.
     expect(grenadeVelocity([0, 0, -1], 5, [0, 0, 0])[2]).toBeCloseTo(-GRENADE.throwSpeed);
-    expect(grenadeVelocity([0, 0, -1], 0, [0, 0, 0])[2]).toBeCloseTo(-GRENADE.throwSpeed * GRENADE.lobPower);
+    expect(grenadeVelocity([0, 0, -1], 0.1, [0, 0, 0])[2]).toBeCloseTo(-GRENADE.throwSpeed * GRENADE.lobPower);
   });
 
-  it("traces the arc to the first surface it hits", () => {
-    const { points, end, normal } = grenadeArc([0, 1.5, 0], grenadeVelocity([0.8, 0.6, 0], 1, [0, 0, 0]), ground);
-    expect(end[1]).toBeCloseTo(0, 5);
-    expect(normal).toEqual([0, 1, 0]);
-    // A full throw at ~37° lands well down range, and a lob lands much shorter.
-    expect(end[0]).toBeGreaterThan(18);
-    const lob = grenadeArc([0, 1.5, 0], grenadeVelocity([0.8, 0.6, 0], GRENADE.lobPower, [0, 0, 0]), ground);
-    expect(lob.end[0]).toBeLessThan(end[0] * 0.45);
-    // The path rises, then falls.
-    const top = Math.max(...points.map((p) => p[1]));
-    expect(top).toBeGreaterThan(1.5);
-    expect(points.every((p, i) => i === 0 || p[0] > points[i - 1][0])).toBe(true);
+  it("drops a grenade that cooked off in the hand, carrying only the thrower's motion", () => {
+    expect(grenadeVelocity([0, 0, -1], 0, [2, 0, 4])).toEqual([1, 0, 2]);
+  });
+
+  it("flies, lands, then rolls to a stop before the fuse runs out", () => {
+    const vel = grenadeVelocity([0.8, 0.6, 0], 1, [0, 0, 0]);
+    const flight = grenadeFlight([0, 1.5, 0], vel, GRENADE.fuseMs / 1000, ground);
+    expect(flight.impact).toBeGreaterThan(0);
+    const landing = flight.points[flight.impact];
+    expect(landing[0]).toBeGreaterThan(15);
+    // It rolls on past the landing spot, slowing, and rests on the ground at the end.
+    expect(flight.end[0]).toBeGreaterThan(landing[0]);
+    expect(flight.end[1]).toBeCloseTo(0.07, 1);
+    expect(flight.normal).toEqual([0, 1, 0]);
+    // A lob lands much shorter.
+    const lob = grenadeFlight([0, 1.5, 0], grenadeVelocity([0.8, 0.6, 0], GRENADE.lobPower, [0, 0, 0]), GRENADE.fuseMs / 1000, ground);
+    expect(lob.end[0]).toBeLessThan(flight.end[0] * 0.6);
+  });
+
+  it("bursts in the air when the fuse runs out before it lands", () => {
+    const flight = grenadeFlight([0, 1.5, 0], grenadeVelocity([0.6, 0.8, 0], 1, [0, 0, 0]), 0.6, ground);
+    expect(flight.impact).toBe(-1);
+    expect(flight.normal).toBeNull();
+    expect(flight.end[1]).toBeGreaterThan(3);
   });
 });

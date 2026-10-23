@@ -6,7 +6,7 @@ import * as THREE from "three";
 import { getMap, MAPS } from "../shared/map/maps";
 import type { MapId } from "../shared/map/types";
 import { MODE_INFO, TEAM_NAMES } from "../shared/constants";
-import { WEAPONS } from "../shared/weapons";
+import { GRENADE, WEAPONS } from "../shared/weapons";
 import type { GameRoom } from "./net/session";
 import { Game } from "./core/game";
 import { hud, useHud } from "./core/hud";
@@ -128,11 +128,15 @@ function MatchHud({ game, map, onLeave }: { game: Game | null; map: MapId; onLea
         {h.hurtAt > 0 && now - h.hurtAt < 550 && <div className="hurt-vignette" />}
         <DamageIndicator now={now} />
         {h.protectedUntil > now + h.serverOffset && <div className="protected">SPAWN PROTECTION · {Math.ceil((h.protectedUntil - now - h.serverOffset) / 1000)}<small>FIRING OR THROWING ENDS IT</small></div>}
+        {h.grenadeAim?.fuse != null && <svg className="fuse-ring" viewBox="0 0 60 60" aria-hidden="true" data-urgent={h.grenadeAim.fuse < 1000 || undefined}>
+          <circle cx="30" cy="30" r="26" pathLength="100" className="fuse-track" />
+          <circle cx="30" cy="30" r="26" pathLength="100" className="fuse-left" strokeDasharray={`${(h.grenadeAim.fuse / GRENADE.fuseMs) * 100} 100`} />
+        </svg>}
         {h.grenadeAim && <div className="grenade-aim" data-cooked={h.grenadeAim.fuse !== null || undefined}>
-          <b>{h.grenadeAim.lob ? "UNDERHAND LOB" : "FRAG GRENADE"}</b>
+          <b>{h.grenadeAim.lob ? "UNDERHAND LOB" : "FRAG GRENADE"}{h.grenadeAim.airburst && <em> · AIRBURST</em>}</b>
           {h.grenadeAim.fuse === null
             ? <small>{h.touch ? "RELEASE TO THROW · AIM FOR A LOB" : "RELEASE C TO THROW · R COOK · HOLD RMB TO LOB"}</small>
-            : <small>COOKED · FUSE {(h.grenadeAim.fuse / 1000).toFixed(1)} S</small>}
+            : <small>COOKED · {(h.grenadeAim.fuse / 1000).toFixed(1)} S · {h.touch ? "RELEASE TO THROW" : "RELEASE C"} BEFORE IT BLOWS</small>}
         </div>}
       </>}
       {h.announce && now - h.announce.at < 3000 && <div className="announcement"><h2>{h.announce.text}</h2><p>{h.announce.sub}</p></div>}

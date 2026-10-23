@@ -135,7 +135,7 @@ export function buildVillage(): MapData {
 
   for (const sp of spawns) blocked.push([sp.x - 2, sp.z - 2, sp.x + 2, sp.z + 2]);
 
-  // Nature: trees, bushes, rocks and grass, kept off roads and buildings.
+  // Nature: trees and rocks, kept off roads and buildings.
   const clear = (x: number, z: number, pad: number) => !inRects(x, z, blocked, pad) && !inRects(x, z, paved, pad);
   const trees = ["CommonTree_1", "CommonTree_2", "CommonTree_3", "CommonTree_4", "CommonTree_5", "Pine_1", "Pine_2", "Pine_3", "Pine_4", "Pine_5", "TwistedTree_1", "TwistedTree_3"];
   // Forest ring outside the play area (visual backdrop, mostly out of reach).
@@ -163,22 +163,8 @@ export function buildVillage(): MapData {
     blocked.push([x - 1.5, z - 1.5, x + 1.5, z + 1.5]);
     placed++;
   }
-  // Bushes, grass, flowers (no collision).
-  const deco: [string[], number, number][] = [
-    [["Bush_Common", "Bush_Common_Flowers"], 70, 1.5],
-    [["Grass_Common_Short", "Grass_Common_Tall", "Grass_Wispy_Short", "Grass_Wispy_Tall"], 900, 0.4],
-    [["Flower_3_Group", "Flower_4_Group", "Clover_1", "Fern_1", "Plant_1", "Plant_7"], 220, 0.6],
-    [["Pebble_Round_1", "Pebble_Round_3", "Pebble_Square_2", "Pebble_Square_4", "Mushroom_Common"], 90, 0.3],
-  ];
-  for (const [names, count, pad] of deco) {
-    let n = 0;
-    for (let k = 0; k < count * 4 && n < count; k++) {
-      const x = r.range(-MAP_HALF - 10, MAP_HALF + 10), z = r.range(-MAP_HALF - 10, MAP_HALF + 10);
-      if (!clear(x, z, pad)) continue;
-      add({ kit: "nature", name: r.pick(names), x, y: 0, z, ry: r.range(0, 6.28), s: r.range(0.8, 1.3) });
-      n++;
-    }
-  }
+  // No grass, flowers or bushes: like the freight yard, the ground stays clear, so nobody hides in
+  // tufts that stop no bullets and the map runs smoothly on modest hardware.
 
   return { id: "village", pieces, spawns, half: MAP_HALF, kits: ["village", "nature", "props"], overview };
 }

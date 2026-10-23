@@ -6,11 +6,12 @@ import {
   GRENADES_PER_LIFE, FALL_DAMAGE_MIN_SPEED, MAX_PLAYERS, MODE_INFO, scoreLimitFor, matchMinutes, WARMUP_MS, END_SCREEN_MS, EYE_HEIGHT,
   CROUCH_EYE_HEIGHT, SPRINT_SPEED, type GameMode,
 } from "../game/shared/constants";
-import { WEAPONS, PRIMARIES, GRENADE, GRENADE_STEP_HZ, damageAt, fireIntervalMs, grenadeVelocity, type WeaponId } from "../game/shared/weapons";
+import { WEAPONS, PRIMARIES, GRENADE, damageAt, fireIntervalMs, type WeaponId } from "../game/shared/weapons";
+import { GRENADE_STEP_HZ, createGrenadeBody, grenadeVelocity } from "../game/shared/grenade";
 import { PoseHistory } from "../game/shared/lagcomp";
 import { rayVsPose, type HitPart, type Pose } from "../game/shared/hitboxes";
 import { clampLean, leanOffset } from "../game/shared/lean";
-import { raycastWorld, lineOfSight, GROUP_GRENADE, type World } from "../game/shared/physics";
+import { raycastWorld, lineOfSight, type World } from "../game/shared/physics";
 import {
   F_CROUCH, type JoinOptions, type PoseMsg, type FireMsg, type GrenadeMsg, type LoadoutMsg, type ShotEvent,
   type HitConfirm, type DamagedEvent, type KillEvent, type SpawnEvent, type RoomMeta, type AmmoEvent, type LoadoutEvent,
@@ -723,21 +724,11 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     if (Math.hypot(m.origin[0] - eye[0], m.origin[1] - eye[1], m.origin[2] - eye[2]) > 2) return;
     p.grenades--;
     p.st.protectedUntil = 0;
-    const power = finite(m.power) ? m.power! : 1;
-    const body = this.world.createRigidBody(
-      RAPIER.RigidBodyDesc.dynamic()
-        .setTranslation(...m.origin)
-        .setLinvel(...grenadeVelocity(m.dir, power, p.vel))
-        .setAngularDamping(1.5)
-        .setLinearDamping(GRENADE.linearDamping)
-        .setCcdEnabled(true),
-    );
-    this.world.createCollider(
-      RAPIER.ColliderDesc.ball(0.07).setRestitution(0.38).setFriction(0.7).setDensity(3).setCollisionGroups(GROUP_GRENADE),
-      body,
-    );
+    const power = finite(m.power) ? clamp(m.power!, 0, 1) : 1;
+    const body = createGrenadeBody(RAPIER, this.world, m.origin, grenadeVelocity(m.dir, power, p.vel));
     const id = `g${++this.grenadeSeq}`;
-    const cooked = clamp(m.cooked || 0, 0, GRENADE.fuseMs - 250);
+    // A grenade cooked to the end goes off in the hand, a moment after it is dropped.
+    const cooked = clamp(finite(m.cooked) ? m.cooked : 0, 0, GRENADE.fuseMs - 50);
     this.grenades.set(id, { id, owner: p.id, body, explodeAt: now() + GRENADE.fuseMs - cooked });
     const gs = new GrenadeState();
     gs.owner = p.id;

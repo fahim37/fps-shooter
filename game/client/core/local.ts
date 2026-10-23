@@ -68,6 +68,10 @@ export class LocalPlayer {
   private fuseAt = 0;
   /** An underhand lob instead of a full throw (right mouse while aiming). */
   private lob = false;
+  /** Next fuse tick sound while a cooked grenade is held. */
+  private tickAt = 0;
+  /** 0..1, eases in while a grenade is in hand: the gun lowers and the grenade comes up. */
+  grenadeHold = 0;
   /** Emote being played: the camera pulls out to third person and the gun is put away. */
   emote: EmoteId | null = null;
   /** Which way the body faces while emoting; the camera stays free to orbit it. */
@@ -139,7 +143,7 @@ export class LocalPlayer {
     this.switchEnd = performance.now() + 300;
     this.drawAt = performance.now();
     this.lastShotAt = -Infinity;
-    this.grenadeAt = this.fuseAt = 0;
+    this.grenadeAt = this.fuseAt = this.grenadeHold = 0;
     this.alive = true;
     this.ads = this.adsProgress = 0;
     this.sendAt = 0;
@@ -242,11 +246,11 @@ export class LocalPlayer {
     // R reloads, or with a grenade in hand cooks it: the fuse starts burning before the throw.
     if (input.consume("KeyR")) {
       if (!this.grenadeAt) this.startReload(now);
-      else if (!this.fuseAt) { this.fuseAt = now; audio.grenadePin(); }
+      else if (!this.fuseAt) { this.fuseAt = now; this.tickAt = now + 500; audio.grenadePin(); }
     }
 
     // Grenade, like PUBG: hold C (or G) to take it out and aim along the arc, release to throw.
-    // Right mouse switches to an underhand lob; a cooked grenade leaves the hand before it blows.
+    // Right mouse switches to an underhand lob.
     const draw = input.consume("KeyC") || input.consume("KeyG");
     if (draw && this.grenades > 0 && !this.grenadeAt) {
       this.endEmote(now);
@@ -256,9 +260,17 @@ export class LocalPlayer {
     if (this.grenadeAt) {
       this.lob = input.ads;
       const held = input.held("KeyC") || input.held("KeyG") || input.held("TouchGrenade");
-      if (!held || this.fuseAt && now - this.fuseAt > GRENADE.fuseMs - 300) this.throwGrenade(now);
+      const left = this.fuseAt ? GRENADE.fuseMs - (now - this.fuseAt) : Infinity;
+      // Also like PUBG: hold a cooked grenade too long and it goes off in your hand.
+      if (left <= 60) this.throwGrenade(now, true);
+      else if (!held) this.throwGrenade(now);
+      else if (this.fuseAt && now >= this.tickAt) {
+        audio.fuseTick(left < 1000);
+        this.tickAt = now + (left < 1000 ? 250 : 500);
+      }
     }
     this.throwAnim = Math.max(0, this.throwAnim - dt * 3);
+    this.grenadeHold += ((this.grenadeAt ? 1 : 0) - this.grenadeHold) * Math.min(1, dt * 12);
 
     // Reload completion.
     if (this.reloadEnd && now >= this.reloadEnd) {
@@ -513,15 +525,16 @@ export class LocalPlayer {
     this.burst++;
   }
 
-  private throwGrenade(now: number) {
+  /** Throws the grenade in hand, or with `drop` lets it fall (it has cooked off). */
+  private throwGrenade(now: number, drop = false) {
     const cooked = this.fuseAt ? now - this.fuseAt : 0;
     this.grenadeAt = this.fuseAt = 0;
     if (this.grenades <= 0) return;
     this.grenades--;
-    this.throwAnim = 1;
+    this.throwAnim = drop ? 0 : 1;
     const { origin, dir, power } = this.grenadeThrow();
-    this.game.send("grenade", { origin, dir, cooked, power } satisfies GrenadeMsg);
-    audio.grenadeThrow();
+    this.game.send("grenade", { origin, dir, cooked, power: drop ? 0 : power } satisfies GrenadeMsg);
+    if (!drop) audio.grenadeThrow();
   }
 
   /** Where a throw leaves the hand, which way and how hard: shared by the throw and its aiming arc. */
@@ -532,6 +545,8 @@ export class LocalPlayer {
       power: this.lob ? GRENADE.lobPower : 1,
     };
   }
+
+  get cooked() { return this.fuseAt > 0; }
 
   /** Grenade in hand: whether it will be lobbed, and the fuse left (ms) once cooked. */
   grenadeAim(now: number) {

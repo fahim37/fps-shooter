@@ -6,7 +6,8 @@ import { rng, type Rng } from "../rng";
  *
  * Kit conventions (measured from the pieces): 2 m grid, 3 m per story. Wall pieces span
  * x ∈ [-1, 1] with their exterior face toward +Z and 0.31 m of thickness toward -Z.
- * Interior stairs rise 3 m toward -Z over 4.35 m. Roof_RoundTiles_AxB is centered on the
+ * Interior stairs rise 3 m toward -Z from their origin (the foot) to a top edge 4.35 m away; the
+ * bottom step juts 0.36 m out behind the origin. Roof_RoundTiles_AxB is centered on the
  * footprint with its ridge along Z; Roof_Front_BrickA closes the gable ends.
  *
  * The house is laid out in local space with its footprint at x ∈ [0, 2w], z ∈ [0, 2d] and
@@ -38,6 +39,9 @@ export interface HouseSpec {
 
 const G = 2;
 const STORY = 3;
+/** Stair_Interior_Solid: origin to top edge, and the gap left between the top and the wall. */
+const STAIR_RUN = 4.352;
+const STAIR_TOP_GAP = 0.33;
 const PI = Math.PI;
 
 const ROOFS = new Set(["4x4", "4x6", "4x8", "6x6", "6x8", "6x10", "6x12", "6x14", "8x8", "8x10", "8x12", "8x14"]);
@@ -78,7 +82,9 @@ export function buildHouse(spec: HouseSpec): HouseResult {
     const s = new Set<string>();
     if (f === 0) return s;
     const c = stairCol(f - 1);
-    const rows = (f - 1) % 2 === 0 ? [d - 1, d - 2] : [0, 1];
+    // The stairwell is open above the whole 4.7 m flight: a shorter opening leaves the floor
+    // above too low to step up under where the flight begins.
+    const rows = (f - 1) % 2 === 0 ? [d - 1, d - 2, d - 3] : [0, 1, 2];
     for (const j of rows) s.add(`${c},${j}`);
     return s;
   };
@@ -146,12 +152,14 @@ export function buildHouse(spec: HouseSpec): HouseResult {
     put(corner, 2 * w, y, 0, PI);
     put(corner, 0, y, 0, -PI / 2);
 
-    // Stair flight up to the next floor.
+    // Stair flight up to the next floor. Each one starts out in the room, where it can be walked
+    // onto head-on, and climbs to the wall under the opening in the floor above (its lower part
+    // stays under the floor with headroom to spare); you step off to the side at the top.
     if (f < floors - 1) {
       const c = stairCol(f);
       const sx = c === 0 ? 1.2 : 2 * w - 1.2;
-      if (f % 2 === 0) put("Stair_Interior_Solid", sx, y, 2 * d - 0.35, 0);
-      else put("Stair_Interior_Solid", sx, y, 0.35, PI);
+      if (f % 2 === 0) put("Stair_Interior_Solid", sx, y, 2 * d - STAIR_TOP_GAP - STAIR_RUN, PI);
+      else put("Stair_Interior_Solid", sx, y, STAIR_TOP_GAP + STAIR_RUN, 0);
     }
 
     // A little furniture for cover, away from stairs and doors.

@@ -19,7 +19,7 @@ const KEYBOARD: { title: string; rows: Row[] }[] = [
     [["Right click"], "Aim down sights"],
     [["R"], "Reload"],
     [["1", "2"], "Primary / sidearm", "Mouse wheel swaps too"],
-    [["C"], "Grenade", "Hold to aim along the arc, release to throw · R cooks · right mouse lobs"],
+    [["C"], "Grenade", "Hold to aim along the arc, release to throw · R cooks it (it blows up in your hand if held too long) · right mouse lobs"],
   ] },
   { title: "GAME", rows: [
     [["B"], "Loadout", "Weapon and sights for your next spawn"],

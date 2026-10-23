@@ -58,3 +58,31 @@ describe.each([30, 120])("stairs at %i Hz", (rate) => {
     } finally { mover.dispose(); }
   });
 });
+
+describe("village house stairs", () => {
+  const village = getMap("village");
+  let villageWorld: World;
+  beforeAll(() => { villageWorld = createRoomWorld(village); });
+  afterAll(() => villageWorld?.free());
+
+  for (const p of village.pieces.filter((piece) => piece.name === "Stair_Interior_Solid")) {
+    it(`walks onto the flight at ${p.x},${p.y},${p.z} head-on and up to the next floor`, () => {
+      const mover = new Mover(RAPIER, villageWorld);
+      const s = newMoveState(0, 0, 0);
+      // Up the flight is the piece's local -Z.
+      const fx = -Math.sin(p.ry), fz = -Math.cos(p.ry);
+      mover.teleport(s, p.x - fx * 0.9, p.y + 0.1, p.z - fz * 0.9);
+      const input: MoveInput = { forward: 0, right: 0, yaw: p.ry, jump: false, sprint: false, crouch: false, ads: 0, speedMult: 1 };
+      try {
+        for (let i = 0; i < 60; i++) mover.step(s, input, 1 / 120);
+        input.forward = 1;
+        for (let i = 0; i < 120 * 4; i++) mover.step(s, input, 1 / 120);
+        // At the top, step off to the side onto the floor above.
+        input.forward = 0; input.right = p.x < 0 === (Math.abs(fz) > 0.5) ? 1 : -1;
+        let top = s.y;
+        for (let i = 0; i < 120 * 2; i++) { mover.step(s, input, 1 / 120); top = Math.max(top, s.y); }
+        expect(top, `topped out at ${s.x},${s.y},${s.z}`).toBeGreaterThan(p.y + 2.9);
+      } finally { mover.dispose(); }
+    });
+  }
+});

@@ -52,7 +52,7 @@ export interface HudState {
   reserve: number;
   grenades: number;
   /** Grenade in hand: aiming its arc, and the fuse left (ms) once cooked; null when not cooked. */
-  grenadeAim: { lob: boolean; fuse: number | null } | null;
+  grenadeAim: { lob: boolean; fuse: number | null; airburst: boolean } | null;
   reloading: number; // -1 or 0..1
   ads: number;
   spreadDeg: number;

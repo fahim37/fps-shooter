@@ -401,6 +401,11 @@ export class AudioEngine {
     voice.nodes.push(send);
   }
 
+  /** A cooked grenade's fuse ticking in hand, quicker and higher in its last second. */
+  fuseTick(urgent: boolean) {
+    this.click(urgent ? 3600 : 2400, urgent ? 0.22 : 0.14);
+  }
+
   /** The pin coming out: a cooked grenade's fuse is burning. */
   grenadePin() {
     this.click(2600, 0.3);
