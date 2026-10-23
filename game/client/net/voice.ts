@@ -210,7 +210,7 @@ export class VoiceClient {
   /** Players' connection and team, which decide who is linked and who is heard. */
   private rosterKey() {
     let key = "";
-    this.room.state.players.forEach((p, id) => { key += `${id}:${p.connected ? 1 : 0}:${p.team};`; });
+    this.room.state?.players?.forEach((p, id) => { key += `${id}:${p.connected ? 1 : 0}:${p.team};`; });
     return key;
   }
 

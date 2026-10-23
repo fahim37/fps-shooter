@@ -41,7 +41,7 @@ export class VoiceSession {
   private cleanup: (() => void) | null = null;
 
   constructor(private room: GameRoom) {
-    this.view = { state: INITIAL_VOICE, openMic: false, selected: room.state.mode === "tdm" ? "team" : "all" };
+    this.view = { state: INITIAL_VOICE, openMic: false, selected: "all" };
   }
 
   /** The voice connection while open. */
@@ -50,6 +50,8 @@ export class VoiceSession {
   /** Joins voice (listening) and starts the push-to-talk keys; `close` undoes it, and it can open again. */
   open() {
     if (this.voice) return;
+    // The room's state has arrived by now (see useVoiceSession), so its mode is known.
+    this.set({ selected: this.room.state.mode === "tdm" ? "team" : "all" });
     this.voice = new VoiceClient(this.room, (next) => {
       // Turning the mic off (or losing it) closes the open mic, so it never comes back on by surprise.
       const openMic = this.view.state.mic && !next.mic ? false : this.view.openMic;
@@ -105,10 +107,17 @@ export class VoiceSession {
   }
 }
 
-/** One voice session for as long as you are in the room (waiting room and match alike). */
-export function useVoiceSession(room: GameRoom) {
+/**
+ * One voice session for as long as you are in the room (waiting room and match alike). It opens
+ * once the room's first state has arrived (`ready`): until then there are no players to talk to.
+ */
+export function useVoiceSession(room: GameRoom, ready: boolean) {
   const session = useMemo(() => new VoiceSession(room), [room]);
-  useEffect(() => { session.open(); return () => session.close(); }, [session]);
+  useEffect(() => {
+    if (!ready) return;
+    session.open();
+    return () => session.close();
+  }, [session, ready]);
   return session;
 }
 
@@ -132,15 +141,18 @@ function ChannelButton({ channel, session, live, pressed, label, title, children
  * channel instead. Either turns the microphone on first.
  */
 export function VoiceChat({ room, session, placement = "match" }: { room: GameRoom; session: VoiceSession; placement?: "match" | "room" }) {
-  const teams = room.state.mode === "tdm";
+  const teams = room.state?.mode === "tdm";
   const { state, openMic, selected } = useSyncExternalStore(session.subscribe, session.snapshot, session.snapshot);
   const [panel, setPanel] = useState(false);
   const client = session.client;
   if (!client) return null;
 
-  const me = room.state.players.get(room.sessionId);
+  // Rendered only once the voice session is open, which waits for the room's state; `players`
+  // can still be briefly missing while a reconnect resyncs it.
+  const players = room.state?.players;
+  const me = players?.get(room.sessionId);
   const speakers = state.enabled ? state.members.filter((m) => m.id !== room.sessionId && m.talking && !state.deafened && !state.mutedPeers.includes(m.id)
-    && (state.hearAll || m.channel !== "all") && canHearVoice(m.channel, room.state.players.get(m.id)?.team ?? 0, me?.team ?? 0, room.state.mode)) : [];
+    && (state.hearAll || m.channel !== "all") && canHearVoice(m.channel, players?.get(m.id)?.team ?? 0, me?.team ?? 0, room.state.mode)) : [];
   const live = (channel: VoiceChannel) => state.talking && state.channel === channel;
   const micTitle = state.pending ? "Waiting for microphone…" : !state.mic ? "Mic is off (you still hear voice). Click to turn it on with an open mic" : openMic ? "Mic open: everyone on your channel hears you. Click for push-to-talk" : "Push-to-talk (hold N / M). Click to keep the mic open";
   return <aside className={`${styles.voice} ${placement === "room" ? styles.room : ""}`} aria-label="Voice chat" data-voice={state.mic ? "on" : state.pending ? "pending" : "off"} data-talking={state.talking ? state.channel : ""} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
@@ -152,7 +164,7 @@ export function VoiceChat({ room, session, placement = "match" }: { room: GameRo
         onClick={() => session.setOpenMic(!openMic || !state.mic)}><MicIcon open={openMic && state.mic} /></button>
       <button type="button" className={styles.more} aria-label="Voice settings" title="Voice settings" aria-expanded={panel} onClick={() => setPanel(!panel)}><MoreIcon /></button>
     </div>
-    {speakers.length > 0 && <p className={styles.speakers} aria-live="polite">{speakers.map((m) => `${room.state.players.get(m.id)?.name ?? "Player"} (${m.channel})`).join(", ")}</p>}
+    {speakers.length > 0 && <p className={styles.speakers} aria-live="polite">{speakers.map((m) => `${players?.get(m.id)?.name ?? "Player"} (${m.channel})`).join(", ")}</p>}
     {!panel && state.error && <p className={styles.error} role="alert">{state.error}</p>}
     {panel && <div className={styles.panel}>
       <strong>Voice chat</strong>
@@ -164,7 +176,7 @@ export function VoiceChat({ room, session, placement = "match" }: { room: GameRo
           <button type="button" aria-pressed={state.deafened} onClick={() => client.deafen()}>{state.deafened ? "Enable sound" : "Mute sound"}</button>
         </div>
         <label>Voice volume<input aria-label="Voice volume" type="range" min="0" max="1" step="0.05" value={state.volume} onChange={(e) => client.volume(Number(e.target.value))} /></label>
-        {state.members.filter((m) => m.id !== room.sessionId && m.mic).map((m) => <div className={styles.member} key={m.id}><span>{room.state.players.get(m.id)?.name ?? "Player"}</span><button type="button" aria-label={`Mute ${room.state.players.get(m.id)?.name ?? "Player"}`} aria-pressed={state.mutedPeers.includes(m.id)} onClick={() => client.mutePeer(m.id)}>{state.mutedPeers.includes(m.id) ? "Unmute" : "Mute"}</button></div>)}
+        {state.members.filter((m) => m.id !== room.sessionId && m.mic).map((m) => <div className={styles.member} key={m.id}><span>{players?.get(m.id)?.name ?? "Player"}</span><button type="button" aria-label={`Mute ${players?.get(m.id)?.name ?? "Player"}`} aria-pressed={state.mutedPeers.includes(m.id)} onClick={() => client.mutePeer(m.id)}>{state.mutedPeers.includes(m.id) ? "Unmute" : "Mute"}</button></div>)}
         {state.mic ? <button type="button" onClick={() => client.micOff()}>TURN MIC OFF</button>
           : <button type="button" disabled={state.pending} onClick={() => void client.join()}>{state.pending ? "Waiting for microphone…" : "TURN MIC ON"}</button>}
         <button type="button" onClick={() => client.leave()}>LEAVE VOICE</button>

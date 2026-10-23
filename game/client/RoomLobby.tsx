@@ -62,7 +62,7 @@ export function ConnectedRoom({ room, onLeave }: { room: GameRoom; onLeave: () =
     return () => { room.onDrop.remove(drop); room.onReconnect.remove(reconnect); room.onLeave.remove(leave); room.onError.remove(fail); unsubscribe(); ignore(); };
   }, [room]);
   // Voice starts as soon as you're in the room and carries on into the match.
-  const voice = useVoiceSession(room);
+  const voice = useVoiceSession(room, !!s.phase);
   // A sting when you ready up, and when the match is found and starts.
   const meReady = !!s.players.find((p) => p.id === room.sessionId)?.ready;
   const started = !!s.phase && s.phase !== "waiting";
@@ -80,7 +80,7 @@ export function ConnectedRoom({ room, onLeave }: { room: GameRoom; onLeave: () =
     <header className="lobby-top room-top">
       <button type="button" className="text-button leave-button" onClick={onLeave}>← Leave room</button>
       <section className="room-heading"><span className="eyebrow">{s.privateRoom ? "INVITE ONLY" : "PUBLIC ROOM"} · {humans.length} / {s.maxPlayers} PLAYERS</span><h1>{s.name || "Joining room…"}</h1><p>{s.format === "custom" ? MODE_INFO[s.mode].name : `${s.format} · Team Deathmatch`} <span>·</span> {MAPS[s.map].name} <span>·</span> {s.scoreLimit > 0 && <>First to {s.scoreLimit} · {matchMinutes(s.mode, s.scoreLimit)} min <span>·</span> </>}{s.botFill ? `Bots fill to ${s.botFill}` : "No bots"}</p></section>
-      <div className="top-tools">{voice && <VoiceChat room={room} session={voice} placement="room" />}<LobbyTools onHelp={() => setHelp(true)} onSettings={() => setSettings(true)} /></div>
+      <div className="top-tools">{s.phase && <VoiceChat room={room} session={voice} placement="room" />}<LobbyTools onHelp={() => setHelp(true)} onSettings={() => setSettings(true)} /></div>
     </header>
 
     {rosterSides(s).map((side, i) => {
