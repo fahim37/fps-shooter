@@ -111,3 +111,6 @@ export function markStrength(mark: MapMark, now: number) {
   const age = (now - mark.at) / MARK_MS[mark.kind];
   return age < 0 ? 1 : age >= 1 ? 0 : 1 - age * age;
 }
+
+/** Your position and facing, written every frame by the game so the minimap moves smoothly. */
+export const liveView = { x: 0, z: 0, yaw: 0, alive: false };

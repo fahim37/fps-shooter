@@ -24,7 +24,7 @@ import { PRESETS, useSettings } from "../settings";
 import { enemyAlongRay } from "./targeting";
 import { useLoadout } from "../loadout";
 import { DeathCamera } from "./deathcam";
-import { MARK_MS, STEP_REVEAL_RANGE, THREAT_MS, addMark, addThreat, mapRelation, type MapMark, type MapPlayer } from "./minimap";
+import { liveView, MARK_MS, STEP_REVEAL_RANGE, THREAT_MS, addMark, addThreat, mapRelation, type MapMark, type MapPlayer } from "./minimap";
 import { buildSquad } from "./squad";
 import { updateSightMotion } from "./sightMotion";
 
@@ -492,6 +492,7 @@ export class Game {
     }
     const airburst = this.updateGrenadeArc(local, now);
     this.updateHandGrenade(local);
+    liveView.x = local.motion.position.x; liveView.z = local.motion.position.z; liveView.yaw = local.yaw; liveView.alive = local.alive;
     const fov = local.alive ? local.currentFov() : 62;
     if (this.camera.fov !== fov) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
     // Characters are skinned with culling off (their bounds don't follow the animation), so cull

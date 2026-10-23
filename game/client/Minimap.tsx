@@ -1,7 +1,7 @@
-import { memo, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import { getMap, MAPS } from "../shared/map/maps";
 import type { MapId } from "../shared/map/types";
-import { MINIMAP_GRID, MINIMAP_RANGE, bearingYaw, mapHeading, markStrength, threatStrength, toFrame, viewPoint } from "./core/minimap";
+import { MINIMAP_GRID, MINIMAP_RANGE, liveView, bearingYaw, mapHeading, markStrength, threatStrength, toFrame, viewPoint } from "./core/minimap";
 import { SQUAD_COLORS } from "./core/squad";
 import { useHud } from "./core/hud";
 import styles from "./Minimap.module.css";
@@ -33,17 +33,30 @@ export const Minimap = memo(function Minimap({ now, map }: { now: number; map: M
   if (self) center.current = { x: self.x, z: self.z };
   const { x: cx, z: cz } = center.current;
   const scale = 45 / MINIMAP_RANGE;
-  // Like Valorant, the map turns with you: the way you face is always up.
-  const spin = self ? -mapHeading(self.yaw) : 0;
+  // The HUD re-renders a few times a second; between renders, shift the map and turn your arrow
+  // every frame from the game's live position so it moves smoothly.
+  const shift = useRef<SVGGElement>(null), arrow = useRef<SVGPathElement>(null);
+  useEffect(() => {
+    let frame = 0;
+    const tick = () => {
+      if (liveView.alive) {
+        shift.current?.setAttribute("transform", `translate(${(cx - liveView.x) * scale} ${(cz - liveView.z) * scale})`);
+        arrow.current?.setAttribute("transform", `rotate(${mapHeading(liveView.yaw)})`);
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [cx, cz, scale]);
   const localY = self?.y;
   const others = players.filter((player) => player.relation !== "self");
   return <section className={styles.panel} aria-label="Minimap">
     <div className={styles.heading}><span>{MAPS[map].name.toUpperCase()}</span><small>GRID {MINIMAP_GRID} M</small></div>
-    <svg viewBox="0 0 100 100" className={styles.map} role="img" aria-label={`${MAPS[map].name} map centered on you and turned to your facing, with your squad, enemy gunfire and footsteps, and recent hit directions`}>
+    <svg viewBox="0 0 100 100" className={styles.map} role="img" aria-label={`${MAPS[map].name} north-up map centered on you, with your squad, enemy gunfire and footsteps, and recent hit directions`}>
       <defs>
         <linearGradient id="minimap-threat" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stopColor="#ff4a3d" stopOpacity=".9" /><stop offset=".55" stopColor="#ff4a3d" stopOpacity=".35" /><stop offset="1" stopColor="#ff4a3d" stopOpacity="0" /></linearGradient>
       </defs>
-      <g transform={`rotate(${spin} 50 50)`}>
+      <g ref={shift}>
       <g transform={`translate(${50 - cx * scale} ${50 - cz * scale}) scale(${scale})`}><Terrain map={map} /></g>
       {/* Range rings: 10 and 25 meters around you. */}
       <circle cx="50" cy="50" r={10 * scale} className={styles.ring} />
@@ -96,10 +109,10 @@ export const Minimap = memo(function Minimap({ now, map }: { now: number; map: M
         </g>;
       })}
       </g>
-      {/* Your arrow last, so it stays on top; it always points up. */}
+      {/* Your arrow last, so it stays on top. */}
       {self && <g transform="translate(50 50)" className={styles.self} data-player-id={self.id} data-relation="self" aria-label={`You: ${self.name}`}>
         <title>{`You: ${self.name}`}</title>
-        <circle r="4.8" className={styles.selfRing} /><path d="M0-3.8 2.7 2.8 0 1.5-2.7 2.8Z" />
+        <circle r="4.8" className={styles.selfRing} /><path ref={arrow} d="M0-3.8 2.7 2.8 0 1.5-2.7 2.8Z" transform={`rotate(${mapHeading(self.yaw)})`} />
       </g>}
     </svg>
     <div className={styles.legend}><span><i className={styles.selfKey} />YOU</span><span><i className={styles.allyKey} />SQUAD</span><span><i className={styles.enemyKey} />ENEMY</span><span><i className={styles.threatKey} />HIT</span></div>

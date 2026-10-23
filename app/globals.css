@@ -502,7 +502,7 @@ small { display: block; }
 @media(prefers-reduced-motion:reduce) { button { transition: none; } }
 
 /* Keep the radar and kill feed in separate parts of the HUD. */
-.game-view { --minimap-size: 180px; --minimap-top: 82px; --minimap-chrome: 44px; }
+.game-view { --minimap-size: 260px; --minimap-top: 82px; --minimap-chrome: 44px; }
 @media (max-width: 800px), (max-height: 550px) { .game-view { --minimap-size: 116px; --minimap-top: 76px; --minimap-chrome: 36px; } }
 
 .hud-bottom .hud-hints { margin-bottom: 0; text-align: left; }
