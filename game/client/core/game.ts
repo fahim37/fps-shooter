@@ -577,6 +577,7 @@ export class Game {
     for (const remote of this.remotes.values()) {
       remote.setReadability(useSettings.getState().quality === "low" && (hud().mode !== "tdm" || remote.team !== hud().myTeam));
       remote.update(dt, this.clock.now() - INTERP_DELAY_MS, this.camera.position);
+      remote.updateTag(this.scene, hud().mode === "tdm" && remote.team === hud().myTeam);
     }
     local.update(dt, this.input, now);
     local.updateView();

@@ -54,6 +54,9 @@ export class RemotePlayer {
   stepped = false;
   footLeft = false;
   private readable = false;
+  /** Name over the head (teammates only), redrawn when the name changes. */
+  private tag: THREE.Sprite | null = null;
+  private tagName = "";
 
   constructor(readonly id: string) {}
 
@@ -224,10 +227,64 @@ export class RemotePlayer {
     else this.head.set(this.pos.x, this.pos.y + ((this.flags & F_CROUCH) ? 1.15 : 1.64), this.pos.z);
   }
 
+  /** Shows this player's name above their head while `show` (a living teammate), hides it otherwise. */
+  updateTag(scene: THREE.Object3D, show: boolean) {
+    if (!show || !this.alive || !this.rig) { if (this.tag) this.tag.visible = false; return; }
+    if (!this.tag || this.tagName !== this.name) {
+      this.disposeTag();
+      this.tag = createNameTag(this.name);
+      this.tagName = this.name;
+      scene.add(this.tag);
+    }
+    this.tag.visible = true;
+    this.tag.position.copy(this.head).y += NAME_TAG_LIFT;
+  }
+
   dispose() {
     this.rig?.dispose();
     this.rig = null;
+    this.disposeTag();
   }
+
+  private disposeTag() {
+    if (!this.tag) return;
+    this.tag.removeFromParent();
+    this.tag.material.map?.dispose();
+    this.tag.material.dispose();
+    this.tag = null;
+  }
+}
+
+/** Metres above the head for a name tag, and its height as a share of the view at distance 1. */
+const NAME_TAG_LIFT = 0.32;
+const NAME_TAG_SIZE = 0.06;
+
+/**
+ * A teammate's name, ally blue with a dark outline: the same size on screen at any distance and
+ * drawn over walls, so you can always find your squad.
+ */
+function createNameTag(name: string): THREE.Sprite {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 96;
+  const g = canvas.getContext("2d")!;
+  g.font = "700 46px system-ui, sans-serif";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.lineJoin = "round";
+  g.lineWidth = 9;
+  g.strokeStyle = "rgba(8, 16, 26, 0.9)";
+  const text = name.length > 18 ? `${name.slice(0, 17)}…` : name;
+  g.strokeText(text, 256, 50);
+  g.fillStyle = "#9fd0ff";
+  g.fillText(text, 256, 50);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false, sizeAttenuation: false }));
+  sprite.center.set(0.5, 0);
+  sprite.scale.set(NAME_TAG_SIZE * (canvas.width / canvas.height), NAME_TAG_SIZE, 1);
+  sprite.renderOrder = 8;
+  return sprite;
 }
 
 const _prev = new THREE.Vector3();
