@@ -506,19 +506,47 @@ export class AudioEngine {
     this.blip(bus, "sine", 2400, t + 0.035, 0.025, 0.002, 0.04);
   }
 
-  /** Ready / match found: a rising major arpeggio over a sub hit. */
+  /** Ready: a soft two-note confirm, a fifth up. */
   uiSting() {
     const ctx = this.ctx;
     if (!ctx) return;
     const t = ctx.currentTime + 0.01;
-    const [bus] = this.eventBus(this.sfx, 1.6, 0, 0.7);
-    this.blip(bus, "sine", 110, t, 0.12, 0.004, 0.45, 55);
-    this.burst(bus, "highpass", 5000, 0.7, t, 0.03, 0.002, 0.25);
-    [440, 554.37, 659.25, 880].forEach((f, i) => {
-      const s = t + i * 0.075;
-      this.blip(bus, "triangle", f, s, 0.05, 0.004, 0.5 + i * 0.25);
-      this.blip(bus, "sine", f * 2, s, 0.015, 0.004, 0.4 + i * 0.2);
+    const [bus] = this.eventBus(this.sfx, 1, 0, 0.4);
+    [[329.63, 0], [493.88, 0.09]].forEach(([f, at]) => {
+      this.blip(bus, "triangle", f, t + at, 0.035, 0.006, 0.35);
+      this.blip(bus, "sine", f * 2, t + at, 0.008, 0.006, 0.25);
     });
+  }
+
+  /**
+   * Deploy, as a match starts: a deep impact under a short, dark chord stab (A minor, filtered
+   * saws closing down) and a metallic ping that rings out. No noise in it.
+   */
+  uiDeploy() {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime + 0.02;
+    const [bus] = this.eventBus(this.sfx, 2.6, 0, 0.9);
+    this.blip(bus, "sine", 92, t, 0.16, 0.004, 0.9, 38);
+    this.blip(bus, "sine", 46, t, 0.1, 0.01, 1.2, 30);
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.Q.value = 2;
+    lp.frequency.setValueAtTime(2200, t);
+    lp.frequency.exponentialRampToValueAtTime(260, t + 0.9);
+    lp.connect(bus);
+    for (const f of [110, 164.81, 261.63]) {
+      const o = ctx.createOscillator();
+      o.type = "sawtooth";
+      o.frequency.value = f;
+      const g = ctx.createGain();
+      this.env(g, t, 0.022, 0.01, 0.9);
+      o.connect(g).connect(lp);
+      o.start(t);
+      o.stop(t + 1);
+    }
+    this.blip(bus, "sine", 1318.5, t + 0.06, 0.012, 0.003, 1.2);
+    this.blip(bus, "sine", 1975.5, t + 0.06, 0.005, 0.003, 0.8);
   }
 
   /** Starts, crossfades or stops the ambient bed to match the mode. Needs an unlocked context. */
@@ -719,13 +747,14 @@ export class AudioEngine {
     }
   }
 
-  /** Downtown: distant traffic rumble, a city hum, passing cars, far horns and sirens. */
+  /**
+   * Downtown: a soft, low traffic rumble, a city hum, passing cars, far horns and sirens. Kept
+   * low-pitched and quiet: any mid-range noise in the bed reads as hiss.
+   */
   private downtownBed(b: Bed) {
-    const rumble = this.loopNoise(b, "lowpass", 160, 0.7, 0.065, 0.5);
-    this.lfo(b, 0.05, 0.025, rumble.gain);
-    const wash = this.loopNoise(b, "bandpass", 420, 0.7, 0.025, 0.8);
-    this.lfo(b, 0.11, 0.01, wash.gain);
-    this.drone(b, "sine", 118, 0.0025);
+    const rumble = this.loopNoise(b, "lowpass", 110, 0.7, 0.024, 0.5);
+    this.lfo(b, 0.05, 0.009, rumble.gain);
+    this.drone(b, "sine", 118, 0.002);
     this.every(b, 5000, 14000, () => {
       const r = Math.random();
       if (r < 0.55) this.carPass(b); else if (r < 0.85) this.carHorn(b); else this.siren(b);
@@ -741,13 +770,13 @@ export class AudioEngine {
     pan.pan.setValueAtTime(from, t);
     pan.pan.linearRampToValueAtTime(-from, t + len);
     const f = ctx.createBiquadFilter();
-    f.type = "bandpass";
-    f.Q.value = 0.8;
-    f.frequency.setValueAtTime(280, t);
-    f.frequency.linearRampToValueAtTime(620, t + len * 0.5);
-    f.frequency.linearRampToValueAtTime(300, t + len);
+    f.type = "lowpass";
+    f.Q.value = 0.7;
+    f.frequency.setValueAtTime(200, t);
+    f.frequency.linearRampToValueAtTime(380, t + len * 0.5);
+    f.frequency.linearRampToValueAtTime(200, t + len);
     const g = ctx.createGain();
-    this.swell(g, t, 0.03 + Math.random() * 0.02, len * 0.5, len);
+    this.swell(g, t, 0.014 + Math.random() * 0.008, len * 0.5, len);
     this.noiseLoop(t, len, 0.7).connect(f).connect(g).connect(bus);
   }
 
@@ -856,14 +885,15 @@ export class AudioEngine {
     }
   }
 
-  /** Outpost: dry desert wind with sand hiss, a far generator, radio squelch, helicopter passes. */
+  /**
+   * Outpost: a soft, low desert wind, a far generator, radio squelch, helicopter passes. No sand
+   * hiss, and the wind stays below the range that reads as noise.
+   */
   private outpostBed(b: Bed) {
-    const wind = this.loopNoise(b, "bandpass", 750, 0.5, 0.035, 0.9);
-    this.lfo(b, 0.09, 0.022, wind.gain);
-    const sand = this.loopNoise(b, "bandpass", 3200, 0.7, 0.008);
-    this.lfo(b, 0.13, 0.006, sand.gain);
-    const generator = this.drone(b, "sawtooth", 55, 0.006, this.lowpass(240, 0.7, b.out));
-    this.lfo(b, 6.5, 0.0025, generator.gain);
+    const wind = this.loopNoise(b, "lowpass", 340, 0.7, 0.016, 0.9);
+    this.lfo(b, 0.09, 0.008, wind.gain);
+    const generator = this.drone(b, "sawtooth", 55, 0.0045, this.lowpass(200, 0.7, b.out));
+    this.lfo(b, 6.5, 0.0018, generator.gain);
     this.every(b, 14000, 32000, () => this.radio(b), 7000);
     this.every(b, 50000, 110000, () => this.helicopter(b), 25000 + Math.random() * 20000);
   }
@@ -879,8 +909,8 @@ export class AudioEngine {
     f.Q.value = 1.2;
     const g = ctx.createGain();
     g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.035, t + 0.004);
-    g.gain.setValueAtTime(0.035, t + len);
+    g.gain.linearRampToValueAtTime(0.012, t + 0.004);
+    g.gain.setValueAtTime(0.012, t + len);
     g.gain.linearRampToValueAtTime(0, t + len + 0.02);
     this.noiseLoop(t, len + 0.03).connect(f).connect(g).connect(bus);
     this.blip(bus, "sine", 1350, t + len + 0.05, 0.005, 0.003, 0.07);
@@ -912,7 +942,7 @@ export class AudioEngine {
     lp.frequency.linearRampToValueAtTime(650, t + len * 0.5);
     lp.frequency.linearRampToValueAtTime(280, t + len);
     const g = ctx.createGain();
-    this.swell(g, t, 0.09, len * 0.5, len);
+    this.swell(g, t, 0.04, len * 0.5, len);
     this.noiseLoop(t, len, 0.5).connect(chop).connect(lp).connect(g).connect(bus);
   }
 

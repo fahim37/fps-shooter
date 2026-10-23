@@ -57,7 +57,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     adsFov: 65, adsMs: 200, moveMult: 0.97,
   }),
   sniper: W({
-    id: "sniper", name: "Hunter Sniper", slot: 0, auto: false, rpm: 44, damage: 92, headMult: 2.5, limbMult: 0.8, pellets: 1,
+    id: "sniper", name: "Hunter Sniper", slot: 0, auto: false, rpm: 52, damage: 92, headMult: 2.5, limbMult: 0.8, pellets: 1,
     falloffStart: 80, falloffEnd: 200, minMult: 0.9, range: 300, mag: 5, reserve: 25, reloadMs: 2500, equipMs: 600,
     spreadHip: 7, spreadAds: 0.02, spreadMove: 5, spreadAir: 9, recoilUp: 2.4, recoilSide: 0.2,
     adsFov: 18, adsMs: 320, moveMult: 0.9, scope: true,

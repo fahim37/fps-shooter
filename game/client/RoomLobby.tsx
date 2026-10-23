@@ -63,10 +63,11 @@ export function ConnectedRoom({ room, onLeave }: { room: GameRoom; onLeave: () =
   }, [room]);
   // Voice starts as soon as you're in the room and carries on into the match.
   const voice = useVoiceSession(room, !!s.phase);
-  // A sting when you ready up, and when the match is found and starts.
+  // A soft confirm when you ready up, and a deploy hit when the match starts (or you join one).
   const meReady = !!s.players.find((p) => p.id === room.sessionId)?.ready;
   const started = !!s.phase && s.phase !== "waiting";
-  useEffect(() => { if (meReady || started) audio.uiSting(); }, [meReady, started]);
+  useEffect(() => { if (meReady && !started) audio.uiSting(); }, [meReady, started]);
+  useEffect(() => { if (started) audio.uiDeploy(); }, [started]);
   if (s.phase && s.phase !== "waiting") return <GameView room={room} map={s.map} onLeave={onLeave} voice={voice} />;
   const me = s.players.find((p) => p.id === room.sessionId);
   const isHost = s.host === room.sessionId;
