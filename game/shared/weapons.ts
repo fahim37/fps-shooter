@@ -71,7 +71,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
 };
 
 export const GRENADE = {
-  fuseMs: 3200,
+  fuseMs: 4000,
   throwSpeed: 21,
   /** An underhand lob (right mouse while aiming) leaves the hand at this fraction of a full throw. */
   lobPower: 0.5,

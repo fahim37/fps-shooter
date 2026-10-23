@@ -135,8 +135,8 @@ function MatchHud({ game, map, onLeave }: { game: Game | null; map: MapId; onLea
         {h.grenadeAim && <div className="grenade-aim" data-cooked={h.grenadeAim.fuse !== null || undefined}>
           <b>{h.grenadeAim.lob ? "UNDERHAND LOB" : "FRAG GRENADE"}{h.grenadeAim.airburst && <em> · AIRBURST</em>}</b>
           {h.grenadeAim.fuse === null
-            ? <small>{h.touch ? "RELEASE TO THROW · AIM FOR A LOB" : "RELEASE C TO THROW · R COOK · HOLD RMB TO LOB"}</small>
-            : <small>COOKED · {(h.grenadeAim.fuse / 1000).toFixed(1)} S · {h.touch ? "RELEASE TO THROW" : "RELEASE C"} BEFORE IT BLOWS</small>}
+            ? <small>{h.touch ? "RELEASE TO THROW · AIM FOR A LOB" : "RELEASE C TO THROW · HOLD RMB TO LOB"}</small>
+            : <small>FUSE {(h.grenadeAim.fuse / 1000).toFixed(1)} S · {h.touch ? "RELEASE TO THROW" : "RELEASE C · HOLD RMB TO LOB"}</small>}
         </div>}
       </>}
       {h.announce && now - h.announce.at < 3000 && <div className="announcement"><h2>{h.announce.text}</h2><p>{h.announce.sub}</p></div>}

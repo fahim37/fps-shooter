@@ -63,7 +63,7 @@ export class LocalPlayer {
   /** A peek is wanted (held or latched): peeking aims down sights. */
   private peeking = false;
   grenades = GRENADES_PER_LIFE;
-  /** Grenade in hand (C / G held) since; its fuse burning since (cooked with R), else 0. */
+  /** Grenade in hand (C / G held) since, and its fuse burning since (the pin comes out on C). */
   private grenadeAt = 0;
   private fuseAt = 0;
   /** An underhand lob instead of a full throw (right mouse while aiming). */
@@ -243,25 +243,22 @@ export class LocalPlayer {
       this.switchTo(this.weapon === "pistol" ? this.primary : "pistol", now);
     }
     const def = this.def;
-    // R reloads, or with a grenade in hand cooks it: the fuse starts burning before the throw.
-    if (input.consume("KeyR")) {
-      if (!this.grenadeAt) this.startReload(now);
-      else if (!this.fuseAt) { this.fuseAt = now; this.tickAt = now + 500; audio.grenadePin(); }
-    }
+    if (input.consume("KeyR") && !this.grenadeAt) this.startReload(now);
 
-    // Grenade, like PUBG: hold C (or G) to take it out and aim along the arc, release to throw.
-    // Right mouse switches to an underhand lob.
+    // Grenade: pressing C (or G) pulls the pin and the fuse starts burning; hold to aim along the
+    // arc, release to throw. Right mouse switches to an underhand lob.
     const draw = input.consume("KeyC") || input.consume("KeyG");
     if (draw && this.grenades > 0 && !this.grenadeAt) {
       this.endEmote(now);
-      this.grenadeAt = now;
-      this.fuseAt = 0;
+      this.grenadeAt = this.fuseAt = now;
+      this.tickAt = now + 500;
+      audio.grenadePin();
     }
     if (this.grenadeAt) {
       this.lob = input.ads;
       const held = input.held("KeyC") || input.held("KeyG") || input.held("TouchGrenade");
       const left = this.fuseAt ? GRENADE.fuseMs - (now - this.fuseAt) : Infinity;
-      // Also like PUBG: hold a cooked grenade too long and it goes off in your hand.
+      // Like PUBG, hold a cooked grenade too long and it goes off in your hand.
       if (left <= 60) this.throwGrenade(now, true);
       else if (!held) this.throwGrenade(now);
       else if (this.fuseAt && now >= this.tickAt) {

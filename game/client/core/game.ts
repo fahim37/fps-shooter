@@ -391,14 +391,26 @@ export class Game {
     return airburst;
   }
 
-  /** The grenade in your hand in first person: raised while aiming, gone once thrown. */
+  /**
+   * The grenade in your hand: in first person a gloved hand brings it up from below the view; in
+   * third person it sits in the character's right hand. Gone once thrown.
+   */
   private updateHandGrenade(local: LocalPlayer) {
-    const { group, pin, lever } = this.handGrenade;
+    const { group, pin, lever, hand } = this.handGrenade;
     const hold = local.grenadeHold, throwing = local.throwAnim;
-    group.visible = local.alive && !local.thirdPerson && !local.emote && (hold > 0.05 || throwing > 0.55);
+    group.visible = local.alive && !local.emote && (hold > 0.05 || throwing > 0.55);
     if (!group.visible) return;
-    // The pin and lever come off when it's cooked.
+    // The pin and lever come off once the fuse is burning.
     pin.visible = lever.visible = local.cooked === false && throwing === 0;
+    const palm = this.tpp?.inst?.bones.get("hand_r");
+    hand.visible = !local.thirdPerson || local.throughSight;
+    if (!hand.visible) {
+      if (!palm) { group.visible = false; return; }
+      palm.getWorldPosition(group.position);
+      group.quaternion.copy(this.camera.quaternion);
+      group.position.y += 0.05;
+      return;
+    }
     // Brought up from below the view; on release it is flung forward and out of sight.
     const flung = throwing > 0 ? 1 - throwing : 0;
     _handOffset.set(0.16 - flung * 0.05, -0.34 + hold * 0.15 + local.bob.y * 0.5, -0.36 - flung * 0.9);
@@ -630,9 +642,33 @@ function createGrenadeArc() {
   return { group, flight, roll, marker, blast, burst, dot };
 }
 
-/** A frag grenade for the first-person hand: olive body, steel lever and pull ring. */
+/**
+ * A frag grenade (olive body, steel lever and pull ring) held in a gloved hand, with the sleeve
+ * running down to the lower right of the view; the hand is hidden in third person.
+ */
 function createHandGrenade() {
   const group = new THREE.Group();
+  const hand = new THREE.Group();
+  const glove = new THREE.MeshStandardMaterial({ color: "#2e3229", roughness: 0.85 });
+  const sleeve = new THREE.MeshStandardMaterial({ color: "#3b5f93", roughness: 0.9 });
+  const box = (w: number, h: number, d: number, x: number, y: number, z: number, rx = 0, rz = 0, mat = glove) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(x, y, z);
+    m.rotation.set(rx, 0, rz);
+    hand.add(m);
+  };
+  // Palm behind and below the grenade, four fingers curled over its front, thumb on the side.
+  box(0.075, 0.03, 0.085, 0.004, -0.04, 0.02, -0.25);
+  for (let i = 0; i < 4; i++) box(0.017, 0.05, 0.019, -0.026 + i * 0.018, -0.008 + (i === 0 || i === 3 ? -0.006 : 0), -0.03, 0.35);
+  box(0.019, 0.045, 0.02, 0.04, -0.005, 0.005, 0, -0.6);
+  // Wrist and sleeve, angled back toward the lower right corner of the screen.
+  const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.036, 0.06, 10), glove);
+  cuff.position.set(0.02, -0.07, 0.06);
+  cuff.rotation.set(1.1, 0, -0.35);
+  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.048, 0.32, 10), sleeve);
+  arm.position.set(0.075, -0.13, 0.2);
+  arm.rotation.set(1.1, 0, -0.35);
+  hand.add(cuff, arm);
   const steel = new THREE.MeshStandardMaterial({ color: "#8a8d86", roughness: 0.4, metalness: 0.6 });
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.034, 14, 10), new THREE.MeshStandardMaterial({ color: "#4e593c", roughness: 0.65 }));
   body.scale.set(1, 1.18, 1);
@@ -644,8 +680,8 @@ function createHandGrenade() {
   const pin = new THREE.Mesh(new THREE.TorusGeometry(0.013, 0.0025, 6, 16), steel);
   pin.position.set(-0.016, 0.052, 0);
   pin.rotation.y = Math.PI / 2;
-  group.add(body, cap, lever, pin);
-  for (const mesh of [body, cap, lever, pin]) { mesh.renderOrder = 9; mesh.frustumCulled = false; }
+  group.add(body, cap, lever, pin, hand);
+  group.traverse((o) => { if (o instanceof THREE.Mesh) { o.renderOrder = 9; o.frustumCulled = false; } });
   group.visible = false;
-  return { group, pin, lever };
+  return { group, pin, lever, hand };
 }

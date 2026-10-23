@@ -439,7 +439,7 @@ export class CharacterRig {
       const ads = _v2.set(0, -sightY, pistol ? -0.48 : -(meta.max[2] + 0.07));
       hip.lerp(ads, s.ads);
       hip.x += (s.sway?.x ?? 0) + (s.bob?.x ?? 0) + hx - sprint * 0.04;
-      hip.y += (s.sway?.y ?? 0) + (s.bob?.y ?? 0) + hy - sprint * 0.05 - (s.throwing ?? 0) * 0.25;
+      hip.y += (s.sway?.y ?? 0) + (s.bob?.y ?? 0) + hy - sprint * 0.05 - (s.throwing ?? 0) * 0.45;
       hip.z += s.recoil * 0.045 + (s.tuck ?? 0) * 0.16 + hz;
       _e.set(
         s.recoil * 0.06 + hPitch - sprint * 0.55 - (s.tuck ?? 0) * 0.7,
