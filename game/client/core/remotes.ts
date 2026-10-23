@@ -257,11 +257,11 @@ export class RemotePlayer {
 
 /** Metres above the head for a name tag, and its height as a share of the view at distance 1. */
 const NAME_TAG_LIFT = 0.32;
-const NAME_TAG_SIZE = 0.03;
+const NAME_TAG_SIZE = 0.037;
 
 /**
  * A teammate's name, ally blue with a dark outline: the same size on screen at any distance and
- * drawn over walls, so you can always find your squad.
+ * drawn over walls, so you can always find your squad. No fog or tone mapping, which washed it out.
  */
 function createNameTag(name: string): THREE.Sprite {
   const canvas = document.createElement("canvas");
@@ -272,15 +272,15 @@ function createNameTag(name: string): THREE.Sprite {
   g.textAlign = "center";
   g.textBaseline = "middle";
   g.lineJoin = "round";
-  g.lineWidth = 9;
-  g.strokeStyle = "rgba(8, 16, 26, 0.9)";
+  g.lineWidth = 8;
+  g.strokeStyle = "#08101a";
   const text = name.length > 18 ? `${name.slice(0, 17)}…` : name;
   g.strokeText(text, 256, 50);
-  g.fillStyle = "#9fd0ff";
+  g.fillStyle = "#b9ddff";
   g.fillText(text, 256, 50);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false, sizeAttenuation: false }));
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false, sizeAttenuation: false, fog: false, toneMapped: false }));
   sprite.center.set(0.5, 0);
   sprite.scale.set(NAME_TAG_SIZE * (canvas.width / canvas.height), NAME_TAG_SIZE, 1);
   sprite.renderOrder = 8;
