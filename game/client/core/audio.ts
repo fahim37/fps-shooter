@@ -71,7 +71,11 @@ export class AudioEngine {
   private theme: Promise<AudioBuffer> | null = null;
   volume = 0.8;
 
-  /** Must be called from a user gesture (click/tap) to unlock audio. */
+  /**
+   * Creates or resumes the audio context. From a user gesture (click/tap) this always unlocks
+   * audio; without one the context only runs where the browser allows autoplay, and otherwise
+   * waits, suspended, for the next gesture.
+   */
   unlock() {
     if (this.ctx) {
       if (this.ctx.state === "suspended") void this.ctx.resume();
@@ -130,12 +134,16 @@ export class AudioEngine {
     this.applyBed();
   }
 
-  /** Starts or stops the menu bed; it starts on the first gesture if audio is still locked. */
+  /**
+   * Starts or stops the menu bed. It plays at once where the browser allows autoplay (Chrome does
+   * for sites you often play sound on), otherwise from the first click or key press.
+   */
   lobby(on: boolean) {
     if (on) {
       this.mode = "lobby";
       void this.fetchTheme();
       this.armUnlock();
+      if (typeof window !== "undefined") this.unlock();
     } else if (this.mode === "lobby") {
       this.mode = "off";
       this.disarm?.();
