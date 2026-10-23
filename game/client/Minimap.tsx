@@ -56,7 +56,7 @@ export const Minimap = memo(function Minimap({ now, map }: { now: number; map: M
   const others = players.filter((player) => player.relation !== "self");
   return <section className={styles.panel} aria-label="Minimap">
     <div className={styles.heading}><span>{MAPS[map].name.toUpperCase()}</span><small>GRID {MINIMAP_GRID} M</small></div>
-    <svg ref={svg} viewBox="0 0 100 100" className={styles.map} role="img" aria-label={`${MAPS[map].name} map centered on you and turned to your facing, with your squad, enemy gunfire and footsteps, and recent hit directions`}>
+    <svg ref={svg} viewBox="0 0 100 100" className={styles.map} role="img" aria-label={`${MAPS[map].name} map centered on you and turned to your facing, with your squad, enemy gunfire and recent hit directions`}>
       <defs>
         <linearGradient id="minimap-threat" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stopColor="#ff4a3d" stopOpacity=".9" /><stop offset=".55" stopColor="#ff4a3d" stopOpacity=".35" /><stop offset="1" stopColor="#ff4a3d" stopOpacity="0" /></linearGradient>
       </defs>

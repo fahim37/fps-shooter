@@ -24,7 +24,7 @@ import { PRESETS, useSettings } from "../settings";
 import { enemyAlongRay } from "./targeting";
 import { useLoadout } from "../loadout";
 import { DeathCamera } from "./deathcam";
-import { liveView, MARK_MS, STEP_REVEAL_RANGE, THREAT_MS, addMark, addThreat, mapRelation, type MapMark, type MapPlayer } from "./minimap";
+import { liveView, MARK_MS, THREAT_MS, addMark, addThreat, mapRelation, type MapMark, type MapPlayer } from "./minimap";
 import { buildSquad } from "./squad";
 import { updateSightMotion } from "./sightMotion";
 
@@ -402,14 +402,6 @@ export class Game {
     hud().set({ mapMarks: addMark(hud().mapMarks, mark) });
   }
 
-  /** Sprinting enemies close by leave red footprints on the minimap. */
-  private footprints(remote: RemotePlayer) {
-    if (!remote.stepped || !remote.alive || !remote.sprinting || !this.local?.alive) return;
-    if (hud().mode === "tdm" && remote.team === hud().myTeam) return;
-    if (remote.pos.distanceTo(this.local.motion.position) > STEP_REVEAL_RANGE) return;
-    this.mark({ key: `${remote.id}:${++this.markSeq}`, kind: "step", x: remote.pos.x, z: remote.pos.z, yaw: remote.moveYaw, left: remote.footLeft, at: performance.now() });
-  }
-
   /**
    * PUBG-style aiming arc for a held grenade: bright dots through the air to where it lands,
    * fainter ones where it bounces and rolls, and the blast radius where the fuse runs out
@@ -585,7 +577,6 @@ export class Game {
     for (const remote of this.remotes.values()) {
       remote.setReadability(useSettings.getState().quality === "low" && (hud().mode !== "tdm" || remote.team !== hud().myTeam));
       remote.update(dt, this.clock.now() - INTERP_DELAY_MS, this.camera.position);
-      this.footprints(remote);
     }
     local.update(dt, this.input, now);
     local.updateView();
