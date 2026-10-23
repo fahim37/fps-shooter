@@ -257,7 +257,7 @@ export class RemotePlayer {
 
 /** Metres above the head for a name tag, and its height as a share of the view at distance 1. */
 const NAME_TAG_LIFT = 0.32;
-const NAME_TAG_SIZE = 0.06;
+const NAME_TAG_SIZE = 0.042;
 
 /**
  * A teammate's name, ally blue with a dark outline: the same size on screen at any distance and
