@@ -39,6 +39,12 @@ export interface RigState {
   tuck?: number;
   /** 0..1 grenade throw motion. */
   throwing?: number;
+  /**
+   * FPP: the right hand leaves the gun to hold a grenade, `weight` of the way: the hand bone placed
+   * at `offset` and turned to `turn`, both in view space. `left`, likewise, takes the support hand
+   * off the gun to pull the pin.
+   */
+  grenade?: HandOverride & { left?: HandOverride };
   /** Peek -1 (left) .. 1 (right). */
   lean?: number;
   /** Seconds since the last shot (pump / bolt cycling) and since the gun was drawn. */
@@ -47,6 +53,9 @@ export interface RigState {
   /** Full-body emote to play instead of holding the gun. */
   emote?: ClipName | null;
 }
+
+/** A hand bone placed at `offset` and turned to `turn` in view space, `weight` of the way from the gun. */
+export interface HandOverride { weight: number; offset: THREE.Vector3; turn: THREE.Quaternion }
 
 const headCache = new WeakMap<CharacterTemplate, THREE.Vector3>();
 const LOCO: ClipName[] = ["idle", "walk", "jog", "sprint", "crouchIdle", "crouchWalk", "jumpLoop"];
@@ -58,6 +67,10 @@ const BOLT_TRAVEL = 0.065;
 /** Where a hand fetching a magazine or shell goes: down and in toward the belt. */
 const POUCH_DROP = 0.3;
 const POUCH_IN = 0.08;
+/** Extra curl (rad per joint) of the right hand's fingers, from the gun grip, around a grenade. */
+const GRENADE_FINGER_CURL = 0.45;
+const GRENADE_CURLED = ["index", "middle", "ring", "pinky"].flatMap((f) => ["01", "02", "03"].map((k) => `${f}_${k}_r`));
+const _unitZ = new THREE.Vector3(0, 0, 1);
 /** Crossfade (s) into and out of an emote. */
 const EMOTE_FADE = 0.25;
 /** FPP: view-space offset of the hidden body from where the head would put it. */
@@ -153,6 +166,7 @@ export class CharacterRig {
   private emote: { name: ClipName; action: THREE.AnimationAction } | null = null;
   private head: THREE.Vector3;
   private grip: GripPose | null = null;
+  private state: RigState | null = null;
   private fingers: { r: THREE.Bone[]; l: THREE.Bone[] } = { r: [], l: [] };
   private handling = createHandling();
   private gunPivot = new THREE.Object3D();
@@ -322,6 +336,7 @@ export class CharacterRig {
       rotateBoneWorld(this.inst.bones.get("spine_03")!, _q.setFromAxisAngle(_v, lean * LEAN_ANGLE * 0.25), true);
     }
     this.placeGun(s);
+    this.state = s;
     this.solveArms();
   }
 
@@ -439,7 +454,7 @@ export class CharacterRig {
       const ads = _v2.set(0, -sightY, pistol ? -0.48 : -(meta.max[2] + 0.07));
       hip.lerp(ads, s.ads);
       hip.x += (s.sway?.x ?? 0) + (s.bob?.x ?? 0) + hx - sprint * 0.04;
-      hip.y += (s.sway?.y ?? 0) + (s.bob?.y ?? 0) + hy - sprint * 0.05 - (s.throwing ?? 0) * 0.45;
+      hip.y += (s.sway?.y ?? 0) + (s.bob?.y ?? 0) + hy - sprint * 0.05 - (s.throwing ?? 0) * 0.75;
       hip.z += s.recoil * 0.045 + (s.tuck ?? 0) * 0.16 + hz;
       _e.set(
         s.recoil * 0.06 + hPitch - sprint * 0.55 - (s.tuck ?? 0) * 0.7,
@@ -527,14 +542,20 @@ export class CharacterRig {
     const comfort = w === "pistol" ? PISTOL_REACH : COMFORT_REACH;
 
     _pole.setFromMatrixPosition(b("upperarm_r").matrixWorld).addScaledVector(bodyLeft, -0.18).addScaledVector(DOWN, 0.75);
-    this.placeHand("r", this.handTarget(h.right, grip.right, bodyLeft), _pole, comfort);
+    this.placeHand("r", this.grenadeHand(this.handTarget(h.right, grip.right, bodyLeft), this.state?.grenade), _pole, comfort);
     // The support elbow hangs down and a little out, so the forearm meets the handguard on a
     // diagonal and the wrist turns under it instead of continuing the forearm's line.
     _pole.setFromMatrixPosition(b("upperarm_l").matrixWorld).addScaledVector(bodyLeft, w === "pistol" ? 0.06 : SUPPORT_ELBOW_OUT).addScaledVector(DOWN, 0.75);
-    this.placeHand("l", this.handTarget(h.left, grip.left, bodyLeft), _pole, comfort);
+    this.placeHand("l", this.grenadeHand(this.handTarget(h.left, grip.left, bodyLeft), this.state?.grenade?.left), _pole, comfort);
 
     // Fingers are written absolutely each frame, so held clips cannot accumulate them.
     this.poseFingers(this.fingers.r, h.right, grip.right);
+    // Around a grenade the fingers curl over its top (about each bone's Z, toward the palm).
+    const nade = this.mode === "fpp" ? this.state?.grenade?.weight ?? 0 : 0;
+    if (nade > 0) {
+      _q.setFromAxisAngle(_unitZ, nade * GRENADE_FINGER_CURL);
+      for (const name of GRENADE_CURLED) this.inst.bones.get(name)?.quaternion.multiply(_q);
+    }
     this.poseFingers(this.fingers.l, h.left, grip.left);
     b("hand_r").updateMatrixWorld(true);
     b("hand_l").updateMatrixWorld(true);
@@ -542,6 +563,18 @@ export class CharacterRig {
     const parts = this.parts.get(w)!;
     if (h.magHeld && parts.mag && grip.left.mag) this.holdInLeftHand(parts.mag, grip.left.mag);
     if (h.shellHeld && parts.shell && grip.left.shell) this.holdInLeftHand(parts.shell, grip.left.shell);
+  }
+
+  /** A hand's target moved off the gun for the grenade (FPP), as far as `g` says. */
+  private grenadeHand(target: THREE.Matrix4, g: HandOverride | undefined) {
+    const s = this.state;
+    if (this.mode !== "fpp" || !g || g.weight <= 1e-3 || !s?.eye || !s.view) return target;
+    target.decompose(_ta, _qa, _scale);
+    _tb.copy(g.offset).applyQuaternion(s.view).add(s.eye);
+    _qb.copy(s.view).multiply(g.turn);
+    _ta.lerp(_tb, g.weight);
+    _qa.slerp(_qb, g.weight);
+    return target.compose(_ta, _qa, _s);
   }
 
   /** Blended world transform for a hand moving between two grip poses. */

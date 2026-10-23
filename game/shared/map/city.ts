@@ -241,10 +241,8 @@ function blockA(b: Block) {
   b.piece("Prop_ACUnit", 14, LOT, 25.66);
   b.piece("Prop_ACUnit", 19, LOT, 25.66);
   b.piece("Prop_ACUnit", 21.55, LOT, 38, PI / 2);
-
-  // Sidewalk planters in front of the corner building.
-  for (const x of [14.5, 24.5]) b.piece("Sidewalk_Planter", x, LOT, 7.6);
-  for (const z of [36.5, 42.5]) b.piece("Sidewalk_Planter", 7.6, LOT, z, PI / 2);
+  // No Sidewalk_Planter here: its iron tree guard is taller than the autostep and walls off
+  // most of the 3 m sidewalk.
 }
 
 /** "Market block": walk-up on the cross street, wide alley, shop facing west. */
@@ -266,9 +264,6 @@ function blockB(b: Block) {
   b.piece("Prop_ACUnit", 25.98, LOT, 15, -PI / 2); // M–L alley
   b.piece("Prop_ACUnit", 30, LOT, 25.66);
   b.piece("Prop_ACUnit", 35, LOT, 25.66);
-
-  for (const x of [13, 19.5]) b.piece("Sidewalk_Planter", x, LOT, 7.6);
-  for (const x of [31, 41]) b.piece("Sidewalk_Planter", x, LOT, 7.6);
 }
 
 /** One street arm (east of the intersection); repeated in all four directions. */

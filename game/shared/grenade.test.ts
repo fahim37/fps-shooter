@@ -13,14 +13,14 @@ const ground = (from: V3, dir: V3, distance: number) => {
 describe("grenade throws", () => {
   it("leaves the hand at full or lob speed plus some of the thrower's motion", () => {
     expect(grenadeVelocity([1, 0, 0], 1, [0, 0, 0])).toEqual([GRENADE.throwSpeed, 2, 0]);
-    expect(grenadeVelocity([2, 0, 0], GRENADE.lobPower, [4, 0, 0])[0]).toBeCloseTo(GRENADE.throwSpeed * GRENADE.lobPower + 2);
+    expect(grenadeVelocity([2, 0, 0], GRENADE.lobPower, [4, 0, 0])[0]).toBeCloseTo(GRENADE.throwSpeed * GRENADE.lobPower + 3.6);
     // Strength is clamped between a lob and a full throw.
     expect(grenadeVelocity([0, 0, -1], 5, [0, 0, 0])[2]).toBeCloseTo(-GRENADE.throwSpeed);
     expect(grenadeVelocity([0, 0, -1], 0.1, [0, 0, 0])[2]).toBeCloseTo(-GRENADE.throwSpeed * GRENADE.lobPower);
   });
 
   it("drops a grenade that cooked off in the hand, carrying only the thrower's motion", () => {
-    expect(grenadeVelocity([0, 0, -1], 0, [2, 0, 4])).toEqual([1, 0, 2]);
+    expect(grenadeVelocity([0, 0, -1], 0, [2, 0, 4])).toEqual([1.8, 0, 3.6]);
   });
 
   it("flies, lands, then rolls to a stop before the fuse runs out", () => {

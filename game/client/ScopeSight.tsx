@@ -27,14 +27,15 @@ function TwoTimes({ glow }: { glow: string }) {
 
 const LADDER = [[615, 46, "4"], [665, 38, "5"], [715, 30, "6"], [765, 24, "7"], [815, 18, "8"]] as const;
 
-/** ACOG-style: illuminated chevron with a bullet-drop ladder, as on PUBG's 4×. */
+/** A full cross like the 6×'s, with heavy posts, an illuminated center and a bullet-drop ladder. */
 function FourTimes({ glow }: { glow: string }) {
   return <>
-    <Wire w={10} d="M0 500H90 M910 500H1000 M500 880V1000" />
-    <Wire w={2.2} d={`M90 500H410 M590 500H910 M500 572V880 ${[150, 250, 350, 650, 750, 850].map((x) => `M${x} 490v20`).join(" ")} ${LADDER.map(([y, w]) => `M${500 - w} ${y}h${w * 2}`).join(" ")}`} />
+    <Wire w={10} d="M0 500H180 M820 500H1000 M500 0V180 M500 880V1000" />
+    <Wire w={1.8} d={`M180 500H488 M512 500H820 M500 180V488 M500 512V880 ${[250, 350, 650, 750].map((x) => `M${x} 492v16`).join(" ")} M492 350h16 M492 250h16 ${LADDER.map(([y, w]) => `M${500 - w} ${y}h${w * 2}`).join(" ")}`} />
     {LADDER.map(([y, w, label]) => <Engraving key={label} x={500 - w - 12} y={y + 5} anchor="end">{label}</Engraving>)}
     <g className={styles.illum} filter={`url(#${glow})`}>
-      <path data-reticle="4x-chevron" d="M500 500L513 518H508L500 507L492 518H487Z" />
+      <circle data-reticle="4x-center" cx="500" cy="500" r="3.4" />
+      <path d="M500 476v10 M500 514v10 M476 500h10 M514 500h10" strokeWidth="2" fill="none" />
     </g>
   </>;
 }

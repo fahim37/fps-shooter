@@ -76,9 +76,12 @@ export const GRENADE = {
   /** An underhand lob (right mouse while aiming) leaves the hand at this fraction of a full throw. */
   lobPower: 0.5,
   radius: 10,
-  damage: 160,
+  /** At the blast; lethal out to about 5 m, and still heavy damage well beyond that. */
+  damage: 220,
   /** Minimum damage at the edge of the radius, as a fraction. */
   edgeMult: 0.2,
+  /** How sharply damage drops off from the blast to the edge (1 is linear). */
+  falloffPower: 1.5,
   /** Air drag on the server's grenade body (see grenade.ts); the aiming arc integrates the same. */
   linearDamping: 0.15,
 };

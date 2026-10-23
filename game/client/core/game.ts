@@ -9,7 +9,7 @@ import { getMap } from "../../shared/map/maps";
 import { raycastWorld, type Rapier, type World } from "../../shared/physics";
 import { INTERP_DELAY_MS, RESPAWN_MS, type GameMode } from "../../shared/constants";
 import { GRENADE, WEAPONS, type WeaponId } from "../../shared/weapons";
-import { grenadeFlight, grenadeVelocity } from "../../shared/grenade";
+import { GRENADE_BODY, grenadeFlight, grenadeVelocity } from "../../shared/grenade";
 import { spreadRadius } from "../../shared/aim";
 import type { MatchState } from "../../shared/schema";
 import type { AmmoEvent, DamagedEvent, ExplosionEvent, HitConfirm, KillEvent, LoadoutEvent, Pong, ShotEvent, SpawnEvent } from "../../shared/messages";
@@ -33,7 +33,66 @@ const _viewProjection = new THREE.Matrix4();
 /** Covers a character with arms and gun out, peeking or emoting, around its waist. */
 const _bounds = new THREE.Sphere(new THREE.Vector3(), 1.9);
 const _arcNormal = new THREE.Vector3();
-const _handOffset = new THREE.Vector3();
+const _armEuler = new THREE.Euler();
+/**
+ * The right hand bone's resting turn in view space while holding a grenade (the bone's +Y runs
+ * along the fingers, -X out of the palm): fingers up and forward, palm turned in toward the
+ * middle of the view and a little up, so the grenade shows cradled in the hand.
+ */
+const GRENADE_GRIP = (() => {
+  const x = new THREE.Vector3(0.8, -0.35, 0.3).normalize();
+  const y = new THREE.Vector3(0, 0.7, -0.7);
+  y.addScaledVector(x, -y.dot(x)).normalize();
+  return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, new THREE.Vector3().crossVectors(x, y)));
+})();
+/** Milliseconds the pin pull takes, from pressing the key to the arm cocked to throw. */
+const PIN_PULL_MS = 700;
+/** The right hand while the pin is pulled: up in front, the ring turned toward the left hand. */
+const PIN_POSE = [0.1, -0.24, -0.44, 0, 0, 0.3];
+/** The pull ring on the grenade (grenade frame), and which way it's yanked (view space). */
+const PIN_IN_GRENADE = new THREE.Vector3(-0.016, 0.052, 0);
+const PIN_PULL_DIR = new THREE.Vector3(-0.85, -0.35, 0.1).normalize();
+/** Between the left thumb and index fingertips, in the left hand bone's frame (+Y along the fingers, +X out of the palm). */
+const LEFT_PINCH = new THREE.Vector3(0.067, 0.08, 0.076);
+/** The left hand pulling the pin: fingers pointing right across the view, palm forward. */
+const LEFT_PULL_GRIP = (() => {
+  const y = new THREE.Vector3(1, 0.1, -0.35).normalize();
+  const x = new THREE.Vector3(0, -0.3, -1).addScaledVector(y, -new THREE.Vector3(0, -0.3, -1).dot(y)).normalize();
+  return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, new THREE.Vector3().crossVectors(x, y)));
+})();
+const smoothstep = (from: number, to: number, x: number) => THREE.MathUtils.smoothstep(x, from, to);
+const _pinch = new THREE.Vector3();
+const _pinRing = new THREE.Vector3();
+const _toHand = new THREE.Vector3();
+/** The grenade's center in the right hand bone's frame: in the palm, under the curled fingers. */
+const GRENADE_IN_HAND = new THREE.Vector3(-0.042, 0.075, -0.004);
+
+/** Share of a throw's animation at which the grenade leaves the hand. */
+const THROW_RELEASE = 0.14;
+/**
+ * First-person right-hand keyframes through a throw: [progress, x, y, z (view space, meters),
+ * pitch, roll, yaw (radians, from how the hand holds the gun)]. Cocked at the shoulder, whipped
+ * forward to the release, then followed through down and across.
+ */
+const OVERHAND = [
+  [0, 0.2, -0.22, -0.4, 0.3, 0.15, -0.1],
+  [THROW_RELEASE, 0.08, -0.08, -0.6, -0.5, 0.05, 0.05],
+  [1, -0.06, -0.62, -0.42, -1.4, 0.6, 0.35],
+];
+/** Held low at the hip, swung up and forward, then dropped away. */
+const UNDERHAND = [
+  [0, 0.15, -0.32, -0.4, -0.25, 0.15, -0.1],
+  [THROW_RELEASE, 0.06, -0.14, -0.52, -0.85, 0.05, 0.05],
+  [1, 0.04, -0.6, -0.4, -0.3, 0.35, 0.2],
+];
+
+/** The pose at `progress` through a throw: a whip that speeds up to the release, then eases out. */
+function throwPose(keys: number[][], progress: number) {
+  const k = progress < keys[1][0] ? 0 : 1;
+  const u = Math.min(1, (progress - keys[k][0]) / (keys[k + 1][0] - keys[k][0]));
+  const eased = k === 0 ? u * u : 1 - (1 - u) * (1 - u);
+  return keys[k].slice(1).map((v, i) => v + (keys[k + 1][i + 1] - v) * eased);
+}
 const _unitZ = new THREE.Vector3(0, 0, 1);
 /** Dots drawn along a grenade's aiming arc, one every ARC_DOT meters past the hand. */
 const ARC_DOTS = 90;
@@ -78,6 +137,15 @@ export class Game {
   /** The aiming arc shown while a grenade is held: dots to the landing spot and its blast radius. */
   private arc = createGrenadeArc();
   private handGrenade = createHandGrenade();
+  /** 0 for an overhand throw, 1 for an underhand lob, eased between. */
+  private lobPose = 0;
+  private armPose = {
+    offset: new THREE.Vector3(), turn: new THREE.Quaternion(),
+    left: { weight: 0, offset: new THREE.Vector3(), turn: LEFT_PULL_GRIP.clone() },
+  };
+  /** When the pin of the grenade in hand was pulled, and how far out it has come (0..1). */
+  private pinAt = -Infinity;
+  private pinPulled = 0;
   /** Camera shake from nearby explosions, 0..1. */
   private shake = 0;
   private markSeq = 0;
@@ -355,7 +423,7 @@ export class Game {
     const path = grenadeFlight(origin, grenadeVelocity(dir, power, [local.ms.vx, local.ms.vy, local.ms.vz]), (aim.fuse ?? GRENADE.fuseMs) / 1000,
       (from, d, distance) => raycastWorld(this.R, world, from, d, distance));
     const landed = path.impact >= 0 ? path.impact : path.points.length - 1;
-    // Evenly spaced dots, starting a meter out so none sit in front of the camera.
+    // Evenly spaced dots, from just past the grenade in hand.
     const place = (dots: THREE.Points, from: number, to: number, start: number, spacing: number) => {
       const positions = dots.geometry.getAttribute("position") as THREE.BufferAttribute;
       let count = 0, travelled = 0, next = start;
@@ -372,7 +440,7 @@ export class Game {
       dots.geometry.setDrawRange(0, count);
       positions.needsUpdate = true;
     };
-    place(flightDots, 0, landed, 1, ARC_DOT);
+    place(flightDots, 0, landed, 0.12, ARC_DOT);
     place(roll, landed, path.points.length - 1, ARC_DOT * 0.7, ARC_DOT * 0.7);
     // The landing marker lies on whatever the grenade hits first.
     marker.visible = path.impact >= 0 && !!path.impactNormal;
@@ -392,32 +460,75 @@ export class Game {
   }
 
   /**
-   * The grenade in your hand: in first person a gloved hand brings it up from below the view; in
-   * third person it sits in the character's right hand. Gone once thrown.
+   * Where the first-person right hand holds a grenade, for the arm's IK: it leaves the gun and
+   * raises the grenade to the shoulder, cocked to throw (held low for an underhand lob), then
+   * swings forward, lets go, follows through and goes back to the gun.
    */
-  private updateHandGrenade(local: LocalPlayer) {
-    const { group, pin, lever, hand } = this.handGrenade;
+  private grenadeArm(local: LocalPlayer, dt: number, now: number): RigState["grenade"] {
     const hold = local.grenadeHold, throwing = local.throwAnim;
-    group.visible = local.alive && !local.emote && (hold > 0.05 || throwing > 0.55);
-    if (!group.visible) return;
-    // The pin and lever come off once the fuse is burning.
-    pin.visible = lever.visible = local.cooked === false && throwing === 0;
-    const palm = this.tpp?.inst?.bones.get("hand_r");
-    hand.visible = !local.thirdPerson || local.throughSight;
-    if (!hand.visible) {
-      if (!palm) { group.visible = false; return; }
-      palm.getWorldPosition(group.position);
-      group.quaternion.copy(this.camera.quaternion);
-      group.position.y += 0.05;
-      return;
+    this.lobPose += ((local.lob ? 1 : 0) - this.lobPose) * Math.min(1, dt * 10);
+    if (local.drawnGrenadeAt) this.pinAt = local.drawnGrenadeAt;
+    const weight = throwing > 0 ? Math.min(1, throwing / 0.3) : hold;
+    if (weight <= 1e-3 || !local.alive || local.emote) return undefined;
+    const progress = throwing > 0 ? 1 - throwing : 0;
+    const over = throwPose(OVERHAND, progress), under = throwPose(UNDERHAND, progress);
+    const pose = over.map((v, i) => v + (under[i] - v) * this.lobPose);
+    // Pulling the pin: the grenade is held up in front, turned so its ring faces the left hand,
+    // which reaches over, pinches the ring, yanks it out and drops it, then goes back to the gun.
+    // Only then is the arm cocked to throw (or straight away, if it's thrown first).
+    const pull = Math.min(1, (now - this.pinAt) / PIN_PULL_MS);
+    const cock = throwing > 0 ? 1 : smoothstep(0.55, 1, pull);
+    for (let i = 0; i < pose.length; i++) pose[i] = PIN_POSE[i] + (pose[i] - PIN_POSE[i]) * cock;
+    const { offset, turn, left } = this.armPose;
+    offset.set(pose[0] + local.sway.x, pose[1] + local.bob.y * 0.5 + local.sway.y, pose[2]);
+    turn.setFromEuler(_armEuler.set(pose[3], pose[5], pose[4], "YXZ")).multiply(GRENADE_GRIP);
+    const reach = smoothstep(0, 0.3, pull) * (1 - smoothstep(0.6, 0.95, pull));
+    this.pinPulled = smoothstep(0.35, 0.6, pull);
+    left.weight = reach * weight;
+    if (left.weight > 1e-3) {
+      // The ring on the grenade, in view space; the left hand's pinch goes there, then away.
+      left.offset.copy(GRENADE_IN_HAND).add(PIN_IN_GRENADE).applyQuaternion(turn).add(offset)
+        .addScaledVector(PIN_PULL_DIR, this.pinPulled * 0.14)
+        .sub(_pinch.copy(LEFT_PINCH).applyQuaternion(left.turn));
     }
-    // Brought up from below the view; on release it is flung forward and out of sight.
-    const flung = throwing > 0 ? 1 - throwing : 0;
-    _handOffset.set(0.16 - flung * 0.05, -0.34 + hold * 0.15 + local.bob.y * 0.5, -0.36 - flung * 0.9);
-    _handOffset.applyQuaternion(this.camera.quaternion);
-    group.position.copy(this.camera.position).add(_handOffset);
-    group.quaternion.copy(this.camera.quaternion);
-    group.rotateX(-0.35 + local.sway.y * 4).rotateZ(0.25 + local.sway.x * 4);
+    return { weight, offset, turn, left };
+  }
+
+  /** The grenade itself, in the right hand of whichever body is shown, until it's thrown. */
+  private placeHandGrenade(local: LocalPlayer, now: number) {
+    const { group, pin, lever } = this.handGrenade;
+    const throwing = local.throwAnim;
+    const rig = local.thirdPerson && !local.throughSight ? this.tpp : this.fpp;
+    const palm = rig?.object.visible ? rig.inst?.bones.get("hand_r") : undefined;
+    group.visible = !!palm && local.alive && !local.emote && (throwing > 0 ? 1 - throwing < THROW_RELEASE : local.grenadeHold > 0.05);
+    local.handGrenade = null;
+    if (!group.visible || !palm) return;
+    palm.updateMatrixWorld(true);
+    group.position.copy(GRENADE_IN_HAND).applyMatrix4(palm.matrixWorld);
+    palm.getWorldQuaternion(group.quaternion);
+    // Throws (and the aiming arc) leave from the grenade in hand, unless it's poking into a wall.
+    if (throwing === 0 && this.world) {
+      _toHand.subVectors(group.position, local.eye);
+      const reach = _toHand.length();
+      const wall = raycastWorld(this.R, this.world, local.eye.toArray() as V3, _toHand.divideScalar(reach).toArray() as V3, reach + GRENADE_BODY.radius);
+      if (!wall) local.handGrenade = group.position.toArray() as V3;
+    }
+    // The lever flies off on the throw. The pin stays in until the left hand pulls it; it rides
+    // along in that hand's pinch and is dropped out of view.
+    lever.visible = throwing === 0;
+    const pull = (now - this.pinAt) / PIN_PULL_MS;
+    const hand = rig && rig === this.fpp ? rig.inst?.bones : undefined;
+    pin.visible = !!hand && pull < 0.62;
+    if (!pin.visible || !hand) return;
+    pin.position.copy(PIN_IN_GRENADE);
+    if (this.pinPulled > 0.02) {
+      group.updateMatrixWorld(true);
+      const index = hand.get("index_04_leaf_l"), thumb = hand.get("thumb_04_leaf_l");
+      if (index && thumb) {
+        _pinch.setFromMatrixPosition(index.matrixWorld).add(_pinRing.setFromMatrixPosition(thumb.matrixWorld)).multiplyScalar(0.5);
+        pin.position.lerpVectors(PIN_IN_GRENADE, group.worldToLocal(_pinch), Math.min(1, this.pinPulled * 3));
+      }
+    }
   }
 
   private onKill(ev: KillEvent) {
@@ -491,7 +602,6 @@ export class Game {
       this.shake = Math.max(0, this.shake - dt * 2.2);
     }
     const airburst = this.updateGrenadeArc(local, now);
-    this.updateHandGrenade(local);
     liveView.x = local.motion.position.x; liveView.z = local.motion.position.z; liveView.yaw = local.yaw; liveView.alive = local.alive;
     const fov = local.alive ? local.currentFov() : 62;
     if (this.camera.fov !== fov) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
@@ -519,6 +629,7 @@ export class Game {
       ads: local.ads, optic: local.optic, reload: local.reloadProgress, recoil: local.recoil,
       bob: local.bob, sway: local.sway, tuck: local.tuck, throwing: Math.max(local.throwAnim, local.grenadeHold), lean: local.lean,
       sinceShot: local.sinceShot(now), sinceDraw: local.sinceDraw(now), emote: local.emote,
+      grenade: this.grenadeArm(local, dt, now),
     };
     if (local.emote) s.yaw = local.emoteYaw;
     this.fpp?.setWeapon(local.weapon); this.tpp?.setWeapon(local.weapon);
@@ -528,6 +639,7 @@ export class Game {
     this.tpp?.setVisible(((local.thirdPerson || !!local.emote) && !local.throughSight) || !local.alive);
     if (this.fpp?.object.visible) this.fpp.update(dt, s);
     if (this.tpp?.object.visible) this.tpp.update(dt, s);
+    this.placeHandGrenade(local, now);
     this.room.state.grenades?.forEach((g, id) => {
       let mesh = this.grenadeMeshes.get(id);
       if (!mesh) { mesh = new THREE.Mesh(this.grenadeGeo, this.grenadeMat); this.grenadeMeshes.set(id, mesh); this.scene.add(mesh); mesh.position.set(g.x, g.y, g.z); }
@@ -643,35 +755,9 @@ function createGrenadeArc() {
   return { group, flight, roll, marker, blast, burst, dot };
 }
 
-/**
- * A frag grenade (olive body, steel lever and pull ring) held in a gloved hand, with the sleeve
- * running down to the lower right of the view; the hand is hidden in third person.
- */
+/** A frag grenade for the hand: olive body, steel fuse, lever and pull ring. */
 function createHandGrenade() {
   const group = new THREE.Group();
-  const hand = new THREE.Group();
-  const glove = new THREE.MeshStandardMaterial({ color: "#2e3229", roughness: 0.85 });
-  const sleeve = new THREE.MeshStandardMaterial({ color: "#3b5f93", roughness: 0.9 });
-  const part = (geometry: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0) => {
-    const m = new THREE.Mesh(geometry, mat);
-    m.position.set(x, y, z);
-    m.rotation.set(rx, ry, rz);
-    hand.add(m);
-    return m;
-  };
-  // A rounded palm cupped under the grenade, four capsule fingers curled over its front and a
-  // thumb across the side, then wrist and sleeve running back to the lower right of the view.
-  const palm = part(new THREE.SphereGeometry(0.042, 14, 10), glove, 0.006, -0.038, 0.018);
-  palm.scale.set(1.05, 0.55, 1.15);
-  const finger = new THREE.CapsuleGeometry(0.0085, 0.034, 4, 8);
-  for (let i = 0; i < 4; i++) {
-    const x = -0.024 + i * 0.016;
-    part(finger, glove, x, -0.004 - Math.abs(i - 1.5) * 0.004, -0.032, 0.5, 0, 0);
-    part(new THREE.SphereGeometry(0.0088, 8, 6), glove, x, 0.02 - Math.abs(i - 1.5) * 0.004, -0.025);
-  }
-  part(new THREE.CapsuleGeometry(0.0095, 0.03, 4, 8), glove, 0.036, -0.004, 0.004, 0.2, 0, -0.7);
-  part(new THREE.CylinderGeometry(0.03, 0.034, 0.07, 14), glove, 0.016, -0.068, 0.06, 1.15, 0, -0.3);
-  part(new THREE.CylinderGeometry(0.038, 0.05, 0.34, 14), sleeve, 0.07, -0.13, 0.21, 1.15, 0, -0.3);
   const steel = new THREE.MeshStandardMaterial({ color: "#8a8d86", roughness: 0.4, metalness: 0.6 });
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.034, 14, 10), new THREE.MeshStandardMaterial({ color: "#4e593c", roughness: 0.65 }));
   body.scale.set(1, 1.18, 1);
@@ -683,8 +769,8 @@ function createHandGrenade() {
   const pin = new THREE.Mesh(new THREE.TorusGeometry(0.013, 0.0025, 6, 16), steel);
   pin.position.set(-0.016, 0.052, 0);
   pin.rotation.y = Math.PI / 2;
-  group.add(body, cap, lever, pin, hand);
+  group.add(body, cap, lever, pin);
   group.traverse((o) => { if (o instanceof THREE.Mesh) { o.renderOrder = 9; o.frustumCulled = false; } });
   group.visible = false;
-  return { group, pin, lever, hand };
+  return { group, pin, lever };
 }

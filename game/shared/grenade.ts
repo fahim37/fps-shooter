@@ -7,18 +7,23 @@ type Vec3 = [number, number, number];
 
 /** The server's grenade body. The map's colliders keep Rapier's defaults (friction 0.5, no bounce). */
 export const GRENADE_BODY = { radius: 0.07, restitution: 0.38, friction: 0.7, angularDamping: 1.5, density: 3 };
+/** Share of the thrower's horizontal speed, and of a jump's rise, carried into a throw. */
+const CARRY = 0.9;
+const CARRY_UP = 0.6;
 /** Physics steps per second for grenades (Rapier's default step). */
 export const GRENADE_STEP_HZ = 60;
 
 /**
  * Launch velocity of a grenade thrown along `dir` at `power` (lob..1) by a player moving at `vel`.
- * Power 0 drops it: a grenade cooked too long goes off in the thrower's hand.
+ * Like PUBG, the thrower's movement carries into the throw: sprinting or jumping throws farther,
+ * strafing bends the path sideways. Power 0 drops it: a grenade cooked too long goes off in the
+ * thrower's hand.
  */
 export function grenadeVelocity(dir: Vec3, power: number, vel: Vec3): Vec3 {
   const len = Math.hypot(dir[0], dir[1], dir[2]) || 1;
   const thrown = power > 0;
   const speed = thrown ? GRENADE.throwSpeed * Math.min(1, Math.max(GRENADE.lobPower, power)) : 0;
-  return [dir[0] / len * speed + vel[0] * 0.5, dir[1] / len * speed + (thrown ? 2 : 0) + vel[1] * 0.3, dir[2] / len * speed + vel[2] * 0.5];
+  return [dir[0] / len * speed + vel[0] * CARRY, dir[1] / len * speed + (thrown ? 2 : 0) + Math.max(0, vel[1]) * CARRY_UP, dir[2] / len * speed + vel[2] * CARRY];
 }
 
 /** The grenade as the server simulates it: a small, heavy ball that bounces a little and rolls. */

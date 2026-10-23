@@ -1,6 +1,7 @@
 .scope {
   --d: min(86vmin, 96vw);
-  --tube: #040605;
+  /* Outside the lens the game shows through, only dimmed, as in PUBG: no black screen. */
+  --tube: rgb(4 7 6 / 0.38);
   --illum: #ff2b1f;
   --illum-core: #ff8a7d;
   position: absolute;
@@ -13,11 +14,11 @@
 .x6 { --d: min(90vmin, 98vw); }
 .target { --illum: #ff4a3c; --illum-core: #ffd2cb; }
 
-/* Static tube interior around the eyepiece; the moving eyepiece rim always covers its hole. */
+/* A dim tint over the view outside the lens, fading in past the moving eyepiece rim. */
 .surround {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 50% 50%, transparent calc(var(--d) * 0.58), var(--tube) calc(var(--d) * 0.6));
+  background: radial-gradient(circle at 50% 50%, transparent calc(var(--d) * 0.55), var(--tube) calc(var(--d) * 0.64));
 }
 
 .optic {
@@ -71,9 +72,9 @@
     rgb(90 160 255 / 0.32) calc(var(--d) * 0.494),
     rgb(255 120 50 / 0.26) calc(var(--d) * 0.5),
     #010202 calc(var(--d) * 0.504),
-    #161c19 calc(var(--d) * 0.52),
-    #0a0e0c calc(var(--d) * 0.535),
-    var(--tube) calc(var(--d) * 0.56));
+    #161c19 calc(var(--d) * 0.516),
+    rgb(10 14 12 / 0.7) calc(var(--d) * 0.53),
+    transparent calc(var(--d) * 0.58));
 }
 /* Lens coating tint and a soft reflection, both riding with the eyepiece. */
 .eyepiece::before,
@@ -101,7 +102,8 @@
   bottom: 0;
   font: 8px var(--font-geist-mono), monospace;
   letter-spacing: 0.17em;
-  color: #c6d2c8a0;
+  color: #c6d2c8d0;
+  text-shadow: 0 1px 2px #000c;
   text-align: right;
   white-space: nowrap;
 }

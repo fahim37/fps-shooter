@@ -49,7 +49,7 @@ async function main() {
       (window as any).__presentationGame = fiber.memoizedProps.game;
     });
     await page.mouse.down({ button: "right" });
-    const chevron = page.locator('[data-reticle="4x-chevron"]');
+    const chevron = page.locator('[data-reticle="4x-center"]');
     await chevron.waitFor();
     await page.waitForTimeout(700);
     const box = await chevron.boundingBox();

@@ -41,6 +41,8 @@ export interface ServerPlayer {
   lastFireAt: number;
   shotSeq: number;
   grenades: number;
+  /** When the grenade in hand had its pin pulled (its fuse is burning), or 0. */
+  cookingSince: number;
   lastDamageAt: number;
   lastAttacker: string;
   /** Who hurt this player during the current life, and when: assists on death. */
@@ -150,6 +152,11 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     this.onMessage("grenade", (client, m: GrenadeMsg) => {
       const p = this.players.get(client.sessionId);
       if (p) this.throwGrenade(p, m);
+    });
+    // Pin pulled, or the grenade put away again: a player killed with one cooking drops it.
+    this.onMessage("grenade:cook", (client, cooking: unknown) => {
+      const p = this.players.get(client.sessionId);
+      if (p) p.cookingSince = cooking === true && p.st.alive && p.grenades > 0 ? now() : 0;
     });
     this.onMessage("loadout", (client, m: LoadoutMsg) => {
       const p = this.players.get(client.sessionId);
@@ -278,6 +285,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       lastFireAt: 0,
       shotSeq: 0,
       grenades: GRENADES_PER_LIFE,
+      cookingSince: 0,
       lastDamageAt: 0,
       lastAttacker: "",
       damagedBy: new Map(),
@@ -625,6 +633,11 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     target.bot?.onDamaged(attacker);
     if (hp > 0) return false;
 
+    // A grenade cooking in the hand falls with the body and goes off when its fuse runs out.
+    if (target.cookingSince) {
+      const at: V3 = [target.st.x, target.st.y + 1.1, target.st.z];
+      this.spawnGrenade(target, at, [target.vel[0] * 0.5, target.vel[1] * 0.3, target.vel[2] * 0.5], now() - target.cookingSince);
+    }
     target.st.alive = false;
     target.st.emote = "idle";
     target.st.deaths++;
@@ -710,6 +723,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     p.st.protectedUntil = t + SPAWN_PROTECTION_MS;
     p.ammo = fullAmmo();
     p.grenades = GRENADES_PER_LIFE;
+    p.cookingSince = 0;
     p.reloadingUntil = 0;
     p.respawnAt = 0;
     p.lastAttacker = "";
@@ -742,17 +756,22 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     if (!finite(...m.origin, ...m.dir)) return;
     const eye = this.eyePos(p);
     if (Math.hypot(m.origin[0] - eye[0], m.origin[1] - eye[1], m.origin[2] - eye[2]) > 2) return;
-    p.grenades--;
     p.st.protectedUntil = 0;
     const power = finite(m.power) ? clamp(m.power!, 0, 1) : 1;
-    const body = createGrenadeBody(RAPIER, this.world, m.origin, grenadeVelocity(m.dir, power, p.vel));
+    this.spawnGrenade(p, m.origin, grenadeVelocity(m.dir, power, p.vel), finite(m.cooked) ? m.cooked : 0);
+  }
+
+  /** Puts `p`'s grenade in the world at `origin`, its fuse already `cooked` ms burnt. */
+  private spawnGrenade(p: ServerPlayer, origin: V3, vel: V3, cooked: number) {
+    p.grenades--;
+    p.cookingSince = 0;
+    const body = createGrenadeBody(RAPIER, this.world, origin, vel);
     const id = `g${++this.grenadeSeq}`;
     // A grenade cooked to the end goes off in the hand, a moment after it is dropped.
-    const cooked = clamp(finite(m.cooked) ? m.cooked : 0, 0, GRENADE.fuseMs - 50);
-    this.grenades.set(id, { id, owner: p.id, body, explodeAt: now() + GRENADE.fuseMs - cooked });
+    this.grenades.set(id, { id, owner: p.id, body, explodeAt: now() + GRENADE.fuseMs - clamp(cooked, 0, GRENADE.fuseMs - 50) });
     const gs = new GrenadeState();
     gs.owner = p.id;
-    gs.x = m.origin[0]; gs.y = m.origin[1]; gs.z = m.origin[2];
+    gs.x = origin[0]; gs.y = origin[1]; gs.z = origin[2];
     this.state.grenades.set(id, gs);
   }
 
@@ -783,7 +802,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       if (d > GRENADE.radius) continue;
       if (!lineOfSight(RAPIER, this.world, lift, chest) && !lineOfSight(RAPIER, this.world, lift, [p.st.x, p.st.y + 0.3, p.st.z])) continue;
       const k = 1 - d / GRENADE.radius;
-      let dmg = GRENADE.damage * (GRENADE.edgeMult + (1 - GRENADE.edgeMult) * k * k);
+      let dmg = GRENADE.damage * (GRENADE.edgeMult + (1 - GRENADE.edgeMult) * k ** GRENADE.falloffPower);
       if (p === owner) dmg *= 0.5;
       this.damage(p, dmg, owner, "grenade", "body", at);
       if (owner && p !== owner) owner.client?.send("hit", { target: p.id, damage: Math.round(dmg), part: "body", killed: !p.st.alive } satisfies HitConfirm);

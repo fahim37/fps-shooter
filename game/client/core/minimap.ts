@@ -62,7 +62,7 @@ export function mapRelation(id: string, team: number, myId: string, myTeam: numb
 }
 
 /** Meters from your position to the edge of the minimap, which follows you like PUBG's. */
-export const MINIMAP_RANGE = 34;
+export const MINIMAP_RANGE = 28;
 /** Grid spacing drawn on the minimap, in meters. */
 export const MINIMAP_GRID = 10;
 
@@ -72,10 +72,13 @@ export function viewPoint(x: number, z: number, cx: number, cz: number, range = 
   return { x: 50 + (x - cx) * scale, y: 50 + (z - cz) * scale };
 }
 
-/** A point outside the frame pulled onto its edge, so squadmates out of range stay findable. */
+/**
+ * A point outside the frame pulled onto its edge, so squadmates out of range stay findable. The
+ * edge is a circle, since the map turns with you and a square's corners would turn out of view.
+ */
 export function toFrame(point: { x: number; y: number }, inset = 4) {
   const dx = point.x - 50, dy = point.y - 50, limit = 50 - inset;
-  const k = Math.max(Math.abs(dx), Math.abs(dy)) / limit;
+  const k = Math.hypot(dx, dy) / limit;
   return k <= 1 ? { ...point, edge: false } : { x: 50 + dx / k, y: 50 + dy / k, edge: true };
 }
 

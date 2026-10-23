@@ -19,7 +19,7 @@ const Terrain = memo(function Terrain({ map }: { map: MapId }) {
     {overview.roads.map((road, index) => <rect key={index} {...rect(road)} className={styles.road} />)}
     {overview.plazas.map((plaza, index) => <rect key={index} {...rect(plaza)} rx="0.8" className={styles.plaza} />)}
     {overview.buildings.map((building, index) => <rect key={index} {...rect(building)} rx="0.3" className={styles.building} />)}
-    {overview.labels.map((label) => <text key={label.text} x={label.x} y={label.z + 1.1} className={styles.plazaLabel}>{label.text}</text>)}
+    {overview.labels.map((label) => <text key={label.text} x={label.x} y={label.z + 1.1} className={`${styles.plazaLabel} ${styles.upright}`}>{label.text}</text>)}
   </g>;
 });
 
@@ -28,20 +28,24 @@ export const Minimap = memo(function Minimap({ now, map }: { now: number; map: M
   const threats = useHud((state) => state.threats);
   const marks = useHud((state) => state.mapMarks);
   const self = players.find((player) => player.relation === "self");
-  // Like PUBG, the map follows you; while you are down it stays where you fell.
+  // Like PUBG, the map follows you, turned so the way you face is up; while you are down it stays
+  // where you fell.
   const center = useRef({ x: 0, z: 0 });
   if (self) center.current = { x: self.x, z: self.z };
   const { x: cx, z: cz } = center.current;
   const scale = 45 / MINIMAP_RANGE;
-  // The HUD re-renders a few times a second; between renders, shift the map and turn your arrow
-  // every frame from the game's live position so it moves smoothly.
-  const shift = useRef<SVGGElement>(null), arrow = useRef<SVGPathElement>(null);
+  // The HUD re-renders a few times a second; between renders, shift and turn the map every frame
+  // from the game's live position and facing so it moves with the camera. Labels and markers turn
+  // back the other way (--unturn) so they stay upright.
+  const svg = useRef<SVGSVGElement>(null), turn = useRef<SVGGElement>(null), shift = useRef<SVGGElement>(null);
   useEffect(() => {
     let frame = 0;
     const tick = () => {
       if (liveView.alive) {
+        const heading = mapHeading(liveView.yaw);
         shift.current?.setAttribute("transform", `translate(${(cx - liveView.x) * scale} ${(cz - liveView.z) * scale})`);
-        arrow.current?.setAttribute("transform", `rotate(${mapHeading(liveView.yaw)})`);
+        turn.current?.setAttribute("transform", `rotate(${-heading} 50 50)`);
+        svg.current?.style.setProperty("--unturn", `${heading}deg`);
       }
       frame = requestAnimationFrame(tick);
     };
@@ -52,16 +56,16 @@ export const Minimap = memo(function Minimap({ now, map }: { now: number; map: M
   const others = players.filter((player) => player.relation !== "self");
   return <section className={styles.panel} aria-label="Minimap">
     <div className={styles.heading}><span>{MAPS[map].name.toUpperCase()}</span><small>GRID {MINIMAP_GRID} M</small></div>
-    <svg viewBox="0 0 100 100" className={styles.map} role="img" aria-label={`${MAPS[map].name} north-up map centered on you, with your squad, enemy gunfire and footsteps, and recent hit directions`}>
+    <svg ref={svg} viewBox="0 0 100 100" className={styles.map} role="img" aria-label={`${MAPS[map].name} map centered on you and turned to your facing, with your squad, enemy gunfire and footsteps, and recent hit directions`}>
       <defs>
         <linearGradient id="minimap-threat" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stopColor="#ff4a3d" stopOpacity=".9" /><stop offset=".55" stopColor="#ff4a3d" stopOpacity=".35" /><stop offset="1" stopColor="#ff4a3d" stopOpacity="0" /></linearGradient>
       </defs>
+      <g ref={turn}>
       <g ref={shift}>
       <g transform={`translate(${50 - cx * scale} ${50 - cz * scale}) scale(${scale})`}><Terrain map={map} /></g>
       {/* Range rings: 10 and 25 meters around you. */}
       <circle cx="50" cy="50" r={10 * scale} className={styles.ring} />
       <circle cx="50" cy="50" r={25 * scale} className={styles.ring} />
-      <path d="m50 1.5-1.4 2.6h2.8Z" className={styles.northMark} /><text x="50" y="8.6" className={styles.north}>N</text>
       {marks.map((mark) => {
         const strength = markStrength(mark, now);
         if (strength <= 0) return null;
@@ -102,17 +106,24 @@ export const Minimap = memo(function Minimap({ now, map }: { now: number; map: M
         const color = player.relation === "ally" && player.slot !== undefined ? SQUAD_COLORS[player.slot] : undefined;
         return <g key={player.id} transform={`translate(${point.x} ${point.y})`} className={styles[player.relation]} style={color ? { fill: color } : undefined} opacity={point.edge ? 0.75 : 1} data-player-id={player.id} data-relation={player.relation} aria-label={label}>
           <title>{label}</title>
-          <circle r={point.edge ? 1.8 : 2.2} />
-          {player.slot !== undefined && !point.edge && <text y=".95" className={styles.slot}>{player.slot + 1}</text>}
-          {above && <path d="m-1.5-3.2 1.5-1.4L1.5-3.2" className={styles.height} />}
-          {below && <path d="m-1.5 3.2 1.5 1.4L1.5 3.2" className={styles.height} />}
+          <g className={styles.upright}>
+            <circle r={point.edge ? 1.8 : 2.2} />
+            {player.slot !== undefined && !point.edge && <text y=".95" className={styles.slot}>{player.slot + 1}</text>}
+            {above && <path d="m-1.5-3.2 1.5-1.4L1.5-3.2" className={styles.height} />}
+            {below && <path d="m-1.5 3.2 1.5 1.4L1.5 3.2" className={styles.height} />}
+          </g>
         </g>;
       })}
       </g>
-      {/* Your arrow last, so it stays on top. */}
+      {/* North stays on the frame's edge as the map turns. */}
+      <g transform="translate(50 50)"><g transform="translate(0 -43)" className={styles.upright}>
+        <circle r="3.6" className={styles.northDisc} /><text y="1.45" className={styles.north}>N</text>
+      </g></g>
+      </g>
+      {/* Your arrow last, so it stays on top; it always points up, the way you face. */}
       {self && <g transform="translate(50 50)" className={styles.self} data-player-id={self.id} data-relation="self" aria-label={`You: ${self.name}`}>
         <title>{`You: ${self.name}`}</title>
-        <circle r="4.8" className={styles.selfRing} /><path ref={arrow} d="M0-3.8 2.7 2.8 0 1.5-2.7 2.8Z" transform={`rotate(${mapHeading(self.yaw)})`} />
+        <circle r="4.8" className={styles.selfRing} /><path d="M0-3.8 2.7 2.8 0 1.5-2.7 2.8Z" />
       </g>}
     </svg>
     <div className={styles.legend}><span><i className={styles.selfKey} />YOU</span><span><i className={styles.allyKey} />SQUAD</span><span><i className={styles.enemyKey} />ENEMY</span><span><i className={styles.threatKey} />HIT</span></div>

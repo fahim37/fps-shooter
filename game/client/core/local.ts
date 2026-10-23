@@ -28,6 +28,9 @@ function onStone(x: number, z: number, y: number) {
   return y > 0.05 || Math.abs(x) < 12 && Math.abs(z) < 12 || Math.abs(z) < 3 || Math.abs(x) < 3;
 }
 
+/** A throw's swing and follow-through take 1 / this seconds. */
+const THROW_ANIM_RATE = 2.4;
+
 export class LocalPlayer {
   readonly ms: MoveState;
   private mover: Mover;
@@ -67,7 +70,7 @@ export class LocalPlayer {
   private grenadeAt = 0;
   private fuseAt = 0;
   /** An underhand lob instead of a full throw (right mouse while aiming). */
-  private lob = false;
+  lob = false;
   /** Next fuse tick sound while a cooked grenade is held. */
   private tickAt = 0;
   /** 0..1, eases in while a grenade is in hand: the gun lowers and the grenade comes up. */
@@ -178,6 +181,7 @@ export class LocalPlayer {
 
   cancelActions() {
     // Opening a menu or editing the HUD must not turn a held grenade into a throw.
+    if (this.grenadeAt) this.game.send("grenade:cook", false);
     this.grenadeAt = this.fuseAt = 0;
     this.triggerReleased = true;
     this.emoteMenu = false;
@@ -252,6 +256,7 @@ export class LocalPlayer {
       this.endEmote(now);
       this.grenadeAt = this.fuseAt = now;
       this.tickAt = now + 500;
+      this.game.send("grenade:cook", true);
       audio.grenadePin();
     }
     if (this.grenadeAt) {
@@ -266,7 +271,7 @@ export class LocalPlayer {
         this.tickAt = now + (left < 1000 ? 250 : 500);
       }
     }
-    this.throwAnim = Math.max(0, this.throwAnim - dt * 3);
+    this.throwAnim = Math.max(0, this.throwAnim - dt * THROW_ANIM_RATE);
     this.grenadeHold += ((this.grenadeAt ? 1 : 0) - this.grenadeHold) * Math.min(1, dt * 12);
 
     // Reload completion.
@@ -539,13 +544,17 @@ export class LocalPlayer {
   /** Where a throw leaves the hand, which way and how hard: shared by the throw and its aiming arc. */
   grenadeThrow() {
     return {
-      origin: [this.eye.x, this.eye.y - 0.1, this.eye.z] as V3,
+      origin: this.handGrenade ?? [this.eye.x, this.eye.y - 0.1, this.eye.z] as V3,
       dir: aimDir(this.yaw, this.pitch + 0.12),
       power: this.lob ? GRENADE.lobPower : 1,
     };
   }
 
   get cooked() { return this.fuseAt > 0; }
+  /** Where the grenade in hand is, set by the game each frame it's shown, so a throw leaves from it. */
+  handGrenade: V3 | null = null;
+  /** When the grenade in hand was drawn (its pin pulled), or 0. */
+  get drawnGrenadeAt() { return this.grenadeAt; }
 
   /** Grenade in hand: whether it will be lobbed, and the fuse left (ms) once cooked. */
   grenadeAim(now: number) {

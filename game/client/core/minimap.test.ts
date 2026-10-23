@@ -37,8 +37,8 @@ describe("player-centered minimap", () => {
     expect(toFrame({ x: 60, y: 40 })).toEqual({ x: 60, y: 40, edge: false });
     const far = toFrame({ x: 50 + 230, y: 50 - 115 });
     expect(far.edge).toBe(true);
-    expect(far.x).toBeCloseTo(96);
-    expect(far.y).toBeCloseTo(50 - 23);
+    expect(far.x).toBeCloseTo(50 + 46 * 2 / Math.sqrt(5));
+    expect(far.y).toBeCloseTo(50 - 46 / Math.sqrt(5));
   });
   it("replaces a shooter's previous gunfire mark but builds a footprint trail", () => {
     let marks: MapMark[] = [];
