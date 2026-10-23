@@ -40,15 +40,11 @@ function FourTimes({ glow }: { glow: string }) {
   </>;
 }
 
-/** Long-range duplex with mil dots and a stadia rangefinder. */
+/** Long-range duplex with a stadia rangefinder; the red center is the only dot. */
 function SixTimes({ glow }: { glow: string }) {
-  const mils = [50, 100, 150, 200, 250];
   return <>
     <Wire w={10} d="M0 500H220 M780 500H1000 M500 0V220 M500 780V1000" />
     <Wire w={1.6} d="M220 500H490 M510 500H780 M500 220V490 M500 510V780 M240 712H404 M244 712V634 Q300 700 404 704" />
-    <g className={styles.dots}>
-      {mils.flatMap((m) => [[500 - m, 500], [500 + m, 500], [500, 500 - m], [500, 500 + m]]).map(([x, y]) => <circle key={`${x}-${y}`} cx={x} cy={y} r="4.2" />)}
-    </g>
     {[[254, "2"], [298, "4"], [344, "6"], [392, "8"]].map(([x, label]) => <Engraving key={label} x={Number(x)} y={735}>{label}</Engraving>)}
     <g className={styles.illum} filter={`url(#${glow})`}>
       <circle cx="500" cy="500" r="3.4" />
