@@ -136,9 +136,9 @@ function ChannelButton({ channel, session, live, pressed, label, title, children
 }
 
 /**
- * Icon bar: under the scores in a match, in the header of the waiting room. Hold Team / All (or
- * N / M) to talk on that channel; the mic button keeps the microphone open on the selected
- * channel instead. Either turns the microphone on first.
+ * Voice bar: under the scores in a match, in the header of the waiting room. Each button says
+ * what it is: hold TEAM / ALL (or N / M) to talk on that channel, and MIC keeps the microphone
+ * open on the selected channel instead. The gear opens a short settings panel.
  */
 export function VoiceChat({ room, session, placement = "match" }: { room: GameRoom; session: VoiceSession; placement?: "match" | "room" }) {
   const teams = room.state?.mode === "tdm";
@@ -151,38 +151,58 @@ export function VoiceChat({ room, session, placement = "match" }: { room: GameRo
   // can still be briefly missing while a reconnect resyncs it.
   const players = room.state?.players;
   const me = players?.get(room.sessionId);
+  const nameOf = (id: string) => players?.get(id)?.name ?? "Player";
   const speakers = state.enabled ? state.members.filter((m) => m.id !== room.sessionId && m.talking && !state.deafened && !state.mutedPeers.includes(m.id)
     && (state.hearAll || m.channel !== "all") && canHearVoice(m.channel, players?.get(m.id)?.team ?? 0, me?.team ?? 0, room.state.mode)) : [];
   const live = (channel: VoiceChannel) => state.talking && state.channel === channel;
-  const micTitle = state.pending ? "Waiting for microphone…" : !state.mic ? "Mic is off (you still hear voice). Click to turn it on with an open mic" : openMic ? "Mic open: everyone on your channel hears you. Click for push-to-talk" : "Push-to-talk (hold N / M). Click to keep the mic open";
+  const open = openMic && state.mic;
+  const to = (channel: VoiceChannel) => channel === "team" ? "your team" : "everyone";
+  const status = !state.enabled ? "You left voice: you can't hear anyone."
+    : state.pending ? "Allow the microphone in your browser…"
+    : state.talking ? `Talking to ${to(state.channel)}`
+    : open ? `Mic on: ${to(selected)} can hear you`
+    : `Mic off: you can hear others${state.connected ? ` (${state.connected} in voice)` : ""}`;
+  const others = state.members.filter((m) => m.id !== room.sessionId && m.mic);
   return <aside className={`${styles.voice} ${placement === "room" ? styles.room : ""}`} aria-label="Voice chat" data-voice={state.mic ? "on" : state.pending ? "pending" : "off"} data-talking={state.talking ? state.channel : ""} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
     <div className={styles.bar}>
-      {placement === "room" && <span className={styles.caption}>VOICE</span>}
-      {teams && <ChannelButton channel="team" session={session} live={live("team")} pressed={state.mic && selected === "team"} label="Team voice" title="Team voice: hold to talk to your team (N)"><TeamIcon /></ChannelButton>}
-      <ChannelButton channel="all" session={session} live={live("all")} pressed={state.mic && selected === "all"} label="All voice" title={`All voice: hold to talk to everyone (${teams ? "M" : "N / M"})`}><AllIcon /></ChannelButton>
-      <button type="button" className={`${styles.mic} ${openMic && state.mic ? styles.open : ""}`} aria-label="Open mic" title={micTitle} aria-pressed={openMic} aria-busy={state.pending} disabled={state.pending}
-        onClick={() => session.setOpenMic(!openMic || !state.mic)}><MicIcon open={openMic && state.mic} /></button>
+      {teams && <ChannelButton channel="team" session={session} live={live("team")} pressed={open && selected === "team"} label="Team voice" title="Hold to talk to your team (or hold N)"><TeamIcon /><span>TEAM</span></ChannelButton>}
+      <ChannelButton channel="all" session={session} live={live("all")} pressed={open && selected === "all"} label="All voice" title={`Hold to talk to everyone (or hold ${teams ? "M" : "N"})`}><AllIcon /><span>ALL</span></ChannelButton>
+      <button type="button" className={`${styles.mic} ${open ? styles.open : ""}`} aria-label="Open mic" title={open ? "Mic on: click to turn it off" : "Click to keep your mic on (no key needed)"} aria-pressed={open} aria-busy={state.pending} disabled={state.pending}
+        onClick={() => session.setOpenMic(!open)}><MicIcon open={open} /><span>{state.pending ? "…" : open ? "MIC ON" : "MIC OFF"}</span></button>
       <button type="button" className={styles.more} aria-label="Voice settings" title="Voice settings" aria-expanded={panel} onClick={() => setPanel(!panel)}><MoreIcon /></button>
     </div>
-    {speakers.length > 0 && <p className={styles.speakers} aria-live="polite">{speakers.map((m) => `${players?.get(m.id)?.name ?? "Player"} (${m.channel})`).join(", ")}</p>}
+    {!panel && speakers.length > 0 && <p className={styles.speakers} aria-live="polite">{speakers.map((m) => <span key={m.id}>{nameOf(m.id)} ({m.channel === "team" ? "team" : "all"})</span>)}</p>}
     {!panel && state.error && <p className={styles.error} role="alert">{state.error}</p>}
-    {panel && <div className={styles.panel}>
-      <strong>Voice chat</strong>
-      <p>Everyone hears All voice{teams ? " and their own team" : ""} from the start; switch All off below if you only want your team. {teams ? "Hold the team button or N to talk to your team, the globe or M to talk to everyone." : "Hold the globe, N or M to talk to everyone."} The mic button keeps your microphone open on the selected channel.</p>
-      {!state.enabled ? <button type="button" onClick={() => client.listen()}>LISTEN TO VOICE</button> : <>
-        <p role="status">{state.mic ? `${state.connected} connected · ${state.talking ? `Talking to ${state.channel === "team" ? "your team" : "everyone"}` : openMic ? "Mic open" : "Push-to-talk"}` : `Listening · mic off · ${state.connected} connected`}</p>
-        <div className={styles.actions}>
-          <button type="button" aria-pressed={state.hearAll} onClick={() => client.hearAll(!state.hearAll)}>{state.hearAll ? "All voice: on" : "All voice: off"}</button>
-          <button type="button" aria-pressed={state.deafened} onClick={() => client.deafen()}>{state.deafened ? "Enable sound" : "Mute sound"}</button>
+    {panel && <div className={styles.panel} role="dialog" aria-label="Voice settings">
+      <div className={styles.head}><strong>Voice chat</strong><button type="button" className={styles.close} aria-label="Close voice settings" onClick={() => setPanel(false)}>✕</button></div>
+      <p className={styles.status} role="status" data-on={state.talking || open}>{status}</p>
+      {!state.enabled ? <button type="button" className={styles.primary} onClick={() => client.listen()}>JOIN VOICE</button> : <>
+        <div className={styles.keys}>
+          {teams && <span><kbd>N</kbd> hold to talk to your team</span>}
+          <span><kbd>{teams ? "M" : "N"}</kbd> hold to talk to everyone</span>
         </div>
-        <label>Voice volume<input aria-label="Voice volume" type="range" min="0" max="1" step="0.05" value={state.volume} onChange={(e) => client.volume(Number(e.target.value))} /></label>
-        {state.members.filter((m) => m.id !== room.sessionId && m.mic).map((m) => <div className={styles.member} key={m.id}><span>{players?.get(m.id)?.name ?? "Player"}</span><button type="button" aria-label={`Mute ${players?.get(m.id)?.name ?? "Player"}`} aria-pressed={state.mutedPeers.includes(m.id)} onClick={() => client.mutePeer(m.id)}>{state.mutedPeers.includes(m.id) ? "Unmute" : "Mute"}</button></div>)}
-        {state.mic ? <button type="button" onClick={() => client.micOff()}>TURN MIC OFF</button>
-          : <button type="button" disabled={state.pending} onClick={() => void client.join()}>{state.pending ? "Waiting for microphone…" : "TURN MIC ON"}</button>}
-        <button type="button" onClick={() => client.leave()}>LEAVE VOICE</button>
+        <Toggle label="Mic always on" hint="Talk without holding a key" on={open} disabled={state.pending} onChange={(on) => session.setOpenMic(on)} />
+        {teams && open && <div className={styles.segment} role="radiogroup" aria-label="Mic talks to">
+          {(["team", "all"] as const).map((c) => <button key={c} type="button" role="radio" aria-checked={selected === c} onClick={() => session.select(c)}>{c === "team" ? "My team" : "Everyone"}</button>)}
+        </div>}
+        {teams && <Toggle label="Hear everyone" hint={state.hearAll ? "Your team and the other team" : "Only your team"} on={state.hearAll} onChange={(on) => client.hearAll(on)} />}
+        <Toggle label="Voice sound" hint={state.deafened ? "Muted: you hear no one" : "On"} on={!state.deafened} onChange={() => client.deafen()} />
+        <label className={styles.volume}><span>Volume</span><input aria-label="Voice volume" type="range" min="0" max="1" step="0.05" value={state.volume} onChange={(e) => client.volume(Number(e.target.value))} /></label>
+        {others.length > 0 && <div className={styles.members}>
+          <span className={styles.label}>PLAYERS IN VOICE</span>
+          {others.map((m) => <div className={styles.member} key={m.id}><span>{nameOf(m.id)}</span><button type="button" aria-label={`Mute ${nameOf(m.id)}`} aria-pressed={state.mutedPeers.includes(m.id)} onClick={() => client.mutePeer(m.id)}>{state.mutedPeers.includes(m.id) ? "Unmute" : "Mute"}</button></div>)}
+        </div>}
+        <button type="button" className={styles.leave} onClick={() => client.leave()}>Leave voice</button>
       </>}
-      {state.soundBlocked && <button type="button" onClick={() => void client.resumeSound()}>ENABLE VOICE AUDIO</button>}
-      {state.error && <p role="alert">{state.error}</p>}
+      {state.soundBlocked && <button type="button" className={styles.primary} onClick={() => void client.resumeSound()}>ENABLE VOICE AUDIO</button>}
+      {state.error && <p className={styles.error} role="alert">{state.error}</p>}
     </div>}
   </aside>;
+}
+
+/** An on / off row: the label and what the current setting means, with a switch. */
+function Toggle({ label, hint, on, disabled, onChange }: { label: string; hint: string; on: boolean; disabled?: boolean; onChange: (on: boolean) => void }) {
+  return <button type="button" role="switch" aria-checked={on} className={styles.toggle} disabled={disabled} onClick={() => onChange(!on)}>
+    <span><b>{label}</b><small>{hint}</small></span><i aria-hidden="true" />
+  </button>;
 }

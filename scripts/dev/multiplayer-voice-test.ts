@@ -155,10 +155,11 @@ async function main() {
     await all.dispatchEvent("pointercancel", { pointerId: 1 });
     await host.mouse.up();
     await waitUntil(async () => await enabledTracks(host) === 0);
-    assert.equal(await all.getAttribute("aria-pressed"), "true", "The All icon becomes the selected channel");
-    // Open mic transmits continuously on the selected channel; push-to-talk keys still override it.
+    assert.equal(await all.getAttribute("aria-pressed"), "false", "Only an open mic marks its channel");
+    // Open mic transmits continuously on the selected channel (All, the last one held); push-to-talk keys still override it.
     await icon(host, "Open mic").click();
     await waitUntil(async () => await enabledTracks(host) === 2);
+    assert.equal(await all.getAttribute("aria-pressed"), "true", "The All icon became the selected channel");
     await host.keyboard.down("n");
     await waitUntil(async () => await enabledTracks(host) === 1);
     await host.keyboard.up("n");
@@ -178,7 +179,7 @@ async function main() {
       return stats.every((report) => [...report.values()].some((entry) => entry.type === "inbound-rtp" && entry.kind === "audio" && entry.packetsReceived > 0));
     }));
     await host.screenshot({ path: "out/qa/voice-chat.png" });
-    await host.getByRole("button", { name: "LEAVE VOICE", exact: true }).click();
+    await host.getByRole("button", { name: "Leave voice", exact: true }).click();
     assert.ok(await host.evaluate(() => (window as TestWindow).voiceStreams.every((stream) => stream.getTracks().every((track) => track.readyState === "ended"))), "Leaving stops microphone capture");
     assert.equal(await host.locator("audio[data-voice-peer]").count(), 0);
     assert.equal(await icon(host, "Open mic").getAttribute("aria-pressed"), "false");

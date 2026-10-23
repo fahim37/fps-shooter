@@ -736,3 +736,7 @@ small { display: block; }
 /* Narrow phones: tab labels only, so "With friends" fits. */
 @media (max-width: 440px) { .play-tabs button svg { display: none; } }
 .play-tabs button[aria-selected=true]:hover:not(:disabled) { border-color: var(--accent); background: var(--accent); color: var(--ink); }
+
+/* The room header (and the voice panel that drops down from it) sits above the lineup and the
+   operator preview, which paint later in their own animated layers. */
+.room-top { position: relative; z-index: 30; }
