@@ -319,6 +319,8 @@ export class LocalPlayer {
     }
     this.updateView();
     if (input.fire) this.tryFire(now);
+    // An empty magazine always reloads by itself (startReload waits out weapon switches).
+    if (this.ammo[this.weapon].mag === 0 && !this.reloading && !this.grenadeAt && !this.emote) this.startReload(now);
 
     // ---- recoil recovery
     const rec = Math.exp(-dt * 11);
