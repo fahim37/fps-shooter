@@ -27,8 +27,8 @@ const SRC = path.join(RAW, "resoforge/map.glb");
 /** Repaints by source material (sRGB hex). Others keep their colors (grays, tan wood). */
 const REPAINT: Record<string, string> = {
   material_3: "#6d7448", //  red props → olive drab
-  material_9: "#b9a47c", //  orange-red floors, crates and wall caps → sand
-  material_6: "#a8873e", //  orange building → ochre
+  material_9: "#9a9d97", //  orange-red floors, crates and wall caps → sand
+  material_6: "#66765a", //  orange building → ochre
   blue: "#4d6157", //        blue trims → slate green
 };
 
