@@ -62,7 +62,7 @@ export function mapRelation(id: string, team: number, myId: string, myTeam: numb
 }
 
 /** Meters from your position to the edge of the minimap, which follows you like PUBG's. */
-export const MINIMAP_RANGE = 46;
+export const MINIMAP_RANGE = 34;
 /** Grid spacing drawn on the minimap, in meters. */
 export const MINIMAP_GRID = 10;
 
