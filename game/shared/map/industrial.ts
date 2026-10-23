@@ -92,7 +92,7 @@ function westHalf(l: Layout) {
   l.both("Crate", -19, -25.5, 0.7, 1.3);
   l.both("Crate_Small", -17.8, -26.4, 0.1);
   // A container across the gap between the trailers and the workshop.
-  l.both("Container_Blue", -12.5, -37.5, 0);
+  l.both("Container_White", -12.5, -37.5, 0);
   l.both("Drain", -20, -37, PI / 2);
 
   // --- Middle lane: approaches to the dock. Every line from one spawn to the other crosses
@@ -100,7 +100,7 @@ function westHalf(l: Layout) {
   l.both("Skips_Dark", -28.5, 0, 0);
   l.both("GasTanks", -21, -10.5, 0);
   l.both("Pallet_TarpStack", -30, -15.5, 0);
-  l.both("Container_Red", -24, 9.5, PI / 2);
+  l.both("Container_Yellow", -24, 9.5, PI / 2);
   l.both("Barrier_Low", -20.5, -1.7, PI / 2);
   l.both("Barrier_Low", -20.5, 0, PI / 2);
   l.both("Barrier_Low", -20.5, 1.7, PI / 2);
@@ -126,7 +126,7 @@ function westHalf(l: Layout) {
   l.both("Pallet_TarpStack", -14.5, 27.5, 0);
   l.both("Drums_Blue", -17.5, 30, 0.3);
   l.both("Skip_Green", -36.5, 27, PI / 2);
-  l.both("Container_Green", -28, 27, 0);
+  l.both("Container_Olive", -28, 27, 0);
   l.both("Bin", -19.5, 22.5, 0.2);
   l.both("Spool_Flat", -6, 25, 0);
   l.both("Barrier_Low", -5.2, 28.5, 0.15);
@@ -138,7 +138,7 @@ function center(l: Layout) {
   // The depot: a warehouse to fight through. A container down its middle splits the floor in
   // two (joined around both ends) and blocks the line from one roller door to the other.
   l.one("Depot", 0, 0, 0);
-  l.one("Container_Blue", 0, 0.83, PI / 2);
+  l.one("Container_Olive", 0, 0.83, PI / 2);
   l.both("Crate", -7.4, 4.4, 0.1);
   l.both("Crate_Small", -6.2, 5.3, -0.15);
   l.both("Crate", -3.4, 2.4, 0.2);

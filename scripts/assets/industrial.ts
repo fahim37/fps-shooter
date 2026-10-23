@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import sharp from "sharp";
 import type * as THREE_NS from "three";
 import { Document, type Material, type Node, type Scene, type Texture } from "@gltf-transform/core";
 import {
@@ -227,15 +228,16 @@ const MATERIALS = ["Color", "Color_Profile", "Color_Wood", "Color_Brick", "Branc
 const swatch = (col: number, row: number): [number, number] => [(col * 16 + 8) / 256, 1 - (row * 16 + 8) / 256];
 const STEEL = swatch(4, 2); //     #616268
 const TREAD = swatch(15, 2); //    #8e8e8e
-const RAIL = swatch(2, 1); //      #bc4a3c, safety red
+const RAIL = swatch(2, 1); //      safety yellow
 const DARK = swatch(4, 1); //      #444549
 const CONCRETE = swatch(0, 2); //  #a5a5a4
 const CLADDING = swatch(0, 1); //  #b5b4b3
-const ROOF = swatch(5, 1); //      #345168, the kit warehouse's blue
-const TRIM = swatch(5, 3); //      #386589
+// Colors as recolored by recoloredPalette: the pack's blues are olive-green, its reds ochre.
+const ROOF = swatch(5, 1); //      the kit warehouse's roof color
+const TRIM = swatch(5, 3);
 const WOOD = swatch(1, 0); //      #ba8c63
 const WOOD_DARK = swatch(1, 2); // #6b5039
-const CONTAINER_COLORS = { Container_Red: swatch(2, 1), Container_Blue: swatch(5, 3), Container_Green: swatch(10, 2) };
+const CONTAINER_COLORS = { Container_Yellow: swatch(2, 1), Container_White: swatch(0, 0), Container_Olive: swatch(10, 2) };
 
 // Slots in MATERIALS: the profile and wood materials tile their normal maps over UV1.
 const M_PLAIN = 0, M_PROFILE = 1, M_WOOD = 2, M_GLASS = 6;
@@ -522,10 +524,45 @@ function addPiece(doc: Document, scene: Scene, name: string, soup: Soup, mats: M
   return node;
 }
 
-function createMaterials(doc: Document): Material[] {
+/**
+ * The pack's palette with its reds turned ochre-yellow and its blues olive-green. Players wear
+ * blue and red, so the yard keeps those two colors for them: red trailers, safety rails and
+ * blue roofs would otherwise blend with a teammate or an enemy. Lightness is kept, so every
+ * piece reads the same, just in other colors. (Piece names such as Trailer_Red keep the pack's.)
+ */
+async function recoloredPalette(file: string): Promise<Uint8Array> {
+  const { data, info } = await sharp(file).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  for (let i = 0; i < data.length; i += 4) {
+    const [h, s, l] = rgbToHsl(data[i], data[i + 1], data[i + 2]);
+    if (s < 0.18) continue;
+    const red = h < 22 || h > 330, blue = h > 190 && h < 255;
+    if (!red && !blue) continue;
+    const [r, g, b] = hslToRgb(red ? 42 : 100, s * (red ? 0.95 : 0.45), l);
+    data[i] = r; data[i + 1] = g; data[i + 2] = b;
+  }
+  return new Uint8Array(await sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer());
+}
+
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+  if (d === 0) return [0, 0, l];
+  const s = d / (1 - Math.abs(2 * l - 1));
+  const h = max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, s, l];
+}
+
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = l - c / 2;
+  const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+}
+
+async function createMaterials(doc: Document): Promise<Material[]> {
   const tex = (file: string, name: string): Texture =>
     doc.createTexture(name).setImage(fs.readFileSync(path.join(DIR, "textures", file))).setMimeType("image/png").setURI(`${name}.png`);
-  const palette = tex("Color.png", "industrial_palette");
+  const palette = doc.createTexture("industrial_palette").setImage(await recoloredPalette(path.join(DIR, "textures", "Color.png")))
+    .setMimeType("image/png").setURI("industrial_palette.png");
   const normals = {
     Color_Profile: tex("Normal.png", "industrial_profile_n"),
     Color_Wood: tex("normal_wood.png", "industrial_wood_n"),
@@ -536,7 +573,8 @@ function createMaterials(doc: Document): Material[] {
     // Names matter on the client: "Leaves" gets alpha-test foliage handling, "Glass" a glossy finish.
     const m = doc.createMaterial(name === "Glass" ? "Industrial_Glass" : name in leaves ? `Leaves_${name}` : `Industrial_${name}`)
       .setRoughnessFactor(0.85).setMetallicFactor(0).setDoubleSided(true);
-    if (name === "Glass") return m.setBaseColorFactor([0.34, 0.4, 0.62, 1]).setRoughnessFactor(0.15);
+    // Smoky gray-green rather than the pack's blue (see recoloredPalette).
+    if (name === "Glass") return m.setBaseColorFactor([0.3, 0.36, 0.34, 1]).setRoughnessFactor(0.15);
     if (name in leaves) return m.setBaseColorTexture(leaves[name as keyof typeof leaves]).setAlphaMode("MASK").setAlphaCutoff(0.5);
     m.setBaseColorTexture(palette);
     if (name in normals) {
@@ -557,7 +595,7 @@ export async function importIndustrial() {
   const doc = new Document();
   doc.createBuffer();
   const scene = doc.createScene("kit");
-  const mats = createMaterials(doc);
+  const mats = await createMaterials(doc);
   const collision = new Map<string, CollisionMesh | null>();
   const pieces: Record<string, PieceInfo> = {};
   const nodes: Node[] = [];
