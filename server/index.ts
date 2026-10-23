@@ -4,8 +4,20 @@ import { initWorldData } from "./world";
 import { ROOM_NAME } from "../game/shared/constants";
 import type { RoomMeta } from "../game/shared/messages";
 import type { Application } from "express";
+import { analytics } from "./analytics/recorder";
+import { MongoStore } from "./analytics/mongoStore";
+import { adminConfigFromEnv } from "./admin/auth";
+import { createAdminApi, mountAdminApi } from "./admin/http";
 
 const port = Number(process.env.PORT || 2567);
+
+// Player analytics go to MongoDB without ever blocking the game; ANALYTICS_DISABLED=1 turns recording off.
+const retentionDays = Number(process.env.ANALYTICS_RETENTION_DAYS ?? 180);
+const store = process.env.ANALYTICS_DISABLED === "1" ? null
+  : new MongoStore(process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/hollowmere", Number.isFinite(retentionDays) ? retentionDays : 180);
+analytics.start(store);
+const adminConfig = adminConfigFromEnv();
+if (!adminConfig.enabled) console.log("[admin] dashboard API disabled (set ADMIN_USERNAME and ADMIN_PASSWORD_HASH to enable)");
 
 const server = defineServer({
   rooms: {
@@ -19,6 +31,13 @@ const server = defineServer({
       res.setHeader("Access-Control-Allow-Origin", "*");
       next();
     });
+    // Admin dashboard API (cookie auth; same-origin under /fps/server in production).
+    mountAdminApi(app, createAdminApi({
+      config: adminConfig,
+      store: () => store,
+      storage: () => analytics.queue.status,
+      live: () => analytics.live(),
+    }), adminConfig);
     app.get("/health", (_req, res) => {
       res.json({ ok: true });
     });
@@ -49,6 +68,8 @@ const server = defineServer({
 
 // COLYSEUS_LATENCY=150 simulates a 150 ms round trip for testing netcode.
 if (process.env.SIM_LATENCY_MS) process.env.COLYSEUS_LATENCY = process.env.SIM_LATENCY_MS;
+
+server.onShutdown(() => analytics.stop());
 
 server.listen(port, process.env.HOST || "0.0.0.0").then(() => {
   console.log(`[server] Hollowmere game server on ws://localhost:${port}`);

@@ -14,6 +14,8 @@ export interface JoinOptions {
   /** Preferred team when joining TDM; omitted/0 assigns an available team. */
   team?: 0 | 1 | 2;
   queue?: "quick" | "rooms";
+  /** Anonymous id this browser keeps across visits (admin analytics only). */
+  pid?: string;
   create?: {
     mode: GameMode;
     maxPlayers: number;

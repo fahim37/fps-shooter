@@ -24,6 +24,7 @@ import { NAME_MAX, randomName } from "../game/shared/names";
 import { startBlockReason } from "../game/shared/lobby";
 import { canEmote, canShowoff } from "../game/shared/showcase";
 import { VoiceRelay, voiceIceServers } from "./voice";
+import { analytics, connectionInfo, type ConnectionInfo, type RoomRecorder } from "./analytics/recorder";
 
 type V3 = [number, number, number];
 
@@ -88,6 +89,8 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   botSkill: 0 | 1 | 2 = 1;
   private botSeq = 0;
   private voice?: VoiceRelay;
+  /** Player analytics for the admin dashboard (absent in unit tests that borrow room methods). */
+  analytics?: RoomRecorder;
 
   onCreate(options: JoinOptions) {
     const c = options.create ?? { mode: options.mode ?? "tdm", map: options.map, maxPlayers: MAX_PLAYERS, bots: 8, botSkill: 1 as const, private: false, roomName: "" };
@@ -113,6 +116,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     this.state.scoreLimit = scoreLimitFor(mode, c.scoreLimit);
     if (c.private) this.setPrivate(true);
     this.updateMeta();
+    this.analytics = analytics.room(this);
 
     this.world = createRoomWorld(this.map);
     this.world.timestep = TICK_MS / 1000;
@@ -154,7 +158,10 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     this.onMessage("ping", (client, m: { c: number; rtt?: number }) => {
       client.send("pong", { c: m.c, s: now() });
       const p = this.players.get(client.sessionId);
-      if (p && typeof m.rtt === "number") p.st.ping = Math.min(999, Math.round(m.rtt));
+      if (p && typeof m.rtt === "number") {
+        p.st.ping = Math.min(999, Math.round(m.rtt));
+        this.analytics?.ping(p, m.rtt);
+      }
     });
     this.onMessage("ready", (client, value: unknown) => {
       const p = this.players.get(client.sessionId);
@@ -201,6 +208,11 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
 
   // ---------------------------------------------------------------- lifecycle
 
+  /** The only hook that sees the connection request: keep the address and browser for analytics. */
+  onAuth(_client: Client, _options: JoinOptions, context: { ip?: string; headers?: Headers }): ConnectionInfo {
+    return connectionInfo(context);
+  }
+
   onJoin(client: Client, options: JoinOptions) {
     const requestedTeam = options?.team;
     if (this.state.mode === "tdm" && (requestedTeam === 1 || requestedTeam === 2) &&
@@ -219,6 +231,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     if (!this.state.hostId) this.state.hostId = client.sessionId;
     if (this.state.phase !== "waiting") { this.balanceBots(); this.spawn(p); }
     this.updateMeta();
+    this.analytics?.join(p, options?.pid, client.auth as ConnectionInfo | undefined);
   }
 
   async onDrop(client: Client) {
@@ -242,6 +255,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   }
 
   onLeave(client: Client) {
+    this.analytics?.leave(client.sessionId);
     this.voice?.remove(client.sessionId);
     this.players.delete(client.sessionId);
     this.state.players.delete(client.sessionId);
@@ -251,6 +265,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   }
 
   onDispose() {
+    this.analytics?.dispose();
     this.world.free();
   }
 
@@ -373,6 +388,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       this.state.phaseEndsAt = t + END_SCREEN_MS;
       this.state.winner = this.computeWinner();
     }
+    this.analytics?.phase(phase);
     this.updateMeta();
   }
 
@@ -565,6 +581,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       }
     }
 
+    this.analytics?.shot(p, damages.size > 0);
     this.broadcast("shot", { id: p.id, weapon: m.weapon, origin: m.origin, ends, impacts, hits } satisfies ShotEvent, { except: p.client });
 
     for (const [id, { dmg, part, point, dir }] of damages) {
@@ -593,6 +610,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   damage(target: ServerPlayer, amount: number, attacker: ServerPlayer | null, weapon: KillEvent["weapon"], part: HitPart, from: V3): boolean {
     if (!target.st.alive || amount <= 0 || this.state.phase === "ended") return false;
     const hp = Math.max(0, target.st.hp - amount);
+    this.analytics?.damage(attacker, target, target.st.hp - hp);
     target.st.hp = Math.round(hp);
     target.lastDamageAt = now();
     if (attacker && attacker !== target) {
@@ -635,7 +653,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       helper.st.score += ASSIST_SCORE;
     }
     target.damagedBy.clear();
-    this.broadcast("kill", {
+    const event = {
       killer: killer?.id ?? target.id,
       victim: target.id,
       weapon,
@@ -648,7 +666,9 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       victimInfo: { name: target.st.name, team: target.st.team },
       distance: killer && killer !== target ? Math.hypot(killer.st.x - target.st.x, killer.st.y - target.st.y, killer.st.z - target.st.z) : undefined,
       respawnAt: target.respawnAt,
-    } satisfies KillEvent);
+    } satisfies KillEvent;
+    this.broadcast("kill", event);
+    this.analytics?.kill(killer, target, weapon, event.headshot, event.distance);
     this.checkScoreLimit();
     return true;
   }

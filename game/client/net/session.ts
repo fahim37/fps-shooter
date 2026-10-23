@@ -1,5 +1,6 @@
 import { Client, type Room } from "@colyseus/sdk";
 import { gameServerUrl, gameServerHttp } from "./endpoint";
+import { playerId } from "./playerId";
 import { ROOM_NAME, type GameMode } from "../../shared/constants";
 import type { JoinOptions } from "../../shared/messages";
 import type { MatchState } from "../../shared/schema";
@@ -55,15 +56,15 @@ async function adopt(p: Promise<GameRoom>) {
 }
 
 export function quickPlay(opts: JoinOptions) {
-  return adopt(getClient().joinOrCreate(ROOM_NAME, { ...opts, queue: "quick" }) as Promise<GameRoom>);
+  return adopt(getClient().joinOrCreate(ROOM_NAME, { ...opts, pid: playerId(), queue: "quick" }) as Promise<GameRoom>);
 }
 
 export function createRoom(opts: JoinOptions) {
-  return adopt(getClient().create(ROOM_NAME, { ...opts, queue: "rooms" }) as Promise<GameRoom>);
+  return adopt(getClient().create(ROOM_NAME, { ...opts, pid: playerId(), queue: "rooms" }) as Promise<GameRoom>);
 }
 
 export function joinByCode(code: string, opts: JoinOptions) {
-  return adopt(getClient().joinById(code.trim().toUpperCase(), opts) as Promise<GameRoom>);
+  return adopt(getClient().joinById(code.trim().toUpperCase(), { ...opts, pid: playerId() }) as Promise<GameRoom>);
 }
 
 export async function listRooms(): Promise<PublicRoom[]> {

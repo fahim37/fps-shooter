@@ -1,6 +1,6 @@
 # Hollowmere
 
-A browser multiplayer shooter built with Next.js, Three.js, Rapier and Colyseus. Three maps, Village, Downtown and Freight Yard, support first- and third-person play, team deathmatch and free-for-all, bot-filled matches, room codes, five weapons, grenades, respawns and scoreboards.
+A browser multiplayer shooter built with Next.js, Three.js, Rapier and Colyseus. Four maps, Village, Downtown, Freight Yard and Outpost, support first- and third-person play, team deathmatch and free-for-all, bot-filled matches, room codes, five weapons, grenades, respawns and scoreboards.
 
 Play at https://fahimstack.tech/fps. Create a room, then use **Copy invite link** in the match menu. Friends can open that link and press **Join this room**, or paste the link/code into the lobby. Quick play matches the selected game mode. Press Esc during a match to find the invite controls again.
 
@@ -20,6 +20,7 @@ Open the web URL printed by Next.js (normally http://localhost:3000). The game s
 - **Village**: timber houses around a market plaza, open lanes and forest edges.
 - **Downtown**: a city crossing with prefab buildings along a 4-lane avenue and cross street, alleys into walled courtyards, and an enterable corner shop with rooftop stairs in each courtyard. The layout is 180° symmetric, so Blue (west) and Red (east) get mirror-image halves.
 - **Freight Yard**: an industrial zone on a floating island, mirrored across the middle so Blue (west) and Red (east) get identical halves. Three lanes run between the bases: the north **Yard** of parked trailers, the middle **Dock** with a cargo-filled open canopy at the center, and the south **Works** of solid buildings and alleys. Each team has two trailer-top overlooks reached by steel stairs (one over the yard edge, one between the dock and the works); they see the whole middle lane and are open to fire from it. Cargo, skips and gas tanks keep every spawn out of sight of the enemy spawns (`server/industrial.test.ts` checks this, along with bot paths onto the overlooks and walking the stairs).
+- **Outpost**: a compact walled compound (34 x 66 m) for 6v6. A barracks with twin watchtowers splits the middle, with open lanes down both long sides; each team starts at one short end, Blue north and Red south, on and below a raised 4.2 m platform with ramps down to the field. Every team spawn is out of sight of the other team's, and players can walk up onto both platforms (`server/outpost.test.ts`). Map by ResoForge, CC BY 4.0 (credited on its lobby card).
 
 Pick the map on the lobby's map cards when creating a room or using Quick play (Quick play matches rooms on that map); the choice is remembered in the browser. The room host can switch maps in the waiting room until the match starts, and everyone sees the change. Room listings show each room's map.
 
@@ -88,6 +89,55 @@ The Nginx snippet serves models, environment textures and build assets directly 
 
 The room state lives in memory. Restarting the game server ends current matches. Client movement is predicted locally and checked for speed on the server; damage, ammunition and scoring are server-owned. This is a playable prototype, not a hardened competitive anti-cheat system.
 
+## Admin dashboard
+
+`/admin` (production: `https://fahimstack.tech/fps/admin`) is a private dashboard for the owner: who is online right now (name, IP address, approximate location, device, room, map, mode, team, K/D/A, ping, session time), every player's history (sessions, names, IPs, locations, devices, lifetime stats, weapons, rivals, recent matches), every match (scoreboards with bots flagged, kill feed) and insights (daily active players, sessions, play time, new players, countries, devices, browsers, maps, modes, weapon K/D and an hour-of-week heatmap). Live data refreshes every 5 seconds. It is not linked from the game and is marked `noindex`.
+
+How it works: the game server records each real player's session (join to leave), each match and each elimination involving a real player, and writes them to MongoDB in the background (bounded buffer; if MongoDB is down the game runs normally, logs once and retries). Bots are never recorded as players. Browsers keep an anonymous id in `localStorage` (`hollowmere-player-id`) that ties visits together; without it the server derives one from the address and browser. The client IP comes from nginx's `X-Real-IP`; locations come from the offline `geoip-lite` database (no third-party calls; private addresses show as "Local network"). The admin API lives on the game server under `/admin/api` (`/fps/server/admin/api` in production, already proxied by the existing nginx location: no nginx change is needed). Live "online now" data comes straight from the game server's memory; history needs MongoDB.
+
+| Game server env | Purpose |
+| --- | --- |
+| `ADMIN_USERNAME` | Login email. Admin is disabled (HTTP 503) until this and a password are set. |
+| `ADMIN_PASSWORD_HASH` | `scrypt$<salt>$<hash>` from `npx tsx scripts/admin-password-hash.ts` (prompts without echo; the password can also be passed as an argument). |
+| `ADMIN_PASSWORD` | Plaintext fallback, used only when no hash is set (avoid in production). |
+| `ADMIN_SECRET` | Optional session-signing key (32+ random characters). Without it the key derives from the credentials, so changing them signs everyone out. |
+| `MONGODB_URI` | Default `mongodb://127.0.0.1:27017/hollowmere`. |
+| `ANALYTICS_RETENTION_DAYS` | Default `180`: sessions, matches, eliminations, concurrency samples and inactive players are deleted by TTL indexes after this many days. `0` keeps data forever. |
+| `ANALYTICS_DISABLED` | `1` turns recording off. |
+
+Sign-in uses a constant-time check of email and password with one generic error, five failed attempts per address per 15 minutes (plus a global cap), and a 12-hour HMAC-signed session cookie (`HttpOnly`, `SameSite=Strict`, `Secure` behind HTTPS, scoped to the API path). Logging out revokes the session.
+
+Server setup (Ubuntu 24.04; MongoDB 8 needs a CPU with AVX):
+
+```bash
+sudo apt-get install -y gnupg curl
+curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | sudo gpg -o /usr/share/keyrings/mongodb-server-8.0.gpg --dearmor
+echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu noble/mongodb-org/8.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list
+sudo apt-get update && sudo apt-get install -y mongodb-org
+sudo systemctl enable --now mongod          # listens on 127.0.0.1 only by default; keep it that way
+cd /var/www/fps-shooter && npm ci            # installs mongodb + geoip-lite
+npx tsx scripts/admin-password-hash.ts       # prompts for the password, prints the hash
+sudo install -d -m 700 -o "$USER" /etc/hollowmere
+install -m 600 /dev/null /etc/hollowmere/admin.json && nano /etc/hollowmere/admin.json
+pm2 startOrReload deploy/ecosystem.config.cjs --only hollowmere-game --update-env
+```
+
+`/etc/hollowmere/admin.json` (owned by the user that runs PM2, mode 600; `HOLLOWMERE_ADMIN_CONFIG` overrides the path):
+
+```json
+{
+  "ADMIN_USERNAME": "you@example.com",
+  "ADMIN_PASSWORD_HASH": "scrypt$…$…",
+  "ADMIN_SECRET": "output of: openssl rand -hex 32",
+  "MONGODB_URI": "mongodb://127.0.0.1:27017/hollowmere",
+  "ANALYTICS_RETENTION_DAYS": 180
+}
+```
+
+The game server log shows `[analytics] database unavailable` if MongoDB cannot be reached and `[admin] dashboard API disabled` if credentials are missing. The geo database loads about 120 MB into the game server on first use (PM2's memory limit is 1000 MB). For fresher city data, run `npm run-script updatedb license_key=YOUR_MAXMIND_KEY` inside `node_modules/geoip-lite` (free MaxMind account). Optionally add an nginx `limit_req` on `/fps/server/admin/api/login`.
+
+Privacy: IP addresses, approximate locations, device details and play history are personal data (GDPR and similar laws). Tell players in a short privacy notice (for example on the home screen or a linked page) that the game records their in-game name, IP address, approximate location, device and match statistics to run and improve the game, how long it is kept (the retention setting) and how to ask for deletion (delete their player id from `players` (`_id`), `sessions` (`pid`), `kills` (`killerPid` / `victimPid`) and `matches` (`participants.pid`)). Keep the retention as short as you need, keep MongoDB bound to localhost, and do not share the dashboard login.
+
 ## Assets
 
 The asset import scripts document the original packs and transformations: Quaternius characters, animation, environment kits and weapons, plus Poly Haven environment textures and HDR skies. `scripts/import-assets.ts` rebuilds optimized assets from the ignored `assets-raw` directory. See the source scripts for pack names and download sources.
@@ -95,6 +145,8 @@ The asset import scripts document the original packs and transformations: Quater
 Downtown uses the Downtown City MegaKit (Standard, CC0) by Quaternius. Put the unzipped pack at `assets-raw/city` and run `npx tsx scripts/import-assets.ts city`. The importer keeps only the pieces the map places, strips the pack's vertex-color shader masks, opens modular windows and doors (removing glass and fake-interior cards that would hide players), halves normal and ORM maps to 512 px, simplifies the prefab buildings by about 40%, and writes box collision for their bodies. `server/maps.test.ts` checks every map's spawns, floors and bot paths against the real collision data and navmeshes.
 
 Freight Yard uses the Low Poly Industrial Zone pack: a single FBX holding one merged diorama mesh. Put it at `assets-raw/industrial` (`source/lowpoly asset.fbx` and `textures/`) and run `npx tsx scripts/import-assets.ts industrial`. The importer parses the FBX with three's FBXLoader, cuts the scene back into 40 kit pieces by source-space boxes around one instance of each object (trailers, barriers, spools, canopies, buildings), keeps the island terrain as one more piece, squares and recenters them on the asphalt, wires the palette texture and tiling normal maps to glTF materials, and writes a 0.9 MB kit with trimesh collision. It also builds pieces the pack lacks from the same palette and normal maps: steel stairs (a smooth ramp between solid handrails), wooden crates in two sizes, shipping containers in three colors, and the **Depot**, an enterable warehouse at the center of the map with roller doors at both ends, a door in each long wall, and a mezzanine with a parapet and two stairs. The importer recolors the pack's palette so the yard has no red or blue (reds become ochre-yellow, blues olive-green), keeping those two colors for the players' team outfits.
+
+Outpost is "LOWPOLY | FPS | TDM | GAME | MAP" by ResoForge (Sketchfab, licensed CC BY 4.0, attribution required). Put the downloaded GLB at `assets-raw/resoforge/map.glb` and run `npx tsx scripts/import-assets.ts outpost`. The importer scales the 8.6 x 16.4 unit diorama up 4x (a barrel stands about a meter tall), repaints its red, orange-red and blue materials olive, sand, ochre and slate green so they never read as a team color, merges its ~300 small meshes per material (about 600 draw calls down to under 50), keeps the whole arena as one piece with trimesh collision, and measures building footprints for the minimap.
 
 Male and female Rangers have animated selection previews and shared lobby showoffs (At ease, Dance, Talk and Spell stance). See [character assets and lobby showoffs](docs/characters.md) for optimization budgets, pack overrides, and validation commands.
 
