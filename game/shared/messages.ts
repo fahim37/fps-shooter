@@ -86,8 +86,10 @@ export interface AmmoEvent {
 export interface GrenadeMsg {
   origin: [number, number, number];
   dir: [number, number, number];
-  /** Milliseconds the grenade was held (cooked) before throwing. */
+  /** Milliseconds the fuse burned in hand (cooked) before throwing. */
   cooked: number;
+  /** Throw strength: 1 for a full throw, GRENADE.lobPower for an underhand lob. */
+  power?: number;
 }
 
 export interface LoadoutMsg {

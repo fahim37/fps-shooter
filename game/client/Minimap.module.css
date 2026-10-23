@@ -2,7 +2,7 @@
 .heading { height: 22px; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 8px; font: 600 8px monospace; letter-spacing: .1em; color: #d9e5cf; }
 .heading small { display: inline; color: #9baa9e; font: 6px monospace; letter-spacing: .02em; }
 .map { display: block; width: 100%; aspect-ratio: 1; background: radial-gradient(ellipse, #253730, #182921); }
-.ground { fill: #2b4035; stroke: #8caa914d; stroke-width: .5; }.grid { fill: none; stroke: #a4baa812; stroke-width: .4; }.roads { fill: none; stroke: #6e7967; }.plaza { fill: #7e8470; stroke: #a4b09a; stroke-width: .4; }.building { fill: #b4bfaa; stroke: #e3e6ce; stroke-width: .45; }.north { fill: #eef5d9; font: bold 4px monospace; text-anchor: middle; }.plazaLabel { fill: #283b30; font: bold 3.3px monospace; letter-spacing: .4px; text-anchor: middle; }
+.ground { fill: #2b4035; stroke: #8caa914d; stroke-width: .5; }.grid { fill: none; stroke: #a4baa81c; stroke-width: .3; }.ring { fill: none; stroke: #e5fa8a26; stroke-width: .4; stroke-dasharray: 1.2 1.6; }.roads { fill: none; stroke: #6e7967; }.plaza { fill: #7e8470; stroke: #a4b09a; stroke-width: .4; }.building { fill: #b4bfaa; stroke: #e3e6ce; stroke-width: .45; }.north { fill: #eef5d9; font: bold 4px monospace; text-anchor: middle; paint-order: stroke; stroke: #0e191c; stroke-width: .8; }.northMark { fill: #d9ed79; }.plazaLabel { fill: #283b30; font: bold 2.5px monospace; letter-spacing: .3px; text-anchor: middle; }
 .self { fill: #e5fa8a; stroke: #162212; stroke-width: .8; }.ally { fill: #81c1ff; stroke: #102535; stroke-width: .75; }.enemy { fill: #ff7d70; stroke: #3b1717; stroke-width: .75; }.selfRing { fill: #dcf48b17; stroke: #e5fa8a88; stroke-width: .5; }.height { fill: none; stroke: currentColor; stroke-width: 1; }.enemy .height { color: #ffa397; }.ally .height { color: #a3d2ff; }
 .legend { height: 22px; display: flex; align-items: center; justify-content: space-around; color: #c1cebf; font: 7px monospace; letter-spacing: .05em; }.legend>span { display: inline-flex; align-items: center; gap: 4px; }.legend i { width: 5px; height: 5px; border-radius: 50%; }.selfKey { background: #e5fa8a; }.allyKey { background: #81c1ff; }.enemyKey { background: #ff7d70; }.legend .threatKey { width: 7px; height: 6px; border-radius: 0; background: linear-gradient(#ff4a3d00, #ff4a3d); clip-path: polygon(50% 100%, 0 0, 100% 0); }
 .slot { fill: #102012; stroke: none; font: bold 2.6px monospace; text-anchor: middle; pointer-events: none; }
@@ -16,3 +16,10 @@
 /* Touch: the right side belongs to the action buttons; a compact map takes the top-left corner. */
 :global(.game-view[data-touch]) .panel { top: max(8px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); right: auto; width: 84px; border-color: #c8d4c130; background: #0e191cc4; }
 :global(.game-view[data-touch]) .heading, :global(.game-view[data-touch]) .legend { display: none; }
+
+/* Enemy marks: gunfire pulses where it came from; sprinting enemies leave red footprints. */
+.shot { pointer-events: none; }.shotDot { fill: #ff4a3d; stroke: #ffd2cc; stroke-width: .5; }
+.shotPulse { fill: none; stroke: #ff6a5c; stroke-width: .7; transform-origin: 0 0; animation: shotPulse .9s ease-out; }
+@keyframes shotPulse { 0% { transform: scale(.35); opacity: 1; } 100% { transform: scale(1); opacity: 0; } }
+.step { fill: #ff5a4d; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .shotPulse { animation: none; opacity: .5; } }

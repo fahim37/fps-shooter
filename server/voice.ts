@@ -9,7 +9,10 @@ interface Transport {
   iceServers?(id: string): RTCIceServer[] | undefined;
 }
 
-/** Only opted-in humans in this match can exchange WebRTC signaling. No audio is stored. */
+/**
+ * Humans in this match join voice to listen (everyone does, by default) and may add a microphone.
+ * Only members can exchange WebRTC signaling. No audio is stored.
+ */
 export class VoiceRelay {
   private members = new Map<string, VoiceMember>();
   private rates = new Map<string, { since: number; count: number }>();
@@ -20,7 +23,8 @@ export class VoiceRelay {
     if (!isVoiceState(value)) return;
     if (!value.enabled) { this.remove(id); return; }
     if (!this.transport.available(id) || !this.allow(id)) return;
-    const member: VoiceMember = { id, channel: this.transport.mode() === "tdm" ? value.channel : "all", talking: value.talking };
+    const mic = value.mic !== false;
+    const member: VoiceMember = { id, channel: this.transport.mode() === "tdm" ? value.channel : "all", talking: value.talking && mic, mic };
     this.members.set(id, member);
     this.publish();
   }

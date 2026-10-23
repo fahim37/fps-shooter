@@ -6,7 +6,7 @@ import {
   GRENADES_PER_LIFE, FALL_DAMAGE_MIN_SPEED, MAX_PLAYERS, MODE_INFO, scoreLimitFor, matchMinutes, WARMUP_MS, END_SCREEN_MS, EYE_HEIGHT,
   CROUCH_EYE_HEIGHT, SPRINT_SPEED, type GameMode,
 } from "../game/shared/constants";
-import { WEAPONS, PRIMARIES, GRENADE, damageAt, fireIntervalMs, type WeaponId } from "../game/shared/weapons";
+import { WEAPONS, PRIMARIES, GRENADE, GRENADE_STEP_HZ, damageAt, fireIntervalMs, grenadeVelocity, type WeaponId } from "../game/shared/weapons";
 import { PoseHistory } from "../game/shared/lagcomp";
 import { rayVsPose, type HitPart, type Pose } from "../game/shared/hitboxes";
 import { clampLean, leanOffset } from "../game/shared/lean";
@@ -723,14 +723,13 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     if (Math.hypot(m.origin[0] - eye[0], m.origin[1] - eye[1], m.origin[2] - eye[2]) > 2) return;
     p.grenades--;
     p.st.protectedUntil = 0;
-    const len = Math.hypot(...m.dir) || 1;
-    const speed = GRENADE.throwSpeed;
+    const power = finite(m.power) ? m.power! : 1;
     const body = this.world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
         .setTranslation(...m.origin)
-        .setLinvel(m.dir[0] / len * speed + p.vel[0] * 0.5, m.dir[1] / len * speed + 2 + p.vel[1] * 0.3, m.dir[2] / len * speed + p.vel[2] * 0.5)
+        .setLinvel(...grenadeVelocity(m.dir, power, p.vel))
         .setAngularDamping(1.5)
-        .setLinearDamping(0.15)
+        .setLinearDamping(GRENADE.linearDamping)
         .setCcdEnabled(true),
     );
     this.world.createCollider(
@@ -748,7 +747,8 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
 
   private stepGrenades(t: number) {
     if (this.grenades.size === 0) return;
-    this.world.step();
+    // Rapier steps 1/60 s at a time: enough steps for one tick keep grenades flying in real time.
+    for (let i = 0; i < Math.round(GRENADE_STEP_HZ * TICK_MS / 1000); i++) this.world.step();
     for (const g of [...this.grenades.values()]) {
       const pos = g.body.translation();
       const gs = this.state.grenades.get(g.id);

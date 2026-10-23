@@ -64,7 +64,7 @@ describe("local loadout", () => {
 describe("emotes", () => {
   const emoter = () => {
     const local = player();
-    Object.assign(local, { emote: null, emoteMenu: false, reloadEnd: 0, cookStart: 0, switchEnd: 0, yaw: 0.5, ms: { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, grounded: true } });
+    Object.assign(local, { emote: null, emoteMenu: false, reloadEnd: 0, grenadeAt: 0, switchEnd: 0, yaw: 0.5, ms: { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, grounded: true } });
     return local;
   };
 
@@ -77,11 +77,11 @@ describe("emotes", () => {
     expect(vi.mocked(local["game"].send)).toHaveBeenLastCalledWith("emote", "dance");
   });
 
-  it("will not start mid-air, mid-reload or while cooking a grenade", () => {
+  it("will not start mid-air, mid-reload or with a grenade in hand", () => {
     const airborne = (l: LocalPlayer) => { l.ms.grounded = false; };
     const reloading = (l: LocalPlayer) => { l.reloadEnd = 1000; };
-    const cooking = (l: LocalPlayer) => { Object.assign(l, { cookStart: 1000 }); };
-    for (const setup of [airborne, reloading, cooking]) {
+    const holdingGrenade = (l: LocalPlayer) => { Object.assign(l, { grenadeAt: 1000 }); };
+    for (const setup of [airborne, reloading, holdingGrenade]) {
       const local = emoter();
       setup(local);
       local.startEmote("talk");

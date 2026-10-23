@@ -303,7 +303,7 @@ export class Effects {
   private flashGeo = new THREE.PlaneGeometry(1, 1);
   private light = new THREE.PointLight("#ffb56b", 0, 9, 2);
   private lightLife = 0;
-  private boomLight = new THREE.PointLight("#ff9a4a", 0, 22, 2);
+  private boomLight = new THREE.PointLight("#ff9a4a", 0, 30, 2);
   private boomLife = 0;
   private decals: THREE.InstancedMesh;
   private decalIndex = 0;
@@ -569,32 +569,44 @@ export class Effects {
   }
 
   explosion(p: THREE.Vector3) {
-    for (let i = 0; i < Math.ceil(26 * this.budget.density); i++) {
+    // Fireball.
+    for (let i = 0; i < Math.ceil(40 * this.budget.density); i++) {
       const a = Math.random() * Math.PI * 2, u = Math.random();
       this.glow.spawn({
-        x: p.x, y: p.y + 0.3, z: p.z,
-        vx: Math.cos(a) * u * 6, vy: 1 + Math.random() * 5, vz: Math.sin(a) * u * 6,
-        max: 0.3 + Math.random() * 0.35, s0: 1.2 + Math.random(), s1: 2.8, r: 1, g: 0.55 + Math.random() * 0.2, b: 0.2, a0: 0.9, grav: -1, drag: 4,
+        x: p.x, y: p.y + 0.4, z: p.z,
+        vx: Math.cos(a) * u * 9, vy: 1.5 + Math.random() * 7, vz: Math.sin(a) * u * 9,
+        max: 0.35 + Math.random() * 0.4, s0: 1.8 + Math.random() * 1.4, s1: 4.2, r: 1, g: 0.5 + Math.random() * 0.25, b: 0.18, a0: 0.95, grav: -1, drag: 4,
       });
     }
-    for (let i = 0; i < Math.ceil(30 * this.budget.density); i++) {
+    // Smoke column.
+    for (let i = 0; i < Math.ceil(44 * this.budget.density); i++) {
       const a = Math.random() * Math.PI * 2, u = Math.random();
       this.smoke.spawn({
-        x: p.x, y: p.y + 0.4, z: p.z,
-        vx: Math.cos(a) * u * 5, vy: 1.5 + Math.random() * 4, vz: Math.sin(a) * u * 5,
-        max: 2.5 + Math.random() * 2, s0: 1, s1: 4.5 + Math.random() * 2, r: 0.28, g: 0.26, b: 0.24, a0: 0.55, grav: -0.5, drag: 1.8,
+        x: p.x, y: p.y + 0.5, z: p.z,
+        vx: Math.cos(a) * u * 7, vy: 2 + Math.random() * 5.5, vz: Math.sin(a) * u * 7,
+        max: 3.2 + Math.random() * 2.5, s0: 1.4, s1: 6.5 + Math.random() * 3, r: 0.26, g: 0.24, b: 0.22, a0: 0.6, grav: -0.5, drag: 1.6,
       });
     }
-    for (let i = 0; i < Math.ceil(24 * this.budget.density); i++) {
+    // Dust ring kicked out along the ground.
+    for (let i = 0; i < Math.ceil(20 * this.budget.density); i++) {
+      const a = (i / 20) * Math.PI * 2 + Math.random() * 0.3;
+      this.smoke.spawn({
+        x: p.x, y: p.y + 0.2, z: p.z,
+        vx: Math.cos(a) * 11, vy: 0.4 + Math.random(), vz: Math.sin(a) * 11,
+        max: 1.4 + Math.random(), s0: 0.8, s1: 3.5, r: 0.42, g: 0.39, b: 0.34, a0: 0.45, grav: 0, drag: 3,
+      });
+    }
+    // Sparks and fragments.
+    for (let i = 0; i < Math.ceil(36 * this.budget.density); i++) {
       this.glow.spawn({
         x: p.x, y: p.y + 0.2, z: p.z,
-        vx: (Math.random() - 0.5) * 18, vy: Math.random() * 12, vz: (Math.random() - 0.5) * 18,
-        max: 0.6 + Math.random() * 0.6, s0: 0.08, s1: 0.03, r: 1, g: 0.7, b: 0.3, a0: 1, grav: 14, drag: 0.8,
+        vx: (Math.random() - 0.5) * 26, vy: Math.random() * 15, vz: (Math.random() - 0.5) * 26,
+        max: 0.6 + Math.random() * 0.7, s0: 0.1, s1: 0.03, r: 1, g: 0.7, b: 0.3, a0: 1, grav: 14, drag: 0.8,
       });
     }
-    this.boomLight.position.set(p.x, p.y + 1, p.z);
-    this.boomLight.intensity = this.budget.lights ? 120 : 0;
-    this.boomLife = 0.25;
+    this.boomLight.position.set(p.x, p.y + 1.2, p.z);
+    this.boomLight.intensity = this.budget.lights ? 220 : 0;
+    this.boomLife = 0.35;
   }
 
   private addDecal(point: THREE.Vector3, normal: THREE.Vector3) {
@@ -624,7 +636,7 @@ export class Effects {
     this.lightLife -= dt;
     if (this.lightLife <= 0) this.light.intensity = 0;
     this.boomLife -= dt;
-    this.boomLight.intensity = this.budget.lights && this.boomLife > 0 ? 120 * (this.boomLife / 0.25) : 0;
+    this.boomLight.intensity = this.budget.lights && this.boomLife > 0 ? 220 * (this.boomLife / 0.35) : 0;
 
     let stains = false, alphaChanged = false;
     for (let i = 0; i < this.budget.bloodDecals; i++) {

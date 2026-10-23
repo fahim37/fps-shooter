@@ -60,3 +60,54 @@ export function mapHeading(yaw: number) { return -yaw * 180 / Math.PI; }
 export function mapRelation(id: string, team: number, myId: string, myTeam: number, mode: GameMode): MapPlayer["relation"] {
   return id === myId ? "self" : mode === "tdm" && team === myTeam ? "ally" : "enemy";
 }
+
+/** Meters from your position to the edge of the minimap, which follows you like PUBG's. */
+export const MINIMAP_RANGE = 34;
+/** Grid spacing drawn on the minimap, in meters. */
+export const MINIMAP_GRID = 10;
+
+/** Where a world point lands on the player-centered minimap (SVG units; 50, 50 is you). */
+export function viewPoint(x: number, z: number, cx: number, cz: number, range = MINIMAP_RANGE) {
+  const scale = 45 / range;
+  return { x: 50 + (x - cx) * scale, y: 50 + (z - cz) * scale };
+}
+
+/** A point outside the frame pulled onto its edge, so squadmates out of range stay findable. */
+export function toFrame(point: { x: number; y: number }, inset = 4) {
+  const dx = point.x - 50, dy = point.y - 50, limit = 50 - inset;
+  const k = Math.max(Math.abs(dx), Math.abs(dy)) / limit;
+  return k <= 1 ? { ...point, edge: false } : { x: 50 + dx / k, y: 50 + dy / k, edge: true };
+}
+
+/**
+ * A fading enemy mark, like PUBG's: where an enemy just fired from, or a footprint left by an
+ * enemy sprinting nearby.
+ */
+export interface MapMark {
+  key: string;
+  kind: "shot" | "step";
+  x: number;
+  z: number;
+  /** Direction of travel (player yaw convention), for footprints. */
+  yaw: number;
+  /** Footprints alternate feet. */
+  left?: boolean;
+  at: number;
+}
+
+export const MARK_MS: Record<MapMark["kind"], number> = { shot: 2800, step: 2000 };
+/** Gunfire shows from anywhere on the map; footsteps only when the sprinter is this close. */
+export const STEP_REVEAL_RANGE = 40;
+const MAX_MARKS = 48;
+
+export function addMark(marks: MapMark[], next: MapMark): MapMark[] {
+  // A shooter's newest shot replaces their last one; footprints build up into a trail.
+  const kept = marks.filter((mark) => next.at - mark.at < MARK_MS[mark.kind] && !(next.kind === "shot" && mark.kind === "shot" && mark.key === next.key));
+  return [...kept, next].slice(-MAX_MARKS);
+}
+
+/** 0..1 opacity of a mark: full while fresh, fading out over its lifetime. */
+export function markStrength(mark: MapMark, now: number) {
+  const age = (now - mark.at) / MARK_MS[mark.kind];
+  return age < 0 ? 1 : age >= 1 ? 0 : 1 - age * age;
+}

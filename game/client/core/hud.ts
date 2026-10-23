@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { WeaponId } from "../../shared/weapons";
 import type { GameMode } from "../../shared/constants";
-import type { MapPlayer, Threat } from "./minimap";
+import type { MapMark, MapPlayer, Threat } from "./minimap";
 import type { SquadMember } from "./squad";
 
 export interface KillFeedEntry {
@@ -51,6 +51,8 @@ export interface HudState {
   mag: number;
   reserve: number;
   grenades: number;
+  /** Grenade in hand: aiming its arc, and the fuse left (ms) once cooked; null when not cooked. */
+  grenadeAim: { lob: boolean; fuse: number | null } | null;
   reloading: number; // -1 or 0..1
   ads: number;
   spreadDeg: number;
@@ -85,6 +87,8 @@ export interface HudState {
   roomName: string;
   players: ScoreRow[];
   mapPlayers: MapPlayer[];
+  /** Enemy gunfire and sprint footprints on the minimap. */
+  mapMarks: MapMark[];
   squad: SquadMember[];
   /** Latched peek side for the touch buttons: -1, 0 or 1. */
   peek: number;
@@ -123,6 +127,7 @@ export const useHud = create<HudState>((set, get) => ({
   mag: 0,
   reserve: 0,
   grenades: 0,
+  grenadeAim: null,
   reloading: -1,
   ads: 0,
   spreadDeg: 2,
@@ -154,6 +159,7 @@ export const useHud = create<HudState>((set, get) => ({
   roomName: "",
   players: [],
   mapPlayers: [],
+  mapMarks: [],
   squad: [],
   peek: 0,
   emoteMenu: false,

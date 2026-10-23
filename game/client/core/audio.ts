@@ -194,7 +194,11 @@ export class AudioEngine {
     g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
   }
 
-  shot(weapon: WeaponId, pos?: V3, local = false) {
+  /**
+   * A gunshot. Remote shots are told apart by `side`, subtly: an enemy's has a sharper, brighter
+   * crack; a teammate's is a little rounder and quieter, so friendly fire nearby reads as safe.
+   */
+  shot(weapon: WeaponId, pos?: V3, local = false, side: "ally" | "enemy" = "enemy") {
     const ctx = this.ctx;
     if (!ctx) return;
     const v = SHOTS[weapon];
@@ -202,23 +206,26 @@ export class AudioEngine {
     const route = this.spatial(pos, Math.max(0.2, v.length) + 0.05);
     if (!route) return;
     const [out, dist, voice] = route;
-    const gainMul = local ? 0.9 : 1;
+    const ally = !local && side === "ally";
+    const gainMul = local ? 0.9 : ally ? 0.82 : 1;
+    const crackMul = local ? 1 : ally ? 0.55 : 1.2;
+    const tone = ally ? 0.86 : 1;
     const jitter = 0.94 + Math.random() * 0.12;
 
     // Crack: very short bright noise.
     const crack = this.noiseSource(t, 0.05);
     const hp = ctx.createBiquadFilter();
     hp.type = "highpass";
-    hp.frequency.value = 2400 * v.pitch * jitter;
+    hp.frequency.value = 2400 * v.pitch * jitter * (ally ? 0.75 : local ? 1 : 1.15);
     const cg = ctx.createGain();
-    this.env(cg, t, 0.9 * v.crack * gainMul, 0.001, 0.045);
+    this.env(cg, t, 0.9 * v.crack * gainMul * crackMul, 0.001, 0.045);
     crack.connect(hp).connect(cg).connect(out);
 
     // Body: band-limited noise burst.
     const body = this.noiseSource(t, v.length);
     const bp = ctx.createBiquadFilter();
     bp.type = "bandpass";
-    bp.frequency.value = 900 * v.pitch * jitter;
+    bp.frequency.value = 900 * v.pitch * jitter * tone;
     bp.Q.value = 0.7;
     const bg = ctx.createGain();
     this.env(bg, t, 1.1 * v.body * gainMul, 0.002, v.length);
@@ -362,30 +369,42 @@ export class AudioEngine {
     const ctx = this.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
-    const route = this.spatial(pos, 1.7);
+    const route = this.spatial(pos, 2.4);
     if (!route) return;
     const [out, dist, voice] = route;
-    const n = this.noiseSource(t, 1.6);
+    // Blast: a bright crack that closes down into a long rumble.
+    const n = this.noiseSource(t, 2.3);
     const lp = ctx.createBiquadFilter();
     lp.type = "lowpass";
-    lp.frequency.setValueAtTime(3000, t);
-    lp.frequency.exponentialRampToValueAtTime(200, t + 1.2);
+    lp.frequency.setValueAtTime(4200, t);
+    lp.frequency.exponentialRampToValueAtTime(160, t + 1.6);
     const g = ctx.createGain();
-    this.env(g, t, 1.6, 0.004, 1.4);
+    this.env(g, t, 2, 0.003, 2);
     n.connect(lp).connect(g).connect(out);
-    const o = ctx.createOscillator();
-    o.type = "sine";
-    o.frequency.setValueAtTime(70, t);
-    o.frequency.exponentialRampToValueAtTime(25, t + 0.8);
-    const og = ctx.createGain();
-    this.env(og, t, 1.4, 0.004, 0.9);
-    o.connect(og).connect(out);
-    o.start(t);
-    o.stop(t + 1);
+    // Sub thump, and a second, lower one for weight.
+    for (const [from, to, level, decay] of [[75, 24, 1.6, 1.1], [48, 18, 1.2, 1.6]]) {
+      const o = ctx.createOscillator();
+      o.type = "sine";
+      o.frequency.setValueAtTime(from, t);
+      o.frequency.exponentialRampToValueAtTime(to, t + decay * 0.9);
+      const og = ctx.createGain();
+      this.env(og, t, level, 0.004, decay);
+      o.connect(og).connect(out);
+      o.start(t);
+      o.stop(t + decay + 0.1);
+    }
+    // Debris pattering down after the blast.
+    for (let i = 0; i < 5; i++) this.click(600 + Math.random() * 900, 0.12, pos, 0.35 + Math.random() * 0.6);
     const send = ctx.createGain();
-    send.gain.value = 0.9 + Math.min(1, dist / 40);
+    send.gain.value = 1 + Math.min(1, dist / 40);
     g.connect(send).connect(this.reverb);
     voice.nodes.push(send);
+  }
+
+  /** The pin coming out: a cooked grenade's fuse is burning. */
+  grenadePin() {
+    this.click(2600, 0.3);
+    this.click(4200, 0.18, undefined, 0.06);
   }
 
   grenadeThrow() {

@@ -44,6 +44,23 @@ describe("browser shortcut suppression", () => {
     input.detach();
   });
 
+  it("asks before the tab closes or reloads during play, but not once paused", () => {
+    const { input, win } = attachedInput();
+    const unload = () => {
+      const event = new Event("beforeunload", { cancelable: true });
+      // Node's Event has a read-only returnValue; a BeforeUnloadEvent's is writable.
+      Object.defineProperty(event, "returnValue", { value: true, writable: true });
+      win.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    expect(unload()).toBe(true);
+    input.locked = false;
+    expect(unload()).toBe(false);
+    input.detach();
+    input.locked = true;
+    expect(unload()).toBe(false);
+  });
+
   it("leaves C to the grenade instead of crouching", () => {
     const { input, key } = attachedInput();
     key("KeyC", false);

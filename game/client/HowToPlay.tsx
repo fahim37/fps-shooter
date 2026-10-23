@@ -19,7 +19,7 @@ const KEYBOARD: { title: string; rows: Row[] }[] = [
     [["Right click"], "Aim down sights"],
     [["R"], "Reload"],
     [["1", "2"], "Primary / sidearm", "Mouse wheel swaps too"],
-    [["C"], "Grenade", "Hold to cook, release to throw"],
+    [["C"], "Grenade", "Hold to aim along the arc, release to throw · R cooks · right mouse lobs"],
   ] },
   { title: "GAME", rows: [
     [["B"], "Loadout", "Weapon and sights for your next spawn"],
@@ -48,7 +48,7 @@ const TOUCH: Row[] = [
   [["Sprint"], "Sprint"],
   [["Reload"], "Reload"],
   [["Switch"], "Primary / sidearm"],
-  [["Grenade"], "Grenade", "Hold to cook, release to throw"],
+  [["Grenade"], "Grenade", "Hold to aim along the arc, release to throw · Aim to lob"],
   [["Camera"], "First / third person"],
   [["Emote"], "Emote", "Pick one; move or shoot to stop"],
   [["Pause"], "Pause", "Invite friends, settings, leave"],

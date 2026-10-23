@@ -220,69 +220,256 @@ function extract(geo: Geo, tris: number[], spec: PieceSpec): Soup {
   return out;
 }
 
-// Material slots (source order, plus the procedural steel).
+// Material slots (source order).
 const MATERIALS = ["Color", "Color_Profile", "Color_Wood", "Color_Brick", "Branches", "kust", "Glass"] as const;
 
 /** UV of a palette swatch (16 px cells in Color.png). */
 const swatch = (col: number, row: number): [number, number] => [(col * 16 + 8) / 256, 1 - (row * 16 + 8) / 256];
-const STEEL = swatch(4, 2); //  #616268
-const TREAD = swatch(15, 2); // #8e8e8e
-const RAIL = swatch(2, 1); //   #bc4a3c, safety red
+const STEEL = swatch(4, 2); //     #616268
+const TREAD = swatch(15, 2); //    #8e8e8e
+const RAIL = swatch(2, 1); //      #bc4a3c, safety red
+const DARK = swatch(4, 1); //      #444549
+const CONCRETE = swatch(0, 2); //  #a5a5a4
+const CLADDING = swatch(0, 1); //  #b5b4b3
+const ROOF = swatch(5, 1); //      #345168, the kit warehouse's blue
+const TRIM = swatch(5, 3); //      #386589
+const WOOD = swatch(1, 0); //      #ba8c63
+const WOOD_DARK = swatch(1, 2); // #6b5039
+const CONTAINER_COLORS = { Container_Red: swatch(2, 1), Container_Blue: swatch(5, 3), Container_Green: swatch(10, 2) };
+
+// Slots in MATERIALS: the profile and wood materials tile their normal maps over UV1.
+const M_PLAIN = 0, M_PROFILE = 1, M_WOOD = 2, M_GLASS = 6;
+
+type V = [number, number, number];
+type UV = [number, number];
+interface BoxOpts { mat?: number; tile?: number; collide?: boolean; bottom?: boolean; draw?: boolean }
+
+/** Corner indices (bit 0: x1, bit 1: y1, bit 2: z1) of each box face, counterclockwise from outside. */
+const BOX_FACES = [[2, 6, 7, 3], [0, 1, 5, 4], [4, 5, 7, 6], [1, 0, 2, 3], [5, 1, 3, 7], [0, 4, 6, 2]];
+
+/**
+ * Geometry for the procedural pieces: triangles in the kit's palette and normal maps, with a
+ * collision mesh built alongside. `at` moves the origin for the calls that follow.
+ */
+class Builder {
+  readonly soup: Soup = { P: [], N: [], UV: [], UV1: [], M: [] };
+  private cP: number[] = [];
+  private cI: number[] = [];
+  private o: V = [0, 0, 0];
+
+  at(x: number, y: number, z: number) { this.o = [x, y, z]; return this; }
+
+  private move = (v: number[]): V => [v[0] + this.o[0], v[1] + this.o[1], v[2] + this.o[2]];
+
+  /**
+   * A flat polygon (triangle or quad), turned to face `facing`. UV1 is projected on the face's
+   * main axis at `tile` meters per repeat, so ribs and planks run vertically on walls.
+   */
+  face(pts: number[][], facing: number[], uv: UV, { mat = M_PLAIN, tile = 2, collide = false, draw = true }: BoxOpts = {}) {
+    let v = pts.map(this.move);
+    const n = normal(v);
+    if (n[0] * facing[0] + n[1] * facing[1] + n[2] * facing[2] < 0) { v = v.reverse(); n[0] = -n[0]; n[1] = -n[1]; n[2] = -n[2]; }
+    const order = v.length === 4 ? [0, 1, 2, 0, 2, 3] : [0, 1, 2];
+    if (draw) {
+      const ax = Math.abs(n[0]), ay = Math.abs(n[1]), az = Math.abs(n[2]);
+      for (const i of order) {
+        const p = v[i];
+        this.soup.P.push(...p);
+        this.soup.N.push(...n);
+        this.soup.UV.push(...uv);
+        const [s, t] = ay >= ax && ay >= az ? [p[0], p[2]] : ax >= az ? [p[2], p[1]] : [p[0], p[1]];
+        this.soup.UV1.push(s / tile, t / tile);
+      }
+      for (let k = 0; k < order.length / 3; k++) this.soup.M.push(mat);
+    }
+    if (collide) {
+      const base = this.cP.length / 3;
+      for (const p of v) this.cP.push(...p);
+      for (const i of order) this.cI.push(base + i);
+    }
+  }
+
+  /** Axis-aligned box from min to max corner; it collides unless told otherwise. */
+  box(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, uv: UV, { collide = true, bottom = false, ...opts }: BoxOpts = {}) {
+    const corner = (i: number) => [i & 1 ? x1 : x0, i & 2 ? y1 : y0, i & 4 ? z1 : z0];
+    const center = [(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2];
+    BOX_FACES.forEach((f, i) => {
+      // Boxes standing on the ground skip their hidden bottom (collision keeps it closed).
+      const pts = f.map(corner);
+      const out = sub(pts[0], center).map((c, k) => c + sub(pts[2], center)[k]);
+      this.face(pts, out, uv, { ...opts, collide, draw: (opts.draw ?? true) && (i !== 1 || bottom) });
+    });
+  }
+
+  collision(): CollisionMesh {
+    return { positions: new Float32Array(this.cP), indices: new Uint32Array(this.cI) };
+  }
+}
+
+const sub = (a: number[], b: number[]) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+
+function normal(v: number[][]): V {
+  const u = sub(v[1], v[0]), w = sub(v[2], v[0]);
+  const n = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
+  const len = Math.hypot(n[0], n[1], n[2]) || 1;
+  return [n[0] / len, n[1] / len, n[2] / len];
+}
 
 /**
  * Steel stairs rising `rise` meters toward local -Z (the top edge at z = 0, the foot at
- * z = +run), centered on x. Visual treads, stringers and rails; the collision is a smooth ramp.
+ * z = +run), centered on x. Visual treads, stringers and rails. The collision is a smooth ramp
+ * between two rail-high side walls, so the handrails stop you like real ones.
  */
-function stairs(rise: number, width: number, steps: number): { soup: Soup; collision: CollisionMesh } {
-  const soup: Soup = { P: [], N: [], UV: [], UV1: [], M: [] };
+function stairs(b: Builder, rise: number, width: number, steps: number) {
   const run = steps * 0.43;
-  const quad = (a: number[], b: number[], c: number[], d: number[], uv: [number, number]) => {
-    const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-    const n = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
-    const len = Math.hypot(n[0], n[1], n[2]) || 1;
-    for (const v of [a, b, c, a, c, d]) { soup.P.push(...v); soup.N.push(n[0] / len, n[1] / len, n[2] / len); soup.UV.push(...uv); soup.UV1.push(0, 0); }
-    soup.M.push(0, 0);
-  };
-  /** Axis-aligned box from min to max corner. */
-  const box = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, uv: [number, number]) => {
-    quad([x0, y1, z0], [x0, y1, z1], [x1, y1, z1], [x1, y1, z0], uv); // top
-    quad([x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], uv); // bottom
-    quad([x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], uv); // +z
-    quad([x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], uv); // -z
-    quad([x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], uv); // +x
-    quad([x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], uv); // -x
-  };
   /** A slanted beam along the flight: a box sheared from foot (z = run, y = yFoot) to top (z = 0, y = yTop). */
-  const beam = (x0: number, x1: number, yFoot: number, yTop: number, h: number, uv: [number, number]) => {
+  const beam = (x0: number, x1: number, yFoot: number, yTop: number, h: number, uv: UV, opts: BoxOpts = {}) => {
     const f0 = [x0, yFoot, run], f1 = [x1, yFoot, run], t0 = [x0, yTop, 0], t1 = [x1, yTop, 0];
     const up = (v: number[]) => [v[0], v[1] + h, v[2]];
-    quad(up(f0), up(f1), up(t1), up(t0), uv); // top
-    quad(f0, t0, t1, f1, uv); // bottom
-    quad(f0, up(f0), up(t0), t0, uv); // -x side
-    quad(f1, t1, up(t1), up(f1), uv); // +x side
-    quad(f0, f1, up(f1), up(f0), uv); // foot end
-    quad(t0, up(t0), up(t1), t1, uv); // top end
+    const ramp = [0, run, rise]; // up the slope's normal
+    b.face([up(f0), up(f1), up(t1), up(t0)], ramp, uv, opts); // top
+    b.face([f0, t0, t1, f1], ramp.map((c) => -c), uv, opts); // bottom
+    b.face([f0, up(f0), up(t0), t0], [-1, 0, 0], uv, opts);
+    b.face([f1, t1, up(t1), up(f1)], [1, 0, 0], uv, opts);
+    b.face([f0, f1, up(f1), up(f0)], [0, 0, 1], uv, opts); // foot end
+    b.face([t0, up(t0), up(t1), t1], [0, 0, -1], uv, opts); // top end
   };
   const hw = width / 2, sw = 0.08;
   const stepH = rise / steps, depth = run / steps;
   for (let i = 0; i < steps; i++) {
     const y = stepH * (i + 1), zFront = run - depth * i;
-    box(-hw + sw, y - 0.05, zFront - depth, hw - sw, y, zFront, TREAD);
+    b.box(-hw + sw, y - 0.05, zFront - depth, hw - sw, y, zFront, TREAD, { collide: false, bottom: true });
   }
-  for (const x of [-hw, hw - sw]) beam(x, x + sw, -0.25, rise - 0.25, 0.3, STEEL); // stringers
   for (const x of [-hw, hw - sw]) {
+    beam(x, x + sw, -0.25, rise - 0.25, 0.3, STEEL); // stringer
     beam(x, x + sw, 0.95, rise + 0.95, 0.06, RAIL); // handrail
     for (const z of [run - 0.2, run / 2, 0.15]) {
       const y = rise * (1 - z / run);
-      box(x, y, z - 0.03, x + sw, y + 0.95, z + 0.03, RAIL);
+      b.box(x, y, z - 0.03, x + sw, y + 0.95, z + 0.03, RAIL, { collide: false });
+    }
+    // The rail as a wall: from under the treads to just over the handrail.
+    beam(x, x + sw, -0.2, rise - 0.2, 1.25, RAIL, { draw: false, collide: true });
+  }
+  // The walking surface: one ramp, a little longer than the treads at the foot.
+  b.face([[-hw, 0, run + 0.2], [hw, 0, run + 0.2], [hw, rise, 0], [-hw, rise, 0]], [0, 1, 0], TREAD, { draw: false, collide: true });
+}
+
+/** A wooden crate of side `s`: plank panels inside a frame of battens. */
+function crate(s: number) {
+  const b = new Builder(), h = s / 2, e = 0.08, inset = 0.035;
+  b.box(-h + inset, 0, -h + inset, h - inset, s - inset, h - inset, WOOD, { mat: M_WOOD, tile: s * 0.9, collide: false });
+  const batten = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number) =>
+    b.box(x0, y0, z0, x1, y1, z1, WOOD_DARK, { mat: M_WOOD, tile: 0.6, collide: false, bottom: y0 > 0 });
+  for (const x of [-h, h - e]) for (const z of [-h, h - e]) batten(x, 0, z, x + e, s, z + e);
+  for (const y of [0, s - e]) {
+    batten(-h + e, y, -h, h - e, y + e, -h + e);
+    batten(-h + e, y, h - e, h - e, y + e, h);
+    batten(-h, y, -h + e, -h + e, y + e, h - e);
+    batten(h - e, y, -h + e, h, y + e, h - e);
+  }
+  b.box(-h, 0, -h, h, s, h, WOOD, { draw: false });
+  return b;
+}
+
+/** A 20 ft shipping container along local x, its doors at +x. */
+function container(color: UV) {
+  const b = new Builder(), L = 3.03, W = 1.22, H = 2.59, p = 0.14, r = 0.12;
+  b.box(-L + 0.04, r, -W + 0.04, L - 0.04, H - r, W - 0.04, color, { mat: M_PROFILE, tile: 1.6, collide: false });
+  const frame = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number) => b.box(x0, y0, z0, x1, y1, z1, color, { collide: false, bottom: y0 > 0 });
+  for (const x of [-L, L - p]) for (const z of [-W, W - p]) frame(x, 0, z, x + p, H, z + p);
+  for (const y of [0, H - r]) {
+    frame(-L + p, y, -W, L - p, y + r, -W + p);
+    frame(-L + p, y, W - p, L - p, y + r, W);
+    frame(-L, y, -W + p, -L + p, y + r, W - p);
+    frame(L - p, y, -W + p, L, y + r, W - p);
+  }
+  // Door end: a seam down the middle and four locking bars.
+  b.box(L - 0.04, r, -0.02, L + 0.01, H - r, 0.02, DARK, { collide: false });
+  for (const z of [-0.85, -0.4, 0.4, 0.85]) b.box(L - 0.02, 0.3, z - 0.03, L + 0.04, H - 0.3, z + 0.03, STEEL, { collide: false });
+  b.box(-L, 0, -W, L, H, W, color, { draw: false });
+  return b;
+}
+
+/**
+ * "Depot": a warehouse you can fight through, mirror-symmetric across x = 0. Roller doors in
+ * both gable ends, a door in each long wall, and a mezzanine along the north wall with a stair
+ * at each end and a parapet to shoot over. Footprint 20 x 14 m, 6.8 m to the ridge.
+ */
+function depot() {
+  const b = new Builder();
+  const X = 10, Z = 7, T = 0.25, EAVE = 5.2, RIDGE = 6.6;
+  const xi = X - T, zi = Z - T;
+  const wall = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number) =>
+    b.box(x0, y0, z0, x1, y1, z1, CLADDING, { mat: M_PROFILE, tile: 1.4 });
+  const trim = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, uv = TRIM) =>
+    b.box(x0, y0, z0, x1, y1, z1, uv, { collide: false, bottom: y0 > 0 });
+
+  // Long walls (north and south), each with a door in the middle.
+  const door = { half: 1.5, h: 2.3 };
+  for (const [z0, z1] of [[-Z, -zi], [zi, Z]]) {
+    wall(-X, 0, z0, -door.half, EAVE, z1);
+    wall(door.half, 0, z0, X, EAVE, z1);
+    wall(-door.half, door.h, z0, door.half, EAVE, z1);
+    for (const x of [-door.half - 0.15, door.half]) trim(x, 0, z0 - 0.06, x + 0.15, door.h + 0.15, z1 + 0.06);
+    trim(-door.half - 0.15, door.h, z0 - 0.06, door.half + 0.15, door.h + 0.15, z1 + 0.06);
+    // Window bands, glazed on both faces.
+    for (const [w0, w1] of [[-8.6, -4.2], [4.2, 8.6]]) {
+      for (const [g0, g1] of [[z0 - 0.04, z0], [z1, z1 + 0.04]]) b.box(w0, 3.1, g0, w1, 4.3, g1, ROOF, { mat: M_GLASS, collide: false, bottom: true });
+      trim(w0 - 0.1, 3.0, z0 - 0.07, w1 + 0.1, 3.1, z1 + 0.07, DARK);
     }
   }
-  // Collision: the walking surface as one ramp, slightly wider than the treads.
-  const collision: CollisionMesh = {
-    positions: new Float32Array([-hw, 0, run + 0.2, hw, 0, run + 0.2, hw, rise, 0, -hw, rise, 0]),
-    indices: new Uint32Array([0, 1, 2, 0, 2, 3]), // facing up: the navmesh only walks up-facing triangles
+  // Gable ends (west and east): a roller-door opening, then the gable up to the ridge.
+  const roller = { half: 2.25, h: 4 };
+  for (const [x0, x1, side] of [[-X, -xi, -1], [xi, X, 1]]) {
+    wall(x0, 0, -zi, x1, EAVE, -roller.half);
+    wall(x0, 0, roller.half, x1, EAVE, zi);
+    wall(x0, roller.h, -roller.half, x1, EAVE, roller.half);
+    for (const z of [-roller.half - 0.2, roller.half]) trim(x0 - 0.08, 0, z, x1 + 0.08, roller.h + 0.2, z + 0.2, DARK);
+    trim(x0 - 0.08, roller.h, -roller.half - 0.2, x1 + 0.08, roller.h + 0.2, roller.half + 0.2, DARK);
+    // The rolled-up shutter's drum over the opening, outside.
+    const outer = side < 0 ? x0 : x1;
+    trim(Math.min(outer, outer + side * 0.45), roller.h + 0.2, -roller.half, Math.max(outer, outer + side * 0.45), roller.h + 0.65, roller.half, STEEL);
+    for (const x of [x0, x1]) {
+      const pts = [[x, EAVE, -Z], [x, EAVE, Z], [x, RIDGE, 0]];
+      b.face(pts, [x === outer ? side : -side, 0, 0], CLADDING, { mat: M_PROFILE, tile: 1.4, collide: true });
+    }
+  }
+  for (const x of [-X - 0.1, X - 0.15]) for (const z of [-Z - 0.1, Z - 0.15]) trim(x, 0, z, x + 0.25, EAVE, z + 0.25); // corner posts
+
+  // Roof: two pitched slabs with an overhang, and a ridge cap.
+  const t = 0.18, over = 0.5, xr = X + 0.4, k = (RIDGE - EAVE) / Z;
+  for (const s of [-1, 1]) {
+    const ze = s * (Z + over), ye = EAVE - over * k;
+    const top = [[-xr, RIDGE + t, 0], [xr, RIDGE + t, 0], [xr, ye + t, ze], [-xr, ye + t, ze]];
+    const under = top.map(([x, y, z]) => [x, y - t, z]);
+    b.face(top, [0, 1, s * k], ROOF, { mat: M_PROFILE, tile: 1.2, collide: true });
+    b.face(under, [0, -1, 0], ROOF, { mat: M_PROFILE, tile: 1.2, collide: true });
+    b.face([under[2], under[3], top[3], top[2]], [0, 0, s], TRIM);
+    b.face([under[0], under[3], top[3], top[0]], [-1, 0, 0], TRIM);
+    b.face([under[1], under[2], top[2], top[1]], [1, 0, 0], TRIM);
+  }
+  trim(-xr, RIDGE + t - 0.04, -0.25, xr, RIDGE + t + 0.08, 0.25);
+
+  // Floor slab (the asphalt underneath is the walking surface).
+  b.box(-xi, 0, -zi, xi, 0.03, zi, CONCRETE, { collide: false });
+
+  // Mezzanine: a steel deck on posts, a parapet along its edge and stairs up at each end.
+  const deck = { x: 6.5, front: -3.9, y: 2.6 }, stair = { x: 5, width: 1.6 };
+  b.box(-deck.x, deck.y - 0.2, -zi, deck.x, deck.y, deck.front, STEEL, { bottom: true });
+  for (const x of [-6.3, -2.1, 2.1, 6.3]) b.box(x - 0.1, 0, deck.front - 0.25, x + 0.1, deck.y - 0.2, deck.front - 0.05, DARK);
+  const gap = stair.x - stair.width / 2, gapEnd = stair.x + stair.width / 2;
+  const parapet = (x0: number, z0: number, x1: number, z1: number) => {
+    b.box(x0, deck.y, z0, x1, deck.y + 1.05, z1, STEEL);
+    b.box(x0 - 0.02, deck.y + 1.05, z0 - 0.02, x1 + 0.02, deck.y + 1.12, z1 + 0.02, RAIL, { bottom: true });
   };
-  return { soup, collision };
+  for (const [x0, x1] of [[-deck.x, -gapEnd], [-gap, gap], [gapEnd, deck.x]]) parapet(x0, deck.front - 0.1, x1, deck.front);
+  for (const x of [-deck.x, deck.x - 0.1]) parapet(x, -zi, x + 0.1, deck.front - 0.1);
+  for (const x of [-stair.x, stair.x]) {
+    b.at(x, 0, deck.front);
+    stairs(b, deck.y, stair.width, 8);
+  }
+  b.at(0, 0, 0);
+  return b;
 }
 
 function addPiece(doc: Document, scene: Scene, name: string, soup: Soup, mats: Material[]) {
@@ -388,13 +575,24 @@ export async function importIndustrial() {
   // grass verge; measured by palette color, since the verge is partly flat too).
   nodes.push(addPiece(doc, scene, "Island", extract(geo, terrain.tris, { name: "Island", box: [0, 0, 0, 0], origin: YARD_CENTER }), mats));
 
-  const steel = stairs(3.6, 1.4, 12);
-  nodes.push(addPiece(doc, scene, "Stairs_Steel", steel.soup, mats));
+  // Pieces the pack doesn't have, built here from its palette: stairs, box cover and an
+  // enterable warehouse.
+  const steel = new Builder();
+  stairs(steel, 3.6, 1.8, 12);
+  const built = new Map<string, Builder>([
+    ["Stairs_Steel", steel],
+    ["Crate", crate(1.3)],
+    ["Crate_Small", crate(0.9)],
+    ...Object.entries(CONTAINER_COLORS).map(([name, color]) => [name, container(color)] as [string, Builder]),
+    ["Depot", depot()],
+  ]);
+  for (const [name, b] of built) nodes.push(addPiece(doc, scene, name, b.soup, mats));
 
   for (const node of nodes) {
     const name = node.getName();
     pieces[name] = pieceBounds(node);
-    if (name === "Stairs_Steel") collision.set(name, steel.collision);
+    const b = built.get(name);
+    if (b) collision.set(name, b.collision());
     else collision.set(name, noCollide.has(name) ? null : buildCollision(node, /Leaves/, 0.04));
   }
   const { ranges, positionsByteLength } = writeCollisionBin(path.join(PUBLIC_MODELS, "industrial.collision.bin"), collision);

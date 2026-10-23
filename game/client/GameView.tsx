@@ -127,10 +127,16 @@ function MatchHud({ game, map, onLeave }: { game: Game | null; map: MapId; onLea
         {h.hitmarker.confirmed && !h.hitmarker.kill && now - h.hitmarker.at < 650 && <div className="hit-confirm">{h.hitmarker.damage} DAMAGE{h.hitmarker.head && " · HEADSHOT"}</div>}
         {h.hurtAt > 0 && now - h.hurtAt < 550 && <div className="hurt-vignette" />}
         <DamageIndicator now={now} />
-        {h.protectedUntil > now + h.serverOffset && <div className="protected">SPAWN PROTECTION</div>}
+        {h.protectedUntil > now + h.serverOffset && <div className="protected">SPAWN PROTECTION · {Math.ceil((h.protectedUntil - now - h.serverOffset) / 1000)}<small>FIRING OR THROWING ENDS IT</small></div>}
+        {h.grenadeAim && <div className="grenade-aim" data-cooked={h.grenadeAim.fuse !== null || undefined}>
+          <b>{h.grenadeAim.lob ? "UNDERHAND LOB" : "FRAG GRENADE"}</b>
+          {h.grenadeAim.fuse === null
+            ? <small>{h.touch ? "RELEASE TO THROW · AIM FOR A LOB" : "RELEASE C TO THROW · R COOK · HOLD RMB TO LOB"}</small>
+            : <small>COOKED · FUSE {(h.grenadeAim.fuse / 1000).toFixed(1)} S</small>}
+        </div>}
       </>}
       {h.announce && now - h.announce.at < 3000 && <div className="announcement"><h2>{h.announce.text}</h2><p>{h.announce.sub}</p></div>}
-      {h.alive && <div className="hud-bottom"><div className="hud-hints">WASD MOVE · Q / E PEEK · R RELOAD · C GRENADE<br />V CAMERA · T EMOTE · N / M VOICE · TAB SCORES · H HELP · ESC PAUSE</div><div className="ammo"><small>{WEAPONS[h.weapon].name} · {h.thirdPerson ? "TPP" : "FPP"}</small><strong>{h.mag}<span> / {h.reserve}</span></strong><small>{h.reloading >= 0 ? `RELOADING ${Math.round(h.reloading * 100)}%` : `${h.grenades} GRENADES`}</small></div></div>}
+      {h.alive && <div className="hud-bottom"><div className="hud-hints">WASD MOVE · Q / E PEEK · R RELOAD · HOLD C GRENADE<br />V CAMERA · T EMOTE · N / M VOICE · TAB SCORES · H HELP · ESC PAUSE</div><div className="ammo"><small>{WEAPONS[h.weapon].name} · {h.thirdPerson ? "TPP" : "FPP"}</small><strong>{h.mag}<span> / {h.reserve}</span></strong><small>{h.reloading >= 0 ? `RELOADING ${Math.round(h.reloading * 100)}%` : `${h.grenades} GRENADES`}</small></div></div>}
       {h.ready && h.alive && !paused && !scoreboard && !h.loadoutOpen && !h.customizingControls && <HealthBar h={h} now={now} />}
       {!h.alive && h.ready && !scoreboard && !paused && !h.loadoutOpen && <DeathRecap h={h} now={now} />}
     </div>

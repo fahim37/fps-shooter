@@ -9,14 +9,16 @@ import industrialPieces from "../generated/industrial-pieces.json";
  * World axes: +X east, +Z south (N = -Z). Three lanes run east–west between the team bases:
  *   - North, "Yard": parked trailers make corridors; one trailer per side has steel stairs to
  *     its roof, a high spot over the middle lane that is open to fire from the dock.
- *   - Middle, "Dock": an open-sided canopy full of cargo at the center, scattered cover on
- *     the way to it, and skips that keep each spawn out of the long sightline.
+ *   - Middle, "Depot": a warehouse to fight through at the center (roller doors at both ends,
+ *     a door in each long side, a mezzanine with a parapet), box cover on the way to it, and
+ *     skips that keep each spawn out of the long sightline.
  *   - South, "Works": solid buildings and alleys for close-quarters fights.
  * The layout is mirrored across x = 0, so Blue (west) and Red (east) get identical halves.
  *
  * Kit conventions (measured by the importer): pieces stand on y = 0 and are centered on their
- * footprint; trailers and low barriers run along local x; Stairs_Steel climbs 3.6 m toward
- * local -Z with its top edge at z = 0, which meets a trailer roof (3.67 m) at its long side.
+ * footprint; trailers, containers and low barriers run along local x; Stairs_Steel climbs 3.6 m
+ * toward local -Z with its top edge at z = 0, which meets a trailer roof (3.67 m) at its long
+ * side. Crates (1.3 m) stack by placing a second one at y = 1.3.
  */
 
 export const INDUSTRIAL_HALF = 48;
@@ -27,7 +29,7 @@ type PieceBounds = { min: number[]; max: number[] };
 const BOUNDS = (industrialPieces as { pieces: Record<string, PieceBounds> }).pieces;
 
 /** Pieces drawn as solid blocks on the minimap (and kept clear of spawns). */
-const SOLID = /^(Warehouse|Office|BrickHall|Garage|Hut|Shed|SiloShed|Substation|Workshop|GasTanks|Trailer_|Skips_Dark)/;
+const SOLID = /^(Warehouse|Depot|Office|BrickHall|Garage|Hut|Shed|SiloShed|Substation|Workshop|GasTanks|Trailer_|Container_|Skips_Dark)/;
 
 const r3 = (v: number) => Math.round(v * 1000) / 1000 + 0; // +0 turns -0 into 0
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -86,7 +88,11 @@ function westHalf(l: Layout) {
   l.both("Beams", -6, -33.5, PI / 2);
   l.both("Pallet_Cargo", -35, -24, 0.2);
   l.both("Pallet_Cargo", -6, -25.5, -0.3);
-  l.both("Spool_Standing", -19, -25.5, 0.4);
+  l.both("Crate", -19, -25.5, 0.4);
+  l.both("Crate", -19, -25.5, 0.7, 1.3);
+  l.both("Crate_Small", -17.8, -26.4, 0.1);
+  // A container across the gap between the trailers and the workshop.
+  l.both("Container_Blue", -12.5, -37.5, 0);
   l.both("Drain", -20, -37, PI / 2);
 
   // --- Middle lane: approaches to the dock. Every line from one spawn to the other crosses
@@ -94,12 +100,13 @@ function westHalf(l: Layout) {
   l.both("Skips_Dark", -28.5, 0, 0);
   l.both("GasTanks", -21, -10.5, 0);
   l.both("Pallet_TarpStack", -30, -15.5, 0);
-  l.both("Spools_Pair", -24, 9.5, PI / 2);
+  l.both("Container_Red", -24, 9.5, PI / 2);
   l.both("Barrier_Low", -20.5, -1.7, PI / 2);
   l.both("Barrier_Low", -20.5, 0, PI / 2);
   l.both("Barrier_Low", -20.5, 1.7, PI / 2);
   l.both("Spool_Standing", -14.5, -3.5, 0.35);
-  l.both("Spools_Pair", -15, 5, PI / 2 + 0.2);
+  l.both("Crate", -15, 4.4, 0.15);
+  l.both("Crate_Small", -14.9, 5.7, -0.2);
   l.both("Drums_Red", -11, -12.5, 0);
   l.both("Pallet_Cargo", -10, 10.4, 0.15);
   l.both("Pallet_Tarp", -11.6, 10.6, -0.1);
@@ -119,6 +126,7 @@ function westHalf(l: Layout) {
   l.both("Pallet_TarpStack", -14.5, 27.5, 0);
   l.both("Drums_Blue", -17.5, 30, 0.3);
   l.both("Skip_Green", -36.5, 27, PI / 2);
+  l.both("Container_Green", -28, 27, 0);
   l.both("Bin", -19.5, 22.5, 0.2);
   l.both("Spool_Flat", -6, 25, 0);
   l.both("Barrier_Low", -5.2, 28.5, 0.15);
@@ -127,20 +135,25 @@ function westHalf(l: Layout) {
 
 /** Pieces on the center line (each placed once, roughly symmetric about x = 0). */
 function center(l: Layout) {
-  // The dock: an open canopy with cargo to fight around.
-  l.one("Canopy", 0, 0, 0);
-  l.one("Pallet_TarpStack", 0, -4.5, 0);
-  l.one("Pallet_TarpStack", 0, 4.5, PI);
-  l.one("Spool_Standing", -3.6, 0, PI / 2);
-  l.one("Spool_Standing", 3.6, 0, PI / 2);
-  l.both("Pallet_Cargo", -5.2, -6.6, 0);
-  l.both("Drums_Blue", -5.2, 6.8, 0);
-  l.both("Barrier_Low", -9.6, -1.4, PI / 2);
+  // The depot: a warehouse to fight through. A container down its middle splits the floor in
+  // two (joined around both ends) and blocks the line from one roller door to the other.
+  l.one("Depot", 0, 0, 0);
+  l.one("Container_Blue", 0, 0.83, PI / 2);
+  l.both("Crate", -7.4, 4.4, 0.1);
+  l.both("Crate_Small", -6.2, 5.3, -0.15);
+  l.both("Crate", -3.4, 2.4, 0.2);
+  l.both("Crate_Small", -7.8, -1.9, 0);
+  // Light cover outside the side doors.
+  l.both("Pallet_Cargo", -4.5, -9.6, 0.1);
+  l.both("Drums_Blue", -4.5, 9.8, 0);
   // North: the workshop and its radio mast, the map's landmark.
   l.one("Workshop", 0, -43.4, 0); // backs onto the fence: no dead-end alley behind it
   l.one("Barrier_Tall", -1.3, -24, PI / 2);
   l.one("Barrier_Tall", 1.3, -24, PI / 2);
   l.one("Pallet_TarpStack", 0, -17.5, 0); // also cuts the diagonal between the north spawns
+  l.one("Crate", 0, -31, 0);
+  l.one("Crate", 0, -31, 0.25, 1.3);
+  l.both("Crate_Small", -1.15, -31.4, 0.2);
   // South: the brick hall closes the works' center.
   l.one("BrickHall", 0, 39.8, 0);
   l.one("Substation", 0, 22.5, 0);
@@ -186,7 +199,7 @@ export function buildIndustrial(): MapData {
   // Free-for-all: every lane, both halves.
   const ffa: [number, number][] = [
     [-30, -36], [-17, -37], [-30, -26], [-3.5, -28.5], // yard
-    [-24, 4], [-17, -8], [-9, 6], // dock approaches
+    [-24, 4], [-17, -8], [-12.5, 8.5], // depot approaches
     [-38, 32], [-20, 26], [-8, 33], // works
   ];
   for (const [x, z] of ffa) {
@@ -198,11 +211,11 @@ export function buildIndustrial(): MapData {
     roads: [
       { x: -H, z: -18, sx: 2 * H, sz: 36 }, // the middle lane's open yard
     ],
-    plazas: [{ x: -7.6, z: -8.8, sx: 15.2, sz: 17.6 }], // the dock canopy
+    plazas: [],
     buildings: l.buildings,
     labels: [
       { text: "YARD", x: 0, z: -28 },
-      { text: "DOCK", x: 0, z: 12 },
+      { text: "DEPOT", x: 0, z: 11.5 },
       { text: "WORKS", x: 0, z: 29 },
     ],
   };

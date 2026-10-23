@@ -85,3 +85,57 @@ describe.each([30, 120])("steel stairs at %i Hz", (rate) => {
     });
   }
 });
+
+describe("steel stair rails", () => {
+  for (const p of stairs) {
+    it(`keep a player who strafes on the flight at ${p.x},${p.z} from stepping off the side`, () => {
+      const mover = new Mover(RAPIER, world);
+      const s = newMoveState(0, 0, 0), dx = Math.sin(p.ry), dz = Math.cos(p.ry);
+      // Halfway up: 2.58 m out from the top edge along the piece's +Z, 1.8 m up.
+      const mid = { x: p.x + dx * 2.58, z: p.z + dz * 2.58 };
+      mover.teleport(s, mid.x, 1.9, mid.z);
+      try {
+        for (const right of [1, -1]) {
+          const input: MoveInput = { forward: 0, right, yaw: p.ry, jump: false, sprint: true, crouch: false, ads: 0, speedMult: 1 };
+          for (let i = 0; i < 120; i++) mover.step(s, input, 1 / 60);
+          // Sideways distance from the flight's center line, along the piece's local x.
+          const side = (s.x - p.x) * Math.cos(p.ry) - (s.z - p.z) * Math.sin(p.ry);
+          expect(Math.abs(side), `slid to ${s.x},${s.y},${s.z}`).toBeLessThan(0.9);
+          expect(s.y).toBeGreaterThan(1);
+        }
+      } finally { mover.dispose(); }
+    });
+  }
+});
+
+describe("the depot", () => {
+  const depot = map.pieces.find((p) => p.name === "Depot")!;
+
+  it("stands at the center of the middle lane", () => {
+    expect(depot).toMatchObject({ x: 0, z: 0, ry: 0 });
+  });
+
+  it("can be walked into through its roller doors", () => {
+    for (const side of [-1, 1]) {
+      const mover = new Mover(RAPIER, world);
+      const s = newMoveState(0, 0, 0);
+      mover.teleport(s, side * 14, 0.1, 0.2);
+      try {
+        // Walk toward the center: yaw faces -Z at 0, so ±π/2 faces ∓X.
+        const input: MoveInput = { forward: 1, right: 0, yaw: side * Math.PI / 2, jump: false, sprint: false, crouch: false, ads: 0, speedMult: 1 };
+        for (let i = 0; i < 120; i++) mover.step(s, input, 1 / 60);
+        expect(Math.abs(s.x), `stopped at ${s.x},${s.z}`).toBeLessThan(8.5);
+      } finally { mover.dispose(); }
+    }
+  });
+
+  it("has a mezzanine bots can reach by its stairs", () => {
+    const nav = getNav("industrial");
+    for (const start of [map.spawns.find((s) => s.team === 1)!, map.spawns.find((s) => s.team === 2)!]) {
+      const target = { x: start.x < 0 ? -3 : 3, y: 2.6, z: -5.5 };
+      const res = nav.computePath({ x: start.x, y: start.y, z: start.z }, target, { halfExtents: { x: 0.5, y: 0.5, z: 0.5 } });
+      const end = res.path[res.path.length - 1];
+      expect(res.success && Math.hypot(end.x - target.x, end.z - target.z) < 1 && end.y > 2.3, `from ${start.x},${start.z}`).toBe(true);
+    }
+  });
+});

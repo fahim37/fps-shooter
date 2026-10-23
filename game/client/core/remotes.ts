@@ -50,6 +50,9 @@ export class RemotePlayer {
   readonly head = new THREE.Vector3();
   /** Whether the character was posed this frame; off-screen ones skip animation and drawing. */
   posed = false;
+  /** A footstep landed this frame (heard or not), and on which foot. */
+  stepped = false;
+  footLeft = false;
   private readable = false;
 
   constructor(readonly id: string) {}
@@ -97,6 +100,12 @@ export class RemotePlayer {
     this.sinceShot = 0;
   }
 
+  /** Running flat out: the sprint flag, or moving faster than a walk. */
+  get sprinting() { return (this.flags & F_SPRINT) !== 0 || this.speed > 6.5; }
+
+  /** Direction of travel (player yaw convention). */
+  get moveYaw() { return Math.atan2(-this.vel.x, -this.vel.z); }
+
   /** Pose used for local hit prediction (what we see on screen). */
   pose(): Pose {
     return { x: this.pos.x, y: this.pos.y, z: this.pos.z, crouch: (this.flags & F_CROUCH) !== 0, yaw: this.yaw, lean: this.lean };
@@ -104,6 +113,7 @@ export class RemotePlayer {
 
   /** Interpolates the network pose and plays footsteps; `animate` then poses the character. */
   update(dt: number, renderTime: number, listener: THREE.Vector3) {
+    this.stepped = false;
     const s = this.snaps;
     if (s.length === 0 || !this.rig) return;
     let a = s[0], b = s[s.length - 1];
@@ -178,6 +188,8 @@ export class RemotePlayer {
       this.stepDist += speed * dt;
       if (this.stepDist > (speed > 6 ? 2.6 : 2.1)) {
         this.stepDist = 0;
+        this.stepped = true;
+        this.footLeft = !this.footLeft;
         if (this.pos.distanceTo(listener) < 30 && !(this.flags & F_CROUCH)) {
           audio.footstep(Math.abs(this.pos.z) < 3 || Math.abs(this.pos.x) < 3 || this.pos.y > 0.05, this.pos, 0.3);
         }

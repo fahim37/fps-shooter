@@ -1,3 +1,5 @@
+import { GRAVITY } from "./constants";
+
 export type WeaponId = "ar" | "smg" | "shotgun" | "sniper" | "pistol";
 export const PRIMARIES: WeaponId[] = ["ar", "smg", "shotgun", "sniper"];
 
@@ -72,12 +74,58 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
 
 export const GRENADE = {
   fuseMs: 3200,
-  throwSpeed: 17,
-  radius: 7,
-  damage: 115,
+  throwSpeed: 19,
+  /** An underhand lob (right mouse while aiming) leaves the hand at this fraction of a full throw. */
+  lobPower: 0.5,
+  radius: 10,
+  damage: 160,
   /** Minimum damage at the edge of the radius, as a fraction. */
-  edgeMult: 0.15,
+  edgeMult: 0.2,
+  /** Air drag on the server's grenade body; the aiming arc integrates the same. */
+  linearDamping: 0.15,
 };
+
+type Vec3 = [number, number, number];
+
+/** Launch velocity of a grenade thrown along `dir` at `power` (lob..1) by a player moving at `vel`. */
+export function grenadeVelocity(dir: Vec3, power: number, vel: Vec3): Vec3 {
+  const len = Math.hypot(dir[0], dir[1], dir[2]) || 1;
+  const speed = GRENADE.throwSpeed * Math.min(1, Math.max(GRENADE.lobPower, power));
+  return [dir[0] / len * speed + vel[0] * 0.5, dir[1] / len * speed + 2 + vel[1] * 0.3, dir[2] / len * speed + vel[2] * 0.5];
+}
+
+/** Physics steps per second for grenades (Rapier's default step). */
+export const GRENADE_STEP_HZ = 60;
+
+/**
+ * The path of a thrown grenade up to the first surface it hits, integrated like the server's
+ * Rapier body (gravity, then damping, then motion at 60 Hz). `cast` returns the distance along
+ * a segment to the first surface, or null.
+ */
+export function grenadeArc(
+  origin: Vec3, vel: Vec3,
+  cast: (from: Vec3, dir: Vec3, distance: number) => { distance: number; normal: Vec3 } | null,
+  maxSeconds = 3,
+): { points: Vec3[]; end: Vec3; normal: Vec3 | null } {
+  const dt = 1 / GRENADE_STEP_HZ, damp = 1 / (1 + dt * GRENADE.linearDamping);
+  const points: Vec3[] = [origin];
+  let p = origin, v = vel;
+  for (let i = 0; i < maxSeconds * GRENADE_STEP_HZ; i++) {
+    v = [v[0] * damp, (v[1] - GRAVITY * dt) * damp, v[2] * damp];
+    const step = Math.hypot(v[0], v[1], v[2]) * dt;
+    if (step < 1e-6) break;
+    const dir: Vec3 = [v[0] * dt / step, v[1] * dt / step, v[2] * dt / step];
+    const hit = cast(p, dir, step);
+    if (hit) {
+      const end: Vec3 = [p[0] + dir[0] * hit.distance, p[1] + dir[1] * hit.distance, p[2] + dir[2] * hit.distance];
+      points.push(end);
+      return { points, end, normal: hit.normal };
+    }
+    p = [p[0] + v[0] * dt, p[1] + v[1] * dt, p[2] + v[2] * dt];
+    points.push(p);
+  }
+  return { points, end: p, normal: null };
+}
 
 export function damageAt(def: WeaponDef, distance: number): number {
   if (distance <= def.falloffStart) return def.damage;

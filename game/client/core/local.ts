@@ -4,7 +4,7 @@ import { raycastWorld, type Rapier, type World } from "../../shared/physics";
 import { aimDir, spreadDir, zoomSensitivity } from "../../shared/aim";
 import { WEAPONS, GRENADE, currentSpread, fireIntervalMs, type WeaponId } from "../../shared/weapons";
 import { EYE_HEIGHT, CROUCH_EYE_HEIGHT, GRENADES_PER_LIFE, INTERP_DELAY_MS } from "../../shared/constants";
-import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_SPRINT, type AmmoEvent, type LoadoutEvent, type PoseMsg, type SpawnEvent } from "../../shared/messages";
+import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_SPRINT, type AmmoEvent, type GrenadeMsg, type LoadoutEvent, type PoseMsg, type SpawnEvent } from "../../shared/messages";
 import type { Input } from "./input";
 import type { Game } from "./game";
 import { useSettings } from "../settings";
@@ -63,7 +63,11 @@ export class LocalPlayer {
   /** A peek is wanted (held or latched): peeking aims down sights. */
   private peeking = false;
   grenades = GRENADES_PER_LIFE;
-  private cookStart = 0;
+  /** Grenade in hand (C / G held) since; its fuse burning since (cooked with R), else 0. */
+  private grenadeAt = 0;
+  private fuseAt = 0;
+  /** An underhand lob instead of a full throw (right mouse while aiming). */
+  private lob = false;
   /** Emote being played: the camera pulls out to third person and the gun is put away. */
   emote: EmoteId | null = null;
   /** Which way the body faces while emoting; the camera stays free to orbit it. */
@@ -135,7 +139,7 @@ export class LocalPlayer {
     this.switchEnd = performance.now() + 300;
     this.drawAt = performance.now();
     this.lastShotAt = -Infinity;
-    this.cookStart = 0;
+    this.grenadeAt = this.fuseAt = 0;
     this.alive = true;
     this.ads = this.adsProgress = 0;
     this.sendAt = 0;
@@ -165,12 +169,12 @@ export class LocalPlayer {
     this.lean = this.leanLatch = 0;
     this.motion.reset(this.ms);
     this.reloadEnd = 0;
-    this.cookStart = 0;
+    this.grenadeAt = this.fuseAt = 0;
   }
 
   cancelActions() {
     // Opening a menu or editing the HUD must not turn a held grenade into a throw.
-    this.cookStart = 0;
+    this.grenadeAt = this.fuseAt = 0;
     this.triggerReleased = true;
     this.emoteMenu = false;
   }
@@ -235,16 +239,24 @@ export class LocalPlayer {
       this.switchTo(this.weapon === "pistol" ? this.primary : "pistol", now);
     }
     const def = this.def;
-    if (input.consume("KeyR")) this.startReload(now);
-
-    // Grenade: hold C (or G) to cook, release to throw.
-    const cook = input.consume("KeyC") || input.consume("KeyG");
-    if (cook && this.grenades > 0 && !this.cookStart) {
-      this.endEmote(now);
-      this.cookStart = now;
+    // R reloads, or with a grenade in hand cooks it: the fuse starts burning before the throw.
+    if (input.consume("KeyR")) {
+      if (!this.grenadeAt) this.startReload(now);
+      else if (!this.fuseAt) { this.fuseAt = now; audio.grenadePin(); }
     }
-    if (this.cookStart && (!input.held("KeyC") && !input.held("KeyG") && !input.held("TouchGrenade") || now - this.cookStart > GRENADE.fuseMs - 300)) {
-      this.throwGrenade(now);
+
+    // Grenade, like PUBG: hold C (or G) to take it out and aim along the arc, release to throw.
+    // Right mouse switches to an underhand lob; a cooked grenade leaves the hand before it blows.
+    const draw = input.consume("KeyC") || input.consume("KeyG");
+    if (draw && this.grenades > 0 && !this.grenadeAt) {
+      this.endEmote(now);
+      this.grenadeAt = now;
+      this.fuseAt = 0;
+    }
+    if (this.grenadeAt) {
+      this.lob = input.ads;
+      const held = input.held("KeyC") || input.held("KeyG") || input.held("TouchGrenade");
+      if (!held || this.fuseAt && now - this.fuseAt > GRENADE.fuseMs - 300) this.throwGrenade(now);
     }
     this.throwAnim = Math.max(0, this.throwAnim - dt * 3);
 
@@ -286,7 +298,7 @@ export class LocalPlayer {
     this.updateLean(dt, input, s.leanToggle, wantsSprint && fwd >= 0 && Math.hypot(fwd, right) > 0.12);
 
     // ---- ADS (peeking raises the sights too)
-    const adsTarget = (adsHeld || this.peeking) && !this.reloading && now > this.switchEnd ? 1 : 0;
+    const adsTarget = (adsHeld || this.peeking) && !this.reloading && !this.grenadeAt && now > this.switchEnd ? 1 : 0;
     const adsRate = 1000 / def.adsMs;
     this.adsProgress = THREE.MathUtils.clamp(this.adsProgress + Math.sign(adsTarget - this.adsProgress) * adsRate * dt, 0, 1);
     this.ads = THREE.MathUtils.smoothstep(this.adsProgress, 0, 1);
@@ -451,7 +463,7 @@ export class LocalPlayer {
 
   private tryFire(now: number) {
     const def = this.def;
-    if (now < this.switchEnd || this.reloading || this.cookStart) return;
+    if (now < this.switchEnd || this.reloading || this.grenadeAt) return;
     if (!def.auto && !this.triggerReleased) return;
     const interval = fireIntervalMs(def);
     if (!this.cadence.ready(now, interval)) return;
@@ -502,20 +514,35 @@ export class LocalPlayer {
   }
 
   private throwGrenade(now: number) {
-    const cooked = now - this.cookStart;
-    this.cookStart = 0;
+    const cooked = this.fuseAt ? now - this.fuseAt : 0;
+    this.grenadeAt = this.fuseAt = 0;
     if (this.grenades <= 0) return;
     this.grenades--;
     this.throwAnim = 1;
-    const dir = aimDir(this.yaw, this.pitch + 0.12);
-    this.game.send("grenade", { origin: [this.eye.x, this.eye.y - 0.1, this.eye.z], dir, cooked });
+    const { origin, dir, power } = this.grenadeThrow();
+    this.game.send("grenade", { origin, dir, cooked, power } satisfies GrenadeMsg);
     audio.grenadeThrow();
+  }
+
+  /** Where a throw leaves the hand, which way and how hard: shared by the throw and its aiming arc. */
+  grenadeThrow() {
+    return {
+      origin: [this.eye.x, this.eye.y - 0.1, this.eye.z] as V3,
+      dir: aimDir(this.yaw, this.pitch + 0.12),
+      power: this.lob ? GRENADE.lobPower : 1,
+    };
+  }
+
+  /** Grenade in hand: whether it will be lobbed, and the fuse left (ms) once cooked. */
+  grenadeAim(now: number) {
+    if (!this.grenadeAt || !this.alive) return null;
+    return { lob: this.lob, fuse: this.fuseAt ? Math.max(0, GRENADE.fuseMs - (now - this.fuseAt)) : null };
   }
 
   /** Plays an emote while standing on the ground; the character turns to face the camera. */
   startEmote(id: EmoteId) {
     this.emoteMenu = false;
-    if (!this.alive || !this.ms.grounded || this.reloading || this.cookStart || id === this.emote) return;
+    if (!this.alive || !this.ms.grounded || this.reloading || this.grenadeAt || id === this.emote) return;
     if (!this.emote) this.emoteYaw = this.yaw + Math.PI;
     this.emote = id;
     this.adsProgress = this.ads = 0;
@@ -534,10 +561,6 @@ export class LocalPlayer {
   /** Seconds since the last shot / since the current gun was drawn. */
   sinceShot(now: number) { return (now - this.lastShotAt) / 1000; }
   sinceDraw(now: number) { return (now - this.drawAt) / 1000; }
-
-  get cooking() {
-    return this.cookStart > 0;
-  }
 
   /** Shared by firing and the HUD so the displayed cone includes burst bloom. */
   get spread() {

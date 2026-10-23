@@ -15,7 +15,7 @@ export interface MapInfo {
 export const MAPS: Record<MapId, MapInfo> = {
   village: { id: "village", name: "Village", tagline: "Timber houses, a market plaza and forest edges.", style: "Open lanes · Multi-story houses" },
   downtown: { id: "downtown", name: "Downtown", tagline: "City streets, tight alleys and rooftop shops.", style: "Street fights · Close quarters" },
-  industrial: { id: "industrial", name: "Freight Yard", tagline: "Trailer corridors, a cargo dock and workshop alleys.", style: "Three lanes · Trailer-top overlooks" },
+  industrial: { id: "industrial", name: "Freight Yard", tagline: "Trailer corridors, a walk-through depot and workshop alleys.", style: "Three lanes · Warehouse fights" },
 };
 
 export const MAP_IDS = Object.keys(MAPS) as MapId[];

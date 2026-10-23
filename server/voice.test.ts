@@ -7,7 +7,7 @@ function fixture(mode = "tdm") {
   const available = new Set(["blue", "red"]);
   const transport = { available: (id: string) => available.has(id), mode: () => mode, send: vi.fn(), broadcast: vi.fn() };
   const relay = new VoiceRelay(transport);
-  const join = (id: string) => relay.state(id, { enabled: true, channel: "team", talking: false });
+  const join = (id: string) => relay.state(id, { enabled: true, channel: "team", talking: false, mic: true });
   return { relay, transport, join, available };
 }
 const offer = { description: { type: "offer", sdp: "audio offer" } };
@@ -33,22 +33,32 @@ describe("voice membership and signaling", () => {
     relay.state("outsider", { enabled: true, channel: "all", talking: true });
     relay.state("blue", { enabled: true, channel: "unknown", talking: true });
     expect(transport.broadcast).toHaveBeenLastCalledWith("voice:members", [
-      { id: "blue", channel: "team", talking: false }, { id: "red", channel: "team", talking: false },
+      { id: "blue", channel: "team", talking: false, mic: true }, { id: "red", channel: "team", talking: false, mic: true },
     ]);
     for (const signal of [null, {}, { description: { type: "offer", sdp: "x".repeat(16_001) } }, { candidate: { candidate: "ice", sdpMLineIndex: -1 } }]) relay.signal("blue", { to: "red", signal });
     available.delete("red");
     relay.signal("blue", { to: "red", signal: offer });
     expect(transport.send).not.toHaveBeenCalled();
     relay.remove("red");
-    expect(transport.broadcast).toHaveBeenLastCalledWith("voice:members", [{ id: "blue", channel: "team", talking: false }]);
-    relay.state("blue", { enabled: false, channel: "team", talking: false });
+    expect(transport.broadcast).toHaveBeenLastCalledWith("voice:members", [{ id: "blue", channel: "team", talking: false, mic: true }]);
+    relay.state("blue", { enabled: false, channel: "team", talking: false, mic: true });
     expect(transport.broadcast).toHaveBeenLastCalledWith("voice:members", []);
+  });
+  it("lists listeners without a microphone as silent members", () => {
+    const { relay, join, transport } = fixture();
+    join("blue");
+    relay.state("red", { enabled: true, channel: "all", talking: true, mic: false });
+    expect(transport.broadcast).toHaveBeenLastCalledWith("voice:members", [
+      { id: "blue", channel: "team", talking: false, mic: true }, { id: "red", channel: "all", talking: false, mic: false },
+    ]);
+    relay.state("red", { enabled: true, channel: "all", talking: false, mic: "yes" });
+    expect(transport.broadcast).toHaveBeenCalledTimes(2);
   });
   it("uses All for free-for-all and bounds signaling traffic", () => {
     const { relay, join, transport } = fixture("ffa");
     join("blue"); join("red");
     expect(transport.broadcast).toHaveBeenLastCalledWith("voice:members", [
-      { id: "blue", channel: "all", talking: false }, { id: "red", channel: "all", talking: false },
+      { id: "blue", channel: "all", talking: false, mic: true }, { id: "red", channel: "all", talking: false, mic: true },
     ]);
     for (let i = 0; i < 600; i++) relay.signal("blue", { to: "red", signal: offer });
     expect(transport.send.mock.calls.length).toBeLessThanOrEqual(500);

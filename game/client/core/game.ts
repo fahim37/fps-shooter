@@ -8,7 +8,7 @@ import { gripPose } from "../player/grip";
 import { getMap } from "../../shared/map/maps";
 import { raycastWorld, type Rapier, type World } from "../../shared/physics";
 import { INTERP_DELAY_MS, RESPAWN_MS, type GameMode } from "../../shared/constants";
-import { WEAPONS, type WeaponId } from "../../shared/weapons";
+import { GRENADE, WEAPONS, grenadeArc, grenadeVelocity, type WeaponId } from "../../shared/weapons";
 import { spreadRadius } from "../../shared/aim";
 import type { MatchState } from "../../shared/schema";
 import type { AmmoEvent, DamagedEvent, ExplosionEvent, HitConfirm, KillEvent, LoadoutEvent, Pong, ShotEvent, SpawnEvent } from "../../shared/messages";
@@ -23,7 +23,7 @@ import { PRESETS, useSettings } from "../settings";
 import { enemyAlongRay } from "./targeting";
 import { useLoadout } from "../loadout";
 import { DeathCamera } from "./deathcam";
-import { THREAT_MS, addThreat, mapRelation, type MapPlayer } from "./minimap";
+import { MARK_MS, STEP_REVEAL_RANGE, THREAT_MS, addMark, addThreat, mapRelation, type MapMark, type MapPlayer } from "./minimap";
 import { buildSquad } from "./squad";
 import { updateSightMotion } from "./sightMotion";
 
@@ -31,6 +31,11 @@ const _frustum = new THREE.Frustum();
 const _viewProjection = new THREE.Matrix4();
 /** Covers a character with arms and gun out, peeking or emoting, around its waist. */
 const _bounds = new THREE.Sphere(new THREE.Vector3(), 1.9);
+const _arcNormal = new THREE.Vector3();
+const _unitZ = new THREE.Vector3(0, 0, 1);
+/** Dots drawn along a grenade's aiming arc, one every ARC_DOT meters past the hand. */
+const ARC_DOTS = 90;
+const ARC_DOT = 0.45;
 
 /** Outfit tints (TEAM_COLORS): allies and you are blue, opponents red, whatever your team. */
 const ALLY_TINT = 1;
@@ -68,6 +73,11 @@ export class Game {
   private grenadeMeshes = new Map<string, THREE.Mesh>();
   private grenadeGeo = new THREE.IcosahedronGeometry(0.09, 1);
   private grenadeMat = new THREE.MeshStandardMaterial({ color: "#4e593c", roughness: 0.65 });
+  /** The aiming arc shown while a grenade is held: dots to the landing spot and its blast radius. */
+  private arc = createGrenadeArc();
+  /** Camera shake from nearby explosions, 0..1. */
+  private shake = 0;
+  private markSeq = 0;
 
   constructor(readonly room: GameRoom, readonly scene: THREE.Scene, readonly camera: THREE.PerspectiveCamera, element: HTMLElement) {
     useHud.setState({ ...useHud.getInitialState(), myId: room.sessionId, code: room.roomId, conn: "connected" });
@@ -76,7 +86,7 @@ export class Game {
     hud().set({ mobilePortrait: this.input.touch && window.innerHeight > window.innerWidth });
     this.input.attach();
     useLoadout.getState().hydrate();
-    this.scene.add(this.effects.group);
+    this.scene.add(this.effects.group, this.arc.group);
     this.bindRoom();
   }
 
@@ -158,6 +168,7 @@ export class Game {
       room.onMessage<ExplosionEvent>("explosion", (ev) => {
         const p = new THREE.Vector3(ev.x, ev.y, ev.z);
         this.effects.explosion(p); audio.explosion(p);
+        this.shake = Math.max(this.shake, 1 - this.camera.position.distanceTo(p) / (GRENADE.radius * 2.8));
       }),
       room.onMessage<{ text: string; sub?: string }>("announce", (ev) => hud().set({ announce: { ...ev, at: performance.now() } })),
     );
@@ -242,6 +253,14 @@ export class Game {
     return next;
   }
 
+  /** The previous grenade-aim object when nothing visible changed (the fuse shows in tenths). */
+  private stableAim(next: ReturnType<LocalPlayer["grenadeAim"]>) {
+    const prev = hud().grenadeAim;
+    const tenths = (fuse: number | null) => fuse === null ? null : Math.ceil(fuse / 100);
+    if (prev && next && prev.lob === next.lob && tenths(prev.fuse) === tenths(next.fuse)) return prev;
+    return next;
+  }
+
   traceFrom(origin: V3, dir: V3, range: number, players = true) {
     const wall = this.world ? raycastWorld(this.R, this.world, origin, dir, range) : null;
     const { distance, target, part } = enemyAlongRay(origin, dir, wall?.distance ?? range,
@@ -283,13 +302,16 @@ export class Game {
     if (!WEAPONS[ev.weapon]) return;
     const remote = this.remotes.get(ev.id);
     remote?.onShot();
+    const friendly = hud().mode === "tdm" && remote?.team === hud().myTeam;
     // A character skipped this frame (off-screen) has a stale muzzle; its eye is close enough.
     const from = remote?.posed && remote.rig ? remote.rig.muzzle : new THREE.Vector3(...ev.origin);
-    audio.shot(ev.weapon, from);
+    audio.shot(ev.weapon, from, false, friendly ? "ally" : "enemy");
+    // Like PUBG, enemy gunfire gives the shooter's position away on the minimap.
+    if (!friendly) this.mark({ key: ev.id, kind: "shot", x: ev.origin[0], z: ev.origin[2], yaw: remote?.yaw ?? 0, at: performance.now() });
     if (ev.ends[0]) this.effects.muzzleFlash(from, new THREE.Vector3(...ev.ends[0]).sub(from).normalize(), 1, false);
     ev.ends.forEach((end, i) => {
       const to = new THREE.Vector3(...end);
-      this.effects.tracer(from, to, hud().mode === "tdm" && remote?.team === hud().myTeam ? "friendly" : "enemy");
+      this.effects.tracer(from, to, friendly ? "friendly" : "enemy");
       if (ev.hits?.[i]) {
         const delta = to.clone().sub(new THREE.Vector3(...ev.origin)).normalize();
         this.confirmedBlood(end, delta.toArray() as V3, ev.hits[i] === "head");
@@ -301,6 +323,52 @@ export class Game {
         if (wall) this.effects.impact(new THREE.Vector3(...wall.point), new THREE.Vector3(...wall.normal), to.y < 0.1);
       }
     });
+  }
+
+  private mark(mark: MapMark) {
+    hud().set({ mapMarks: addMark(hud().mapMarks, mark) });
+  }
+
+  /** Sprinting enemies close by leave red footprints on the minimap. */
+  private footprints(remote: RemotePlayer) {
+    if (!remote.stepped || !remote.alive || !remote.sprinting || !this.local?.alive) return;
+    if (hud().mode === "tdm" && remote.team === hud().myTeam) return;
+    if (remote.pos.distanceTo(this.local.motion.position) > STEP_REVEAL_RANGE) return;
+    this.mark({ key: `${remote.id}:${++this.markSeq}`, kind: "step", x: remote.pos.x, z: remote.pos.z, yaw: remote.moveYaw, left: remote.footLeft, at: performance.now() });
+  }
+
+  /** Dotted arc from the hand to where a held grenade would first land, like PUBG's. */
+  private updateGrenadeArc(local: LocalPlayer) {
+    const { group, dots, marker, blast } = this.arc;
+    group.visible = !!this.world && local.alive && !!local.grenadeAim(performance.now());
+    if (!group.visible || !this.world) return;
+    const world = this.world;
+    const { origin, dir, power } = local.grenadeThrow();
+    const path = grenadeArc(origin, grenadeVelocity(dir, power, [local.ms.vx, local.ms.vy, local.ms.vz]),
+      (from, d, distance) => raycastWorld(this.R, world, from, d, distance));
+    // Evenly spaced dots, starting a meter out so none sit in front of the camera.
+    const positions = dots.geometry.getAttribute("position") as THREE.BufferAttribute;
+    let count = 0, travelled = 0, next = 1;
+    for (let i = 1; i < path.points.length && count < ARC_DOTS; i++) {
+      const a = path.points[i - 1], b = path.points[i];
+      const length = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+      while (next <= travelled + length && count < ARC_DOTS) {
+        const t = (next - travelled) / length;
+        positions.setXYZ(count++, a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t);
+        next += ARC_DOT;
+      }
+      travelled += length;
+    }
+    dots.geometry.setDrawRange(0, count);
+    positions.needsUpdate = true;
+    marker.visible = blast.visible = !!path.normal;
+    if (!path.normal) return;
+    // The marker lies on whatever it hits; the blast radius stays level, since that's how it reads.
+    _arcNormal.set(...path.normal);
+    marker.position.set(...path.end).addScaledVector(_arcNormal, 0.04);
+    marker.quaternion.setFromUnitVectors(_unitZ, _arcNormal);
+    blast.position.set(path.end[0], path.end[1] + 0.05, path.end[2]);
+    blast.quaternion.setFromUnitVectors(_unitZ, _arcNormal.set(0, 1, 0));
   }
 
   private onKill(ev: KillEvent) {
@@ -355,6 +423,7 @@ export class Game {
     for (const remote of this.remotes.values()) {
       remote.setReadability(useSettings.getState().quality === "low" && (hud().mode !== "tdm" || remote.team !== hud().myTeam));
       remote.update(dt, this.clock.now() - INTERP_DELAY_MS, this.camera.position);
+      this.footprints(remote);
     }
     local.update(dt, this.input, now);
     local.updateView();
@@ -366,6 +435,13 @@ export class Game {
         (origin, direction, distance) => this.world ? raycastWorld(this.R, this.world, origin.toArray() as V3, direction.toArray() as V3, distance)?.distance ?? null : null);
       if (hud().deathCam !== deathCam) hud().set({ deathCam });
     }
+    if (this.shake > 0) {
+      const k = this.shake * this.shake * 0.04;
+      this.camera.rotateX((Math.random() - 0.5) * k);
+      this.camera.rotateY((Math.random() - 0.5) * k);
+      this.shake = Math.max(0, this.shake - dt * 2.2);
+    }
+    this.updateGrenadeArc(local);
     const fov = local.alive ? local.currentFov() : 62;
     if (this.camera.fov !== fov) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
     // Characters are skinned with culling off (their bounds don't follow the animation), so cull
@@ -449,7 +525,7 @@ export class Game {
       }
       hud().set({
         alive: local.alive, weapon: local.weapon, primary: local.primary, mag: ammo.mag, reserve: ammo.reserve,
-        grenades: local.grenades, reloading: local.reloadProgress, ads: local.ads, scoped: local.scoped,
+        grenades: local.grenades, grenadeAim: this.stableAim(local.grenadeAim(now)), reloading: local.reloadProgress, ads: local.ads, scoped: local.scoped,
         thirdPerson: local.thirdPerson, spreadDeg: local.spread, enemyInSight,
         crosshairRadius: Math.min(120, Math.max(3, spreadRadius(local.spread, fov, viewportHeight))),
         cameraFov: fov, locked: this.input.locked, scoreboard, fps: Math.round(1 / Math.max(this.averageFrameTime, 0.001)),
@@ -458,6 +534,7 @@ export class Game {
         killerMarker: local.alive ? null : this.deathCamera.marker(this.camera),
         mapPlayers, peek: local.leanSide, emoteMenu: local.emoteMenu && local.alive, emote: local.emote,
         threats: hud().threats.some((threat) => now - threat.at >= THREAT_MS) ? hud().threats.filter((threat) => now - threat.at < THREAT_MS) : hud().threats,
+        mapMarks: hud().mapMarks.some((mark) => now - mark.at >= MARK_MS[mark.kind]) ? hud().mapMarks.filter((mark) => now - mark.at < MARK_MS[mark.kind]) : hud().mapMarks,
       });
     }
   }
@@ -471,6 +548,39 @@ export class Game {
     for (const remote of this.remotes.values()) remote.dispose();
     for (const mesh of this.grenadeMeshes.values()) mesh.removeFromParent();
     this.grenadeGeo.dispose(); this.grenadeMat.dispose();
+    this.arc.group.removeFromParent();
+    for (const mesh of [this.arc.dots, this.arc.marker, this.arc.blast]) { mesh.geometry.dispose(); (mesh.material as THREE.Material).dispose(); }
+    this.arc.dot.dispose();
     this.effects.dispose(); audio.dispose();
   }
+}
+
+function createGrenadeArc() {
+  const group = new THREE.Group();
+  // Drawn over the world, so the arc stays readable where it passes behind cover.
+  // Round dots of a fixed size on screen, so the far end of a long throw stays as readable as the near end.
+  const size = 32, pixels = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const d = Math.hypot(x + 0.5 - size / 2, y + 0.5 - size / 2) / (size / 2);
+    const i = (y * size + x) * 4;
+    pixels[i] = pixels[i + 1] = pixels[i + 2] = 255;
+    pixels[i + 3] = Math.round(255 * Math.min(1, Math.max(0, (1 - d) * 4)));
+  }
+  const dot = new THREE.DataTexture(pixels, size, size);
+  dot.needsUpdate = true;
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(ARC_DOTS * 3), 3).setUsage(THREE.DynamicDrawUsage));
+  const dots = new THREE.Points(geometry, new THREE.PointsMaterial({
+    color: "#ffe28a", map: dot, size: 7, sizeAttenuation: false, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false,
+  }));
+  const ring = (inner: number, outer: number, color: string, opacity: number) => new THREE.Mesh(
+    new THREE.RingGeometry(inner, outer, 48),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide }),
+  );
+  const marker = ring(0.28, 0.4, "#ffe28a", 0.95);
+  const blast = ring(GRENADE.radius - 0.12, GRENADE.radius, "#ff6a4a", 0.3);
+  for (const mesh of [dots, marker, blast]) { mesh.frustumCulled = false; mesh.renderOrder = 10; }
+  group.add(dots, marker, blast);
+  group.visible = false;
+  return { group, dots, marker, blast, dot };
 }

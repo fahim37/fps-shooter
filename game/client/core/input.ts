@@ -99,6 +99,15 @@ export class Input {
     };
     const fullscreen = () => this.syncKeyboardCapture();
     const blur = () => this.releaseAll();
+    // Crouch is Ctrl, so Ctrl+W (crouch + forward), Ctrl+R and the like reach the browser, which
+    // closes or reloads the tab before a page may cancel the key (outside fullscreen's keyboard
+    // capture). While playing, the browser asks first instead; once paused, with the mouse free,
+    // the tab closes normally.
+    const unload = (e: BeforeUnloadEvent) => {
+      if (!this.locked || !this.enabled) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
     window.addEventListener("keydown", kd, { capture: true });
     window.addEventListener("keyup", ku, { capture: true });
     window.addEventListener("mousemove", mm);
@@ -106,6 +115,7 @@ export class Input {
     window.addEventListener("mouseup", mu);
     window.addEventListener("wheel", wheel, { passive: false });
     window.addEventListener("blur", blur);
+    window.addEventListener("beforeunload", unload);
     this.element.addEventListener("contextmenu", ctx);
     document.addEventListener("pointerlockchange", plc);
     document.addEventListener("fullscreenchange", fullscreen);
@@ -117,6 +127,7 @@ export class Input {
       window.removeEventListener("mouseup", mu);
       window.removeEventListener("wheel", wheel);
       window.removeEventListener("blur", blur);
+      window.removeEventListener("beforeunload", unload);
       this.element.removeEventListener("contextmenu", ctx);
       document.removeEventListener("pointerlockchange", plc);
       document.removeEventListener("fullscreenchange", fullscreen);
