@@ -1,5 +1,6 @@
 import type { WeaponId } from "../../shared/weapons";
 import type { MapId } from "../../shared/map/types";
+import { assetUrl } from "../assets/url";
 
 type V3 = { x: number; y: number; z: number };
 
@@ -12,6 +13,9 @@ interface Bed { key: BedKey; out: GainNode; sources: AudioScheduledSourceNode[];
 
 /** The menu bed sits under the match beds, which already sit far under gunfire. */
 const LOBBY_LEVEL = 0.7;
+/** The menu theme (a mastered track, so far louder than the synth beds) and its level in the bed. */
+const LOBBY_THEME = "/audio/lobby-theme.mp3";
+const LOBBY_THEME_LEVEL = 0.55;
 /** Events that unlock audio in browsers (touch only counts on release). */
 const GESTURES = ["pointerdown", "pointerup", "keydown", "touchend"] as const;
 
@@ -43,8 +47,8 @@ const SHOTS: Record<WeaponId, ShotVoice> = {
 };
 
 /**
- * Procedural sound engine (no audio files): layered gunshots with an outdoor echo, spatial
- * panning with distance filtering, footsteps, UI sounds, a per-map ambient bed and a menu bed.
+ * Procedural sound engine: layered gunshots with an outdoor echo, spatial panning with distance
+ * filtering, footsteps, UI sounds and a per-map ambient bed. The one audio file is the menu theme.
  */
 export class AudioEngine {
   ctx: AudioContext | null = null;
@@ -62,6 +66,9 @@ export class AudioEngine {
   private forward = { x: 0, y: 0, z: -1 };
   private listenerSynced = false;
   private voices: Voice[] = [];
+  /** The menu theme: its bytes fetched as soon as the lobby wants it, decoded once audio is unlocked. */
+  private themeBytes: Promise<ArrayBuffer> | null = null;
+  private theme: Promise<AudioBuffer> | null = null;
   volume = 0.8;
 
   /** Must be called from a user gesture (click/tap) to unlock audio. */
@@ -127,6 +134,7 @@ export class AudioEngine {
   lobby(on: boolean) {
     if (on) {
       this.mode = "lobby";
+      void this.fetchTheme();
       this.armUnlock();
     } else if (this.mode === "lobby") {
       this.mode = "off";
@@ -946,8 +954,45 @@ export class AudioEngine {
     this.noiseLoop(t, len, 0.5).connect(chop).connect(lp).connect(g).connect(bus);
   }
 
-  /** Lobby: a low detuned drone under a soft minor pad, a slow pulse and distant pings. */
+  /** Downloads the menu theme once; a failed download is tried again next time. */
+  private fetchTheme(): Promise<ArrayBuffer> {
+    if (!this.themeBytes) {
+      const bytes = fetch(assetUrl(LOBBY_THEME)).then((r) => {
+        if (!r.ok) throw new Error(`lobby theme: HTTP ${r.status}`);
+        return r.arrayBuffer();
+      });
+      bytes.catch(() => { if (this.themeBytes === bytes) this.themeBytes = null; });
+      this.themeBytes = bytes;
+    }
+    return this.themeBytes;
+  }
+
+  /** Lobby: the menu theme, looped and faded in once it has loaded (the synth bed if it can't). */
   private lobbyBed(b: Bed) {
+    const ctx = this.ctx!;
+    this.theme ??= this.fetchTheme().then((bytes) => ctx.decodeAudioData(bytes));
+    this.theme.then((buffer) => {
+      if (this.bed !== b) return;
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.loop = true;
+      const g = ctx.createGain();
+      const t = ctx.currentTime;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(LOBBY_THEME_LEVEL, t + 1.2);
+      src.connect(g).connect(b.out);
+      src.start(t);
+      b.sources.push(src);
+    }, () => {
+      // Decoding consumed the bytes, so start over next time.
+      this.theme = null;
+      this.themeBytes = null;
+      if (this.bed === b) this.lobbySynth(b);
+    });
+  }
+
+  /** The fallback menu bed: a low detuned drone under a soft minor pad, a slow pulse and distant pings. */
+  private lobbySynth(b: Bed) {
     const lp = this.lowpass(300, 3, b.out);
     this.lfo(b, 0.035, 140, lp.frequency);
     this.drone(b, "sawtooth", 55, 0.008, lp);
