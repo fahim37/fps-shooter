@@ -49,12 +49,12 @@ async function main() {
     assert.equal(await guest.getByRole("button", { name: "START MATCH" }).count(), 0);
     await host.screenshot({ path: "out/qa/room-desktop.png", fullPage: true });
     await host.waitForTimeout(8500);
-    assert.equal(await host.getByRole("button", { name: "ENTER MATCH" }).count(), 0, "Waiting rooms must never auto-start");
+    assert.equal(await host.getByRole("button", { name: "PLAY IN A WINDOW" }).count(), 0, "Waiting rooms must never auto-start");
     await guest.getByRole("button", { name: "READY UP", exact: true }).click();
     await host.waitForFunction(() => !(document.querySelector(".room-start .primary-button:last-child") as HTMLButtonElement)?.disabled);
     await host.getByRole("button", { name: "START MATCH" }).click();
-    await host.getByRole("button", { name: "ENTER MATCH" }).waitFor({ timeout: 90000 });
-    await guest.getByRole("button", { name: "ENTER MATCH" }).waitFor({ timeout: 90000 });
+    await host.getByRole("button", { name: "PLAY IN A WINDOW" }).waitFor({ timeout: 90000 });
+    await guest.getByRole("button", { name: "PLAY IN A WINDOW" }).waitFor({ timeout: 90000 });
     assert.match(await host.locator(".match-mode").innerText(), /Team Deathmatch/);
     await host.waitForFunction(() => document.querySelector(".match-mode small")?.textContent?.includes("LIVE"), undefined, { timeout: 20000 });
     await guest.getByRole("button", { name: "RETURN TO LOBBY" }).click();

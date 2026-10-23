@@ -19,8 +19,8 @@ async function main() {
     await page.goto(`${process.argv[2] || "http://localhost:3000"}/?room=${fixture.roomId}`);
     await page.getByText("SERVER ONLINE", { exact: true }).waitFor({ timeout: 60000 });
     await page.getByRole("button", { name: /JOIN ROOM/ }).click();
-    await page.getByRole("button", { name: "ENTER MATCH" }).waitFor({ timeout: 90000 });
-    await page.getByRole("button", { name: "ENTER MATCH" }).click();
+    await page.getByRole("button", { name: "PLAY IN A WINDOW" }).waitFor({ timeout: 90000 });
+    await page.getByRole("button", { name: "PLAY IN A WINDOW" }).click();
     await page.waitForFunction(() => !!document.pointerLockElement, { timeout: 10000 });
     await page.waitForTimeout(9000);
     const match = await page.locator(".match-mode small").innerText();
@@ -62,14 +62,14 @@ async function main() {
       assert.ok(await page.evaluate(() => !!document.pointerLockElement), "Quality changes must preserve pointer lock");
       assert.equal((await page.locator(".match-mode small").innerText()).split(/\s/)[0], code, "Quality changes must keep the same room");
       assert.equal(await page.locator(".ammo strong").innerText(), ammo, "Quality changes must preserve local weapon state");
-      assert.equal(await page.getByRole("button", { name: "ENTER MATCH" }).count(), 0, "Quality changes must keep the running match mounted");
+      assert.equal(await page.getByRole("button", { name: "PLAY IN A WINDOW" }).count(), 0, "Quality changes must keep the running match mounted");
       const actualDpr = await page.locator("canvas").evaluate((canvas: HTMLCanvasElement) => canvas.width / canvas.clientWidth);
       samples.push({ quality, dpr: actualDpr, ammo });
       if (quality === "low" || quality === "high") await page.screenshot({ path: `.next/graphics-${quality}.png` });
     }
 
     await page.evaluate(() => document.exitPointerLock());
-    await page.getByRole("button", { name: "ENTER MATCH" }).waitFor();
+    await page.getByRole("button", { name: "PLAY IN A WINDOW" }).waitFor();
     await page.getByLabel("In-match graphics quality", { exact: true }).selectOption("medium");
     await page.getByLabel("Adaptive resolution", { exact: true }).check();
     await page.getByRole("button", { name: "SETTINGS", exact: true }).click();
@@ -77,17 +77,17 @@ async function main() {
     assert.ok(await clearView.isChecked(), "Clear view should be enabled by default");
     await clearView.uncheck();
     await page.getByRole("button", { name: "Close settings", exact: true }).click();
-    await page.getByRole("button", { name: "ENTER MATCH" }).click();
+    await page.getByRole("button", { name: "PLAY IN A WINDOW" }).click();
     await page.locator(".crosshair").waitFor();
     await page.mouse.down({ button: "right" });
     await page.locator(".ads-vignette").waitFor();
     await page.mouse.up({ button: "right" });
     await page.evaluate(() => document.exitPointerLock());
-    await page.getByRole("button", { name: "ENTER MATCH" }).waitFor();
+    await page.getByRole("button", { name: "PLAY IN A WINDOW" }).waitFor();
     await page.getByRole("button", { name: "SETTINGS", exact: true }).click();
     await clearView.check();
     await page.getByRole("button", { name: "Close settings", exact: true }).click();
-    await page.getByRole("button", { name: "ENTER MATCH" }).click();
+    await page.getByRole("button", { name: "PLAY IN A WINDOW" }).click();
     await page.locator(".crosshair").waitFor();
     await page.mouse.down({ button: "right" });
     await page.locator(".crosshair.aiming").waitFor();
@@ -95,7 +95,7 @@ async function main() {
     await page.screenshot({ path: ".next/graphics-clear-view.png" });
     await page.mouse.up({ button: "right" });
     await page.evaluate(() => document.exitPointerLock());
-    await page.getByRole("button", { name: "ENTER MATCH" }).waitFor();
+    await page.getByRole("button", { name: "PLAY IN A WINDOW" }).waitFor();
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("hollowmere.settings.v1") || "{}"));
     assert.equal(stored.quality, "medium");
     assert.equal(stored.adaptiveResolution, true);

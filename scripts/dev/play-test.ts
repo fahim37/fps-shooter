@@ -14,7 +14,7 @@ async function main() {
     await page.getByLabel("FILL MATCH TO").selectOption("0");
     await page.getByLabel("Private room").check();
     await page.getByRole("button", { name: "CREATE TEAM DEATHMATCH" }).click();
-    await page.getByRole("button", { name: "ENTER MATCH" }).waitFor({ timeout: 90000 });
+    await page.getByRole("button", { name: "PLAY IN A WINDOW" }).waitFor({ timeout: 90000 });
     const roomCode = (await page.locator(".match-mode small").innerText()).split(" · ")[0];
     const invite = await page.getByLabel("Invite link", { exact: true }).inputValue();
     assert.ok(invite.includes(`room=${roomCode}`));
@@ -23,10 +23,10 @@ async function main() {
     await peer.goto(invite);
     await peer.getByLabel("CALLSIGN", { exact: true }).fill("Second Ranger");
     await peer.getByRole("button", { name: "JOIN THIS ROOM →", exact: true }).click();
-    await peer.getByRole("button", { name: "ENTER MATCH" }).waitFor({ timeout: 90000 });
+    await peer.getByRole("button", { name: "PLAY IN A WINDOW" }).waitFor({ timeout: 90000 });
     console.log("Invite link joined by second player");
     await page.bringToFront();
-    await page.getByRole("button", { name: "ENTER MATCH" }).click();
+    await page.getByRole("button", { name: "PLAY IN A WINDOW" }).click();
     await page.waitForFunction(() => !!document.pointerLockElement, { timeout: 10000 });
     await page.waitForTimeout(9000); // Let warmup respawn finish.
     const ammo = page.locator(".ammo strong");
@@ -62,8 +62,8 @@ async function main() {
     console.log("Weapon, camera, grenade and scoreboard checks passed");
     await page.getByLabel("Game mode", { exact: true }).selectOption("ffa");
     await page.getByRole("button", { name: "QUICK PLAY" }).click();
-    await page.getByRole("button", { name: "ENTER MATCH" }).waitFor({ timeout: 90000 });
-    await page.getByRole("button", { name: "ENTER MATCH" }).click();
+    await page.getByRole("button", { name: "PLAY IN A WINDOW" }).waitFor({ timeout: 90000 });
+    await page.getByRole("button", { name: "PLAY IN A WINDOW" }).click();
     await page.waitForTimeout(500);
     assert.match(await page.locator(".match-mode").innerText(), /Free for All/);
     await page.keyboard.down("Tab"); await page.waitForTimeout(250);

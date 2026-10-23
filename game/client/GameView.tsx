@@ -156,8 +156,13 @@ function MatchHud({ game, map, onLeave }: { game: Game | null; map: MapId; onLea
         <span className="eyebrow">HOLLOWMERE / {h.code}</span>
         <h2>Ready to deploy?</h2>
         <p>{h.roomName} · {MODE_INFO[h.mode].name} · {MAPS[map].name}</p>
-        <button className="primary-button" onClick={() => game?.resume()}>ENTER MATCH <span>↗</span></button>
-        {!h.touch && <button className="outline-button" onClick={() => game?.resume(true)}>ENTER FULLSCREEN MATCH</button>}
+        {/* On a computer fullscreen comes first: only there can the game keep browser shortcuts
+            such as Ctrl+W (crouch + forward) from closing the tab mid-fight. */}
+        {h.touch ? <button className="primary-button" onClick={() => game?.resume()}>ENTER MATCH <span>↗</span></button> : <>
+          <button className="primary-button" onClick={() => game?.resume(true)}>ENTER FULLSCREEN MATCH <span>↗</span></button>
+          <p className="deploy-note"><b>Important:</b> play in fullscreen. In a window, shortcuts like Ctrl+W (crouch + forward) can close the tab.</p>
+          <button className="outline-button" onClick={() => game?.resume()}>PLAY IN A WINDOW</button>
+        </>}
         {h.touch && <button className="outline-button" onClick={() => { game?.input.releaseAll(); hud().set({ menu: false, customizingControls: true }); }}>CUSTOMIZE TOUCH CONTROLS</button>}
         <RoomInvite code={h.code} />
         {!h.touch && <GraphicsControl docked />}

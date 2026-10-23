@@ -269,6 +269,8 @@ small { display: block; }
 .deploy-main p { margin: 0 0 4px; }
 .deploy-main .primary-button { min-height: 52px; margin: 4px 0 0; font-size: 13px; }
 .deploy-main .outline-button { padding: 11px 14px; }
+.deploy-main .deploy-note { margin: 0; padding: 8px 10px; border-left: 2px solid var(--accent, #d9ed79); background: #d9ed7912; color: #d6dfcc; font-size: 12px; line-height: 1.45; }
+.deploy-main .deploy-note b { color: var(--accent, #d9ed79); }
 .deploy-main .room-invite { grid-template-columns: minmax(0, 1fr); grid-template-areas: "code" "actions" "link" "msg"; }
 .deploy-main .room-invite > div:first-child { display: flex; align-items: baseline; justify-content: space-between; }
 .deploy-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }

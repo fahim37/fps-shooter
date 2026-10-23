@@ -24,8 +24,8 @@ async function scoreboard(page: Page) {
 }
 
 async function enterMatch(page: Page) {
-  await page.getByRole("button", { name: /ENTER MATCH/ }).first().waitFor({ timeout: 90000 });
-  await page.getByRole("button", { name: /^ENTER MATCH/ }).click();
+  await page.getByRole("button", { name: "PLAY IN A WINDOW" }).first().waitFor({ timeout: 90000 });
+  await page.getByRole("button", { name: "PLAY IN A WINDOW" }).click();
   await page.waitForFunction(() => !!document.pointerLockElement, { timeout: 10000 });
 }
 

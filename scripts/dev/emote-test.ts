@@ -28,8 +28,8 @@ async function main() {
   try {
     await page.goto(`${base}/?room=${watcher.roomId}`);
     await page.getByRole("button", { name: /JOIN (THIS )?ROOM/ }).click();
-    await page.getByRole("button", { name: /^ENTER MATCH/ }).waitFor({ timeout: 90000 });
-    await page.getByRole("button", { name: /^ENTER MATCH/ }).click();
+    await page.getByRole("button", { name: "PLAY IN A WINDOW" }).waitFor({ timeout: 90000 });
+    await page.getByRole("button", { name: "PLAY IN A WINDOW" }).click();
     await page.waitForFunction(() => !!document.pointerLockElement, { timeout: 10000 });
     await sleep(9000); // Let warmup respawn finish.
 

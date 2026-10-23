@@ -29,10 +29,10 @@ async function main() {
     await page.addInitScript(() => localStorage.setItem("hollowmere.settings.v1", JSON.stringify({ quality: "low", adaptiveResolution: false })));
     await page.goto(`${process.argv[2] || "http://localhost:3100"}/?room=${room.roomId}`);
     await page.getByRole("button", { name: /JOIN (THIS )?ROOM/ }).click();
-    await page.getByRole("button", { name: /^ENTER MATCH/ }).waitFor({ timeout: 90000 });
+    await page.getByRole("button", { name: "PLAY IN A WINDOW" }).waitFor({ timeout: 90000 });
     console.log("Match loaded");
     await until(() => room!.state.phase === "live");
-    await page.getByRole("button", { name: /^ENTER MATCH/ }).click();
+    await page.getByRole("button", { name: "PLAY IN A WINDOW" }).click();
     await page.waitForFunction(() => !!document.pointerLockElement);
     await sleep(2600);
     // Lift both players above map geometry; freeze only local gravity for this fixture.

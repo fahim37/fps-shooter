@@ -14,10 +14,17 @@ export const INITIAL_VOICE: VoiceSnapshot = {
   deafened: false, volume: 0.8, error: "", soundBlocked: false, hearAll: true, members: [], connected: 0, mutedPeers: [],
 };
 interface Peer {
-  pc: RTCPeerConnection; track: MediaStreamTrack; audio: HTMLAudioElement;
+  /** What this connection sends: a copy of the microphone, or nothing while the mic is off. */
+  pc: RTCPeerConnection; sender: RTCRtpSender; track: MediaStreamTrack | null; audio: HTMLAudioElement;
   makingOffer: boolean; ignoreOffer: boolean; settingAnswer: boolean;
   candidates: RTCIceCandidateInit[]; queue: Promise<void>;
 }
+
+/** Speech needs little: a mono stream capped at this bitrate keeps encoding cheap on slow PCs. */
+const MIC_BITRATE = 32_000;
+/** Connections opened per step, and the pause between steps, so joining a full room doesn't stall a frame. */
+const PEERS_PER_STEP = 2;
+const PEER_STEP_MS = 80;
 
 /** Listening preferences kept between matches. */
 const PREFS_KEY = "voice-prefs";
@@ -48,13 +55,16 @@ function iceServers(): RTCIceServer[] {
  * Audio goes directly to peers; Colyseus only carries membership and WebRTC signaling. Everyone
  * listens by default; the microphone is opt-in. A peer connection exists between two members
  * when either has a microphone, and turning yours on swaps it into the existing connections.
+ * Kept light for low-end PCs: no audio graph of its own, connections opened a few at a time,
+ * and peer settings only revisited when the roster changes.
  */
 export class VoiceClient {
   private state: VoiceSnapshot;
   private stream: MediaStream | null = null;
-  /** Silent audio sent by a listener, holding the place the microphone takes later. */
-  private silence: AudioContext | null = null;
   private peers = new Map<string, Peer>();
+  /** Who is connected and on which team, as last applied to the peers (see syncPeers). */
+  private roster = "";
+  private peerStep: ReturnType<typeof setTimeout> | null = null;
   private unsubscribers: (() => void)[] = [];
   private generation = 0;
   private disposed = false;
@@ -77,7 +87,8 @@ export class VoiceClient {
         if (peer.pc.connectionState === "new" || peer.pc.connectionState === "failed") peer.pc.restartIce();
       }
     }));
-    const sync = () => this.syncPeers();
+    // Game state arrives many times a second; voice only cares when players come, go or switch teams.
+    const sync = () => { if (this.rosterKey() !== this.roster) this.syncPeers(); };
     const drop = () => { this.leave(false); this.patch({ error: "Voice disconnected. Rejoin voice after reconnecting." }); };
     room.onStateChange(sync); room.onDrop(drop); room.onLeave(drop);
     this.unsubscribers.push(() => room.onStateChange.remove(sync), () => room.onDrop.remove(drop), () => room.onLeave.remove(drop));
@@ -106,7 +117,7 @@ export class VoiceClient {
     try {
       if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error("Voice needs HTTPS or localhost and a browser with microphone support.");
       if (!this.state.enabled) this.config = { iceServers: iceServers() };
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
       if (this.disposed || generation !== this.generation) { stream.getTracks().forEach((track) => track.stop()); return; }
       this.stream = stream;
       for (const track of stream.getAudioTracks()) {
@@ -130,7 +141,7 @@ export class VoiceClient {
     const had = this.state.mic || this.state.pending;
     this.stopStream();
     if (!had) return;
-    for (const peer of this.peers.values()) this.sendTrack(peer, this.silentTrack());
+    for (const peer of this.peers.values()) this.sendTrack(peer, null);
     this.patch({ mic: false, pending: false, talking: false });
     if (this.state.enabled) { this.publish(); this.syncPeers(); }
   }
@@ -140,8 +151,9 @@ export class VoiceClient {
     ++this.generation;
     for (const [id] of this.peers) this.removePeer(id);
     this.stopStream();
-    void this.silence?.close().catch(() => {});
-    this.silence = null;
+    if (this.peerStep) clearTimeout(this.peerStep);
+    this.peerStep = null;
+    this.roster = "";
     const wasEnabled = this.state.enabled;
     this.patch({ enabled: false, mic: false, pending: false, talking: false, members: [], connected: 0, soundBlocked: false });
     if (notifyServer && wasEnabled) this.publish();
@@ -187,21 +199,19 @@ export class VoiceClient {
     this.stream = null;
   }
 
-  /** A silent track, sent until the microphone replaces it. */
-  private silentTrack(): MediaStreamTrack {
-    this.silence ??= new AudioContext();
-    const track = this.silence.createMediaStreamDestination().stream.getAudioTracks()[0];
-    track.enabled = false;
-    return track;
-  }
-
-  /** Swaps what a peer connection sends, without renegotiating. */
-  private sendTrack(peer: Peer, track: MediaStreamTrack) {
-    track.enabled = false;
-    const sender = peer.pc.getSenders().find((s) => s.track === peer.track);
+  /** Swaps what a peer connection sends (the microphone, or nothing), without renegotiating. */
+  private sendTrack(peer: Peer, track: MediaStreamTrack | null) {
+    if (track) track.enabled = false;
     const old = peer.track;
     peer.track = track;
-    void sender?.replaceTrack(track).catch(() => {}).finally(() => old.stop());
+    void peer.sender.replaceTrack(track).catch(() => {}).finally(() => old?.stop());
+  }
+
+  /** Players' connection and team, which decide who is linked and who is heard. */
+  private rosterKey() {
+    let key = "";
+    this.room.state.players.forEach((p, id) => { key += `${id}:${p.connected ? 1 : 0}:${p.team};`; });
+    return key;
   }
 
   private syncPeers() {
@@ -209,27 +219,38 @@ export class VoiceClient {
     // Other players' updates can arrive while our join is in flight. Our own membership
     // is the server's acknowledgement, sent after our temporary TURN configuration.
     if (!this.state.members.some((member) => member.id === this.room.sessionId)) return;
+    this.roster = this.rosterKey();
     const me = this.room.state.players.get(this.room.sessionId);
     // Two listeners have nothing to send each other.
     const members = this.state.members.filter((m) => m.id !== this.room.sessionId && this.room.state.players.get(m.id)?.connected && (m.mic !== false || this.state.mic));
     for (const [id] of this.peers) if (!members.some((m) => m.id === id)) this.removePeer(id);
+    let opened = 0, waiting = false;
     for (const member of members) {
-      const peer = this.peers.get(member.id) ?? this.createPeer(member.id);
+      let peer = this.peers.get(member.id);
+      if (!peer) {
+        // A few new connections at a time; the rest follow shortly.
+        if (opened >= PEERS_PER_STEP) { waiting = true; continue; }
+        peer = this.createPeer(member.id); opened++;
+      }
       const team = this.room.state.players.get(member.id)?.team ?? 0;
-      peer.track.enabled = this.state.mic && this.state.talking && canHearVoice(this.state.channel, me?.team ?? 0, team, this.room.state.mode);
-      peer.audio.muted = this.state.deafened || this.state.mutedPeers.includes(member.id) || !canHearVoice(member.channel, team, me?.team ?? 0, this.room.state.mode)
+      if (peer.track) peer.track.enabled = this.state.mic && this.state.talking && canHearVoice(this.state.channel, me?.team ?? 0, team, this.room.state.mode);
+      const muted = this.state.deafened || this.state.mutedPeers.includes(member.id) || !canHearVoice(member.channel, team, me?.team ?? 0, this.room.state.mode)
         || (member.channel === "all" && !this.state.hearAll);
-      peer.audio.volume = this.state.volume;
+      if (peer.audio.muted !== muted) peer.audio.muted = muted;
+      if (peer.audio.volume !== this.state.volume) peer.audio.volume = this.state.volume;
     }
+    if (waiting && !this.peerStep) this.peerStep = setTimeout(() => { this.peerStep = null; this.syncPeers(); }, PEER_STEP_MS);
   }
 
   private createPeer(id: string): Peer {
     const pc = new RTCPeerConnection(this.config);
-    const track = this.stream ? this.stream.getAudioTracks()[0].clone() : this.silentTrack();
-    track.enabled = false;
+    const track = this.stream ? this.stream.getAudioTracks()[0].clone() : null;
+    if (track) track.enabled = false;
+    // An audio slot both ways from the start; a listener's stays empty until the mic fills it.
+    const { sender } = pc.addTransceiver(track ?? "audio", { direction: "sendrecv", streams: [new MediaStream()] });
     const audio = document.createElement("audio"); audio.autoplay = true;
     audio.dataset.voicePeer = id; audio.style.display = "none"; document.body.appendChild(audio);
-    const peer: Peer = { pc, track, audio, makingOffer: false, ignoreOffer: false, settingAnswer: false, candidates: [], queue: Promise.resolve() };
+    const peer: Peer = { pc, sender, track, audio, makingOffer: false, ignoreOffer: false, settingAnswer: false, candidates: [], queue: Promise.resolve() };
     this.peers.set(id, peer);
     pc.onicecandidate = ({ candidate }) => { if (candidate && this.peers.get(id) === peer) this.signal(id, { candidate: candidate.toJSON() }); };
     pc.ontrack = ({ track: remote, streams }) => {
@@ -239,6 +260,7 @@ export class VoiceClient {
     pc.onconnectionstatechange = () => {
       if (this.peers.get(id) !== peer) return;
       this.patch({ connected: [...this.peers.values()].filter((p) => p.pc.connectionState === "connected").length });
+      if (pc.connectionState === "connected") void limitBitrate(sender);
       if (pc.connectionState === "failed") this.patch({ error: "A voice connection failed. Rejoin voice to retry. Some networks need a TURN relay." });
     };
     pc.onnegotiationneeded = async () => {
@@ -249,7 +271,6 @@ export class VoiceClient {
       } catch { if (this.peers.get(id) === peer) this.patch({ error: "Unable to connect voice. Leave voice and rejoin to retry." }); }
       finally { peer.makingOffer = false; }
     };
-    pc.addTrack(track, new MediaStream([track]));
     return peer;
   }
 
@@ -279,7 +300,17 @@ export class VoiceClient {
   private removePeer(id: string) {
     const peer = this.peers.get(id);
     if (!peer) return;
-    this.peers.delete(id); peer.pc.close(); peer.track.stop();
+    this.peers.delete(id); peer.pc.close(); peer.track?.stop();
     peer.audio.pause(); peer.audio.srcObject = null; peer.audio.remove();
   }
+}
+
+/** Caps what a sender encodes at MIC_BITRATE; its encodings exist once the connection is up. */
+async function limitBitrate(sender: RTCRtpSender) {
+  try {
+    const params = sender.getParameters();
+    if (!params.encodings?.length) return;
+    for (const encoding of params.encodings) encoding.maxBitrate = MIC_BITRATE;
+    await sender.setParameters(params);
+  } catch { /* best effort: the browser picks its own bitrate */ }
 }

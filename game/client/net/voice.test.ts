@@ -25,7 +25,8 @@ it("waits for its own membership acknowledgement before creating peers with TURN
   vi.stubGlobal("RTCPeerConnection", class {
     connectionState = "new";
     constructor(config: RTCConfiguration) { configurations.push(config); }
-    addTrack = vi.fn(); close = vi.fn(); setConfiguration = vi.fn(); restartIce = vi.fn();
+    addTransceiver = () => ({ sender: { replaceTrack: vi.fn().mockResolvedValue(undefined), getParameters: () => ({ encodings: [] }), setParameters: vi.fn() } });
+    close = vi.fn(); setConfiguration = vi.fn(); restartIce = vi.fn();
   });
   const voice = new VoiceClient(room, vi.fn());
   try {
@@ -101,15 +102,12 @@ it("listens without a microphone, connecting only to members who have one", () =
     createElement: () => { const audio = { dataset: {}, style: {}, muted: false, pause: vi.fn(), remove: vi.fn(), play: vi.fn().mockResolvedValue(undefined) }; audios.push(audio); return audio; },
   });
   vi.stubGlobal("MediaStream", class { constructor(public tracks: unknown[]) {} });
-  vi.stubGlobal("AudioContext", class {
-    createMediaStreamDestination() { return { stream: { getAudioTracks: () => [{ enabled: true, stop: vi.fn() }] } }; }
-    close() { return Promise.resolve(); }
-  });
   const peers: string[] = [];
   vi.stubGlobal("RTCPeerConnection", class {
     connectionState = "new";
     constructor() { peers.push("peer"); }
-    addTrack = vi.fn(); close = vi.fn(); setConfiguration = vi.fn(); restartIce = vi.fn(); getSenders = () => [];
+    addTransceiver = () => ({ sender: { replaceTrack: vi.fn().mockResolvedValue(undefined), getParameters: () => ({ encodings: [] }), setParameters: vi.fn() } });
+    close = vi.fn(); setConfiguration = vi.fn(); restartIce = vi.fn();
   });
   const voice = new VoiceClient(room, vi.fn());
   try {
@@ -127,4 +125,38 @@ it("listens without a microphone, connecting only to members who have one", () =
     voice.hearAll(false);
     expect(audios[0].muted).toBe(true);
   } finally { voice.dispose(); }
+});
+
+it("opens connections to a room full of talkers a few at a time", () => {
+  vi.useFakeTimers();
+  const messages = new Map<string, (data: unknown) => void>();
+  const signal = () => Object.assign(vi.fn(), { remove: vi.fn() });
+  const talkers = ["a", "b", "c", "d", "e"];
+  const players = new Map([["me", { team: 1, connected: true }], ...talkers.map((id) => [id, { team: 1, connected: true }] as const)]);
+  const room = {
+    sessionId: "me", state: { mode: "tdm", players },
+    onMessage: (type: string, callback: (data: unknown) => void) => { messages.set(type, callback); return vi.fn(); },
+    onStateChange: signal(), onDrop: signal(), onLeave: signal(), send: vi.fn(),
+  } as unknown as GameRoom;
+  vi.stubGlobal("window", { isSecureContext: true });
+  vi.stubGlobal("document", {
+    body: { appendChild: vi.fn() },
+    createElement: () => ({ dataset: {}, style: {}, muted: false, pause: vi.fn(), remove: vi.fn(), play: vi.fn().mockResolvedValue(undefined) }),
+  });
+  vi.stubGlobal("MediaStream", class { constructor(public tracks: unknown[]) {} });
+  let peers = 0;
+  vi.stubGlobal("RTCPeerConnection", class {
+    connectionState = "new";
+    constructor() { peers++; }
+    addTransceiver = () => ({ sender: { replaceTrack: vi.fn().mockResolvedValue(undefined), getParameters: () => ({ encodings: [] }), setParameters: vi.fn() } });
+    close = vi.fn(); setConfiguration = vi.fn(); restartIce = vi.fn();
+  });
+  const voice = new VoiceClient(room, vi.fn());
+  try {
+    voice.listen();
+    messages.get("voice:members")!([{ id: "me", channel: "team", talking: false, mic: false }, ...talkers.map((id) => ({ id, channel: "team", talking: false, mic: true }))]);
+    expect(peers).toBe(2);
+    vi.runAllTimers();
+    expect(peers).toBe(talkers.length);
+  } finally { voice.dispose(); vi.useRealTimers(); }
 });

@@ -20,7 +20,7 @@ async function main() {
     await page.addInitScript("window.__name = (value) => value;");
     await page.goto(`${(process.argv[2] || "http://localhost:3000").replace(/\/$/, "")}/?room=${fixture.roomId}`);
     await page.getByRole("button", { name: /JOIN ROOM/ }).click();
-    await page.getByRole("button", { name: "ENTER MATCH" }).click({ timeout: 90000 });
+    await page.getByRole("button", { name: "PLAY IN A WINDOW" }).click({ timeout: 90000 });
     await page.waitForFunction(() => !!document.pointerLockElement);
     await page.waitForTimeout(10000);
     const samples = [];

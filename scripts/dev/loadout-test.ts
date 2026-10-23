@@ -41,7 +41,7 @@ async function main() {
       peer.send("ready", true);
       await page.getByRole("button", { name: "READY UP", exact: true }).click();
       await page.getByRole("button", { name: /START MATCH/ }).click();
-      if (!mobile) await page.getByRole("button", { name: /ENTER MATCH/ }).click({ timeout: 90000 });
+      if (!mobile) await page.getByRole("button", { name: "PLAY IN A WINDOW" }).click({ timeout: 90000 });
       await page.getByRole("navigation", { name: "Quick weapons" }).waitFor({ timeout: 90000 });
       await capture(page);
       await page.waitForFunction(() => (window as TestWindow).__loadoutGame?.room.state.phase === "live", undefined, { timeout: 30000 });

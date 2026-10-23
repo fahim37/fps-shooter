@@ -58,6 +58,7 @@ const TOUCH: Row[] = [
 ];
 
 const TIPS = [
+  "Play in fullscreen (Enter fullscreen match): in a window, shortcuts like Ctrl+W can close the tab.",
   "Headshots hit much harder than body shots.",
   "Standing still or crouching tightens your spread; running and jumping widen it.",
   "Out of the fight for a few seconds, your health comes back on its own.",

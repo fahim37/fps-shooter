@@ -33,7 +33,7 @@ async function main() {
     await page.goto(`${base}/?room=${host.roomId}`);
     await page.getByRole("combobox", { name: "Join team", exact: true }).selectOption("2");
     await page.getByRole("button", { name: /JOIN (THIS )?ROOM/ }).click();
-    await page.getByRole("button", { name: /^ENTER MATCH/ }).waitFor({ timeout: 90000 });
+    await page.getByRole("button", { name: "PLAY IN A WINDOW" }).waitFor({ timeout: 90000 });
     await until(() => [...host.state.players.values()].some((p) => p.name === "Ranger" && p.team === 2 && p.alive));
     await page.getByRole("button", { name: "RETURN TO LOBBY" }).click();
     await page.getByRole("combobox", { name: "Join team", exact: true }).selectOption("1");
@@ -41,9 +41,9 @@ async function main() {
     const row = page.locator(".room-row").filter({ hasText: host.state.roomName });
     await row.waitFor(); assert.match(await row.innerText(), /In progress/); assert.equal(await row.isEnabled(), true);
     await row.click();
-    await page.getByRole("button", { name: /^ENTER MATCH/ }).waitFor({ timeout: 90000 });
+    await page.getByRole("button", { name: "PLAY IN A WINDOW" }).waitFor({ timeout: 90000 });
     await until(() => [...host.state.players.values()].some((p) => p.name === "Ranger" && p.team === 1 && p.alive));
-    await page.getByRole("button", { name: /^ENTER MATCH/ }).click();
+    await page.getByRole("button", { name: "PLAY IN A WINDOW" }).click();
     const health = page.getByRole("progressbar", { name: "Health", exact: true });
     await health.waitFor(); assert.equal(await health.getAttribute("aria-valuenow"), "100");
     await sleep(3500);

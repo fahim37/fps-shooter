@@ -27,12 +27,12 @@ async function main() {
     await page.addInitScript(() => localStorage.setItem("hollowmere.settings.v1", JSON.stringify({ quality: "low", adaptiveResolution: false })));
     await page.goto(`${base}/?room=${enemy.roomId}`);
     await page.getByRole("button", { name: /JOIN (THIS )?ROOM/ }).click();
-    await page.getByRole("button", { name: /^ENTER MATCH/ }).waitFor({ timeout: 90000 });
+    await page.getByRole("button", { name: "PLAY IN A WINDOW" }).waitFor({ timeout: 90000 });
     for (const name of ["Enemy Two", "Ally Scout"]) {
       const peer = await client.joinById<MatchState>(enemy.roomId, { name, char: 0 });
       peer.onMessage("*", () => {}); peers.push(peer);
     }
-    await page.getByRole("button", { name: /^ENTER MATCH/ }).click();
+    await page.getByRole("button", { name: "PLAY IN A WINDOW" }).click();
     await page.waitForFunction(() => !!document.pointerLockElement);
     const map = page.getByRole("region", { name: "Minimap", exact: true });
     await map.locator('[data-relation="self"]').waitFor();

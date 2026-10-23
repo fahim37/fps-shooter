@@ -34,8 +34,8 @@ async function main() {
     }
     await page.goto(`${base}/?room=${host.roomId}`);
     await page.getByRole("button", { name: /JOIN (THIS )?ROOM/ }).click();
-    await page.getByRole("button", { name: /^ENTER MATCH/ }).waitFor({ timeout: 90000 });
-    await page.getByRole("button", { name: /^ENTER MATCH/ }).click();
+    await page.getByRole("button", { name: "PLAY IN A WINDOW" }).waitFor({ timeout: 90000 });
+    await page.getByRole("button", { name: "PLAY IN A WINDOW" }).click();
     await page.waitForFunction(() => !!document.pointerLockElement);
     // Let the warmup respawn finish before checking ADS presentation.
     await page.waitForTimeout(9000);
