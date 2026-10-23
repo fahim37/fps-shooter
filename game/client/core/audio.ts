@@ -16,6 +16,8 @@ const LOBBY_LEVEL = 0.7;
 /** The menu theme (a mastered track, so far louder than the synth beds) and its level in the bed. */
 const LOBBY_THEME = "/audio/lobby-theme.mp3";
 const LOBBY_THEME_LEVEL = 0.55;
+/** Seconds of the theme's intro that are skipped, on the first play and on every loop. */
+const LOBBY_THEME_SKIP = 10;
 /**
  * How long the menu bed outlives the menu screen that asked for it: going from the home lobby to a
  * room's waiting room swaps screens, and the next one picks the theme up without a restart.
@@ -999,12 +1001,14 @@ export class AudioEngine {
       const src = ctx.createBufferSource();
       src.buffer = buffer;
       src.loop = true;
+      src.loopStart = Math.min(LOBBY_THEME_SKIP, buffer.duration / 2);
+      src.loopEnd = buffer.duration;
       const g = ctx.createGain();
       const t = ctx.currentTime;
       g.gain.setValueAtTime(0, t);
       g.gain.linearRampToValueAtTime(LOBBY_THEME_LEVEL, t + 1.2);
       src.connect(g).connect(b.out);
-      src.start(t);
+      src.start(t, src.loopStart);
       b.sources.push(src);
     }, () => {
       // Decoding consumed the bytes, so start over next time.
