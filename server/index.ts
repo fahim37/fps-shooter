@@ -8,6 +8,7 @@ import { analytics } from "./analytics/recorder";
 import { MongoStore } from "./analytics/mongoStore";
 import { adminConfigFromEnv } from "./admin/auth";
 import { createAdminApi, mountAdminApi } from "./admin/http";
+import { startLoopMonitor } from "./loopMonitor";
 
 const port = Number(process.env.PORT || 2567);
 
@@ -18,6 +19,7 @@ const store = process.env.ANALYTICS_DISABLED === "1" ? null
 analytics.start(store);
 const adminConfig = adminConfigFromEnv();
 if (!adminConfig.enabled) console.log("[admin] dashboard API disabled (set ADMIN_USERNAME and ADMIN_PASSWORD_HASH to enable)");
+const loop = startLoopMonitor();
 
 const server = defineServer({
   rooms: {
@@ -39,7 +41,7 @@ const server = defineServer({
       live: () => analytics.live(),
     }), adminConfig);
     app.get("/health", (_req, res) => {
-      res.json({ ok: true });
+      res.json({ ok: true, loop: loop.stats() });
     });
     // Public rooms for the lobby browser.
     app.get("/rooms", async (_req, res) => {

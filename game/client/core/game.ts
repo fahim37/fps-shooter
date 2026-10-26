@@ -565,6 +565,7 @@ export class Game {
     if (worst.elapsed >= 1) { worst.last = worst.current; worst.current = worst.elapsed = 0; }
     dt = Math.min(dt, 0.1);
     const now = performance.now(), local = this.local;
+    this.clock.frame(now);
     const portrait = this.input.touch && window.innerHeight > window.innerWidth;
     if (hud().mobilePortrait !== portrait) hud().set({ mobilePortrait: portrait });
     if (this.input.consume("KeyB")) this.openLoadout();
@@ -646,7 +647,11 @@ export class Game {
     this.effects.update(dt);
     audio.setVolume(useSettings.getState().volume);
     audio.setListener(this.camera.position, this.camera.getWorldDirection(new THREE.Vector3()));
-    if (now >= this.pingAt) { this.send("ping", { c: now, rtt: this.clock.rtt }); this.pingAt = now + 1500; }
+    if (now >= this.pingAt) {
+      // Stamp at send time, not frame start, and report no ping until one has been measured.
+      this.send("ping", { c: performance.now(), rtt: this.clock.rtt || undefined });
+      this.pingAt = now + 1500;
+    }
     if (now >= this.hudAt) {
       this.hudAt = now + 50;
       const ammo = local.ammo[local.weapon];
