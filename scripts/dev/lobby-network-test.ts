@@ -140,7 +140,44 @@ async function main() {
     practice.send("ready", true); await until(() => practice.state.players.get(practice.sessionId)?.ready === true);
     practice.send("start", {}); await until(() => practice.state.phase === "warmup");
     assert.equal(practice.state.players.size, 4); assert.equal([...practice.state.players.values()].filter((p) => p.bot).length, 3);
+
+    const managed = await create("custom", { bots: 0, maxPlayers: 4, private: true });
+    const managedPeer = await peer(managed, "Managed", 2);
+    const roomSettings = { roomName: "Updated lobby", maxPlayers: 6, scoreLimit: 200, privateRoom: false, practiceBots: false };
+    managedPeer.send("roomSettings", roomSettings);
+    managedPeer.send("managePlayer", { action: "host", playerId: managedPeer.sessionId });
+    await sleep(150); assert.equal(managed.state.maxPlayers, 4); assert.equal(managed.state.hostId, managed.sessionId);
+    managed.send("roomSettings", roomSettings);
+    await until(() => managedPeer.state.maxPlayers === 6 && managedPeer.state.scoreLimit === 200);
+    const listing = await fetch(`${(process.argv[2] || "ws://localhost:2567").replace(/^ws/, "http")}/rooms`).then((r) => r.json()) as { code: string; max: number; name: string }[];
+    assert.ok(listing.some((r) => r.code === managed.roomId && r.max === 6 && r.name === roomSettings.roomName), "Updated size and privacy reach the public room list");
+    managedPeer.send("ready", true);
+    managed.send("managePlayer", { action: "team", playerId: managedPeer.sessionId, team: 1 });
+    await until(() => managedPeer.state.players.get(managedPeer.sessionId)?.team === 1 && managed.state.players.get(managedPeer.sessionId)?.ready === true);
+    managedPeer.send("rename", "Host");
+    await until(() => managed.state.players.get(managedPeer.sessionId)?.name === "Host2");
+    managed.send("managePlayer", { action: "host", playerId: managedPeer.sessionId });
+    await until(() => managedPeer.state.hostId === managedPeer.sessionId);
+    managed.send("roomSettings", { ...roomSettings, maxPlayers: 20 });
+    await sleep(150); assert.equal(managedPeer.state.maxPlayers, 6, "Old host loses settings permissions");
+    const removed = new Promise<{ code: number; reason?: string }>((resolve) => managed.onLeave((code, reason) => resolve({ code, reason })));
+    managed.reconnection.enabled = true;
+    const token = managed.reconnectionToken;
+    managedPeer.send("managePlayer", { action: "kick", playerId: managed.sessionId });
+    const kicked = await Promise.race([removed, sleep(5000).then(() => { throw new Error("Kick did not close the connection"); })]);
+    assert.equal(kicked.code, 4000); assert.match(kicked.reason || "", /removed/);
+    await until(() => !managedPeer.state.players.has(managed.sessionId));
+    await assert.rejects(client.reconnect(token), "A kicked session cannot reclaim its old seat");
+    rooms.splice(rooms.indexOf(managed), 1);
+
+    // Increasing a completely full room must also unlock matchmaking seats.
+    const resize = await create("custom", { bots: 0, maxPlayers: 2, private: true });
+    await peer(resize, "Second");
+    resize.send("roomSettings", { ...roomSettings, maxPlayers: 4, privateRoom: true });
+    await until(() => resize.state.maxPlayers === 4);
+    await peer(resize, "Third");
+    await until(() => resize.state.players.size === 3);
     console.log(JSON.stringify({ passed: true, checks: ["shared showoffs", "showoff rate limit", "invalid showoff rejection", "match clears showoffs", "fixed seats", "server-enforced no bots", "ready gating", "host-only start", "queue isolation", "team capacity", "countdown survives departures", "persistent readiness", "late joins on either team", "late spawn protection", "explicit unready", "host migration", "2v2 live match", "uneven 3v6 start", "team switching into larger team", "10v10 start", "20-player capacity", "practice bots"] }));
-  } finally { await Promise.all(rooms.map((r) => r.leave().catch(() => {}))); }
+  } finally { await Promise.all(rooms.filter((r) => r.connection?.isOpen).map((r) => r.leave().catch(() => {}))); }
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

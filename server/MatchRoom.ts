@@ -1,10 +1,10 @@
-import { Room, ServerError, type Client } from "colyseus";
+import { CloseCode, Room, ServerError, type Client } from "colyseus";
 import type RAPIER_NS from "@dimforge/rapier3d-compat";
 import { MatchState, PlayerState, GrenadeState } from "../game/shared/schema";
 import {
   TICK_MS, MAX_REWIND_MS, MAX_HEALTH, REGEN_DELAY_MS, REGEN_PER_SEC, RESPAWN_MS, SPAWN_PROTECTION_MS,
   GRENADES_PER_LIFE, FALL_DAMAGE_MIN_SPEED, MAX_PLAYERS, MODE_INFO, scoreLimitFor, matchMinutes, WARMUP_MS, END_SCREEN_MS, EYE_HEIGHT,
-  CROUCH_EYE_HEIGHT, SPRINT_SPEED, type GameMode,
+  CROUCH_EYE_HEIGHT, SPRINT_SPEED, ROOM_SIZES, SCORE_LIMITS, type GameMode,
 } from "../game/shared/constants";
 import { WEAPONS, PRIMARIES, GRENADE, damageAt, fireIntervalMs, type WeaponId } from "../game/shared/weapons";
 import { GRENADE_STEP_HZ, createGrenadeBody, grenadeVelocity } from "../game/shared/grenade";
@@ -192,6 +192,9 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       if (count >= Math.ceil(this.maxClients / 2)) { client.send("lobbyError", "That team is full. Choose the other team."); return; }
       p.st.team = team;
     });
+    this.onMessage("managePlayer", (client, message: unknown) => this.managePlayer(client, message));
+    this.onMessage("rename", (client, name: unknown) => this.renamePlayer(client, name));
+    this.onMessage("roomSettings", (client, message: unknown) => this.changeRoomSettings(client, message));
     this.onMessage("map", (client, id: unknown) => {
       // Host only, before the match: no bots, grenades or live bodies exist in the world yet.
       if (!this.state.lobby || this.state.phase !== "waiting" || client.sessionId !== this.state.hostId || !isMapId(id) || id === this.map.id) return;
@@ -214,6 +217,79 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   }
 
   // ---------------------------------------------------------------- lifecycle
+
+  private waitingHost(client: Client) {
+    return this.state.lobby && this.state.phase === "waiting" && this.state.hostId === client.sessionId &&
+      this.players.get(client.sessionId)?.st.connected === true;
+  }
+
+  private managePlayer(client: Client, message: unknown) {
+    if (!this.waitingHost(client) || !message || typeof message !== "object") return;
+    const m = message as Record<string, unknown>;
+    if (typeof m.playerId !== "string") return;
+    const target = this.players.get(m.playerId);
+    if (!target || target.bot) return;
+    if (!target.st.connected || !target.client) {
+      client.send("lobbyError", "Wait for that player to reconnect before managing them."); return;
+    }
+    if (m.action === "team") {
+      if (this.state.mode !== "tdm" || (m.team !== 1 && m.team !== 2) || target.st.team === m.team) return;
+      if (m.swapWith !== undefined) {
+        const other = typeof m.swapWith === "string" ? this.players.get(m.swapWith) : undefined;
+        if (!other || other.bot || !other.st.connected || other.st.team !== m.team) return;
+        other.st.team = target.st.team;
+        target.st.team = m.team;
+        return;
+      }
+      if (this.humans().filter((p) => p.st.team === m.team).length >= Math.ceil(this.maxClients / 2)) {
+        client.send("lobbyError", "That team is full. Swap with a player on that team instead."); return;
+      }
+      target.st.team = m.team;
+    } else if (target.id !== client.sessionId && m.action === "host") {
+      this.state.hostId = target.id;
+    } else if (target.id !== client.sessionId && m.action === "kick") {
+      // A consented close removes the seat immediately without reserving it for reconnection.
+      target.st.connected = false;
+      target.client.leave(CloseCode.CONSENTED, "You were removed from the room by the host.");
+    }
+  }
+
+  private renamePlayer(client: Client, value: unknown) {
+    const p = this.players.get(client.sessionId);
+    if (!this.state.lobby || this.state.phase !== "waiting" || !p?.st.connected || typeof value !== "string") return;
+    const name = cleanName(value);
+    if (!/[\p{L}\p{N}]/u.test(name)) { client.send("lobbyError", "Enter a name with at least one letter or number."); return; }
+    p.st.name = this.uniqueName(name, p.id);
+    client.send("nameChanged", p.st.name);
+  }
+
+  private changeRoomSettings(client: Client, message: unknown) {
+    if (!this.waitingHost(client) || !message || typeof message !== "object") return;
+    const m = message as Record<string, unknown>;
+    const mode = this.state.mode as GameMode;
+    if (typeof m.roomName !== "string" || !m.roomName.trim() || typeof m.maxPlayers !== "number" ||
+      !ROOM_SIZES.some((size) => size === m.maxPlayers) || typeof m.scoreLimit !== "number" ||
+      !SCORE_LIMITS[mode].includes(m.scoreLimit) || typeof m.privateRoom !== "boolean" || typeof m.practiceBots !== "boolean") {
+      client.send("lobbyError", "Choose a valid room name, size and score to win."); return;
+    }
+    if (this.state.format !== "custom" && (m.maxPlayers !== this.maxClients || m.practiceBots)) {
+      client.send("lobbyError", "Duel and Doubles keep their fixed room size and have no bots."); return;
+    }
+    const humans = this.humans();
+    if (humans.length > m.maxPlayers || (mode === "tdm" && [1, 2].some((team) =>
+      humans.filter((p) => p.st.team === team).length > Math.ceil((m.maxPlayers as number) / 2)))) {
+      client.send("lobbyError", "Move or remove players before reducing the room to that size."); return;
+    }
+    this.maxClients = m.maxPlayers;
+    this.state.maxPlayers = m.maxPlayers;
+    this.state.roomName = m.roomName.trim().slice(0, 32);
+    this.state.scoreLimit = m.scoreLimit;
+    this.botTarget = m.practiceBots ? m.maxPlayers : 0;
+    this.state.botFill = this.botTarget;
+    this.state.privateRoom = m.privateRoom;
+    void this.setPrivate(m.privateRoom);
+    this.updateMeta();
+  }
 
   /** The only hook that sees the connection request: keep the address and browser for analytics. */
   onAuth(_client: Client, _options: JoinOptions, context: { ip?: string; headers?: Headers }): ConnectionInfo {
@@ -600,8 +676,8 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   }
 
   /** Two players in a room never share a name: a later joiner gets a number appended. */
-  uniqueName(name: string) {
-    const taken = new Set([...this.players.values()].map((p) => p.st.name.toLowerCase()));
+  uniqueName(name: string, exceptId?: string) {
+    const taken = new Set([...this.players.values()].filter((p) => p.id !== exceptId).map((p) => p.st.name.toLowerCase()));
     if (!taken.has(name.toLowerCase())) return name;
     for (let n = 2; ; n++) {
       const candidate = `${name.slice(0, NAME_MAX - String(n).length)}${n}`;
@@ -816,10 +892,10 @@ function fullAmmo(): ServerPlayer["ammo"] {
   return a;
 }
 
-function sanitizeName(n: unknown) {
-  const s = typeof n === "string" ? n.replace(/[^\p{L}\p{N} _\-.]/gu, "").trim().slice(0, NAME_MAX) : "";
-  return s || randomName();
+function cleanName(n: unknown) {
+  return typeof n === "string" ? n.replace(/[^\p{L}\p{N} _\-.]/gu, "").trim().slice(0, NAME_MAX) : "";
 }
+function sanitizeName(n: unknown) { return cleanName(n) || randomName(); }
 
 function finite(...v: unknown[]) {
   return v.every((x) => typeof x === "number" && Number.isFinite(x));

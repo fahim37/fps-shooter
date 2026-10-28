@@ -39,6 +39,8 @@ export async function leaveCurrentRoom() {
   const r = current;
   current = null;
   if (r) {
+    r.reconnection.enabled = false;
+    if (!r.connection?.isOpen) return;
     try {
       await r.leave(true);
     } catch {

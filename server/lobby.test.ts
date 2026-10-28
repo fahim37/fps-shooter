@@ -9,11 +9,11 @@ vi.mock("./bot", () => ({ Bot: class {}, BOT_NAMES: [] }));
 function fixture() {
   const room = Object.assign(Object.create(MatchRoom.prototype), {
     state: new MatchState(), players: new Map(), grenades: new Map(), maxClients: 6,
-    updateMeta: vi.fn(), balanceBots: vi.fn(), spawn: vi.fn(), unlock: vi.fn(),
+    updateMeta: vi.fn(), balanceBots: vi.fn(), spawn: vi.fn(), unlock: vi.fn(), setPrivate: vi.fn(),
     allowReconnection: vi.fn().mockResolvedValue(undefined),
   });
   room.state.lobby = true; room.state.mode = "tdm"; room.state.phase = "waiting";
-  const client = { sessionId: "host" } as Client;
+  const client = { sessionId: "host", send: vi.fn() } as unknown as Client;
   room.onJoin(client, { name: "Host", char: 0 });
   room.state.players.get("host").ready = true;
   return { room, client, host: room.state.players.get("host") as PlayerState };
@@ -66,5 +66,104 @@ describe("persistent lobby readiness and late joins", () => {
     expect(room.players.has("bot-red")).toBe(false);
     expect(room.players.has("bot-blue")).toBe(true);
     expect([...room.players.values()].map((p: { st: PlayerState }) => p.st.team).sort()).toEqual([1, 1, 2, 2]);
+  });
+});
+
+describe("waiting-room management", () => {
+  function managed() {
+    const f = fixture();
+    f.room.state.maxPlayers = 6;
+    const guest = { sessionId: "guest", send: vi.fn(), leave: vi.fn() } as unknown as Client;
+    f.room.onJoin(guest, { name: "Guest", char: 0, team: 2 });
+    return { ...f, guest, target: f.room.state.players.get("guest") as PlayerState };
+  }
+  const settings = { roomName: "New room", maxPlayers: 4, scoreLimit: 200, privateRoom: false, practiceBots: true };
+
+  it("lets the host move a player without losing readiness and enforces team capacity", () => {
+    const { room, client, target } = managed(); target.ready = true;
+    room.managePlayer(client, { action: "team", playerId: "guest", team: 1 });
+    expect(target.team).toBe(1); expect(target.ready).toBe(true);
+    room.onJoin({ sessionId: "third" } as Client, { name: "Third", char: 0, team: 1 });
+    room.onJoin({ sessionId: "fourth" } as Client, { name: "Fourth", char: 0, team: 2 });
+    room.managePlayer(client, { action: "team", playerId: "fourth", team: 1 });
+    expect(room.state.players.get("fourth").team).toBe(2);
+    expect(client.send).toHaveBeenCalledWith("lobbyError", expect.stringContaining("full"));
+  });
+
+  it("transfers every host permission and prevents guests or the old host from managing players", () => {
+    const { room, client, guest, host, target } = managed();
+    for (const action of ["team", "kick", "host"]) room.managePlayer(guest, { action, playerId: "host", team: 2 });
+    expect(host.team).toBe(1); expect(room.state.hostId).toBe("host");
+    room.managePlayer(client, { action: "host", playerId: "guest" });
+    expect(room.state.hostId).toBe("guest");
+    room.managePlayer(client, { action: "team", playerId: "guest", team: 1 });
+    room.changeRoomSettings(client, settings);
+    expect(target.team).toBe(2); expect(room.maxClients).toBe(6);
+    room.changeRoomSettings(guest, settings);
+    expect(room.maxClients).toBe(4); expect(room.state.scoreLimit).toBe(200);
+  });
+
+  it("swaps players across full teams atomically and rejects invalid swap targets", () => {
+    const { room, client, target } = managed(); room.maxClients = 2; target.ready = true;
+    room.managePlayer(client, { action: "team", playerId: "host", team: 2, swapWith: "missing" });
+    expect(target.team).toBe(2);
+    room.managePlayer(client, { action: "team", playerId: "host", team: 2, swapWith: "host" });
+    expect(target.team).toBe(2);
+    room.managePlayer(client, { action: "team", playerId: "host", team: 2, swapWith: "guest" });
+    expect(room.state.players.get("host").team).toBe(2); expect(target.team).toBe(1); expect(target.ready).toBe(true);
+  });
+
+  it("kicks a peer without allowing automatic reconnection, and cannot kick itself", () => {
+    const { room, client, guest, target } = managed();
+    room.managePlayer(client, { action: "kick", playerId: "host" });
+    expect(room.state.hostId).toBe("host");
+    room.managePlayer(client, { action: "kick", playerId: "guest" });
+    expect(target.connected).toBe(false);
+    expect(guest.leave).toHaveBeenCalledWith(4000, expect.stringContaining("removed"));
+  });
+
+  it("rejects stale, disconnected and malformed management requests", () => {
+    const { room, client, guest, target } = managed(); target.connected = false;
+    room.managePlayer(client, { action: "host", playerId: "guest" });
+    for (const value of [null, 1, "guest", {}, { action: "team", playerId: "guest", team: 3 }, { action: "kick", playerId: "missing" }]) room.managePlayer(client, value);
+    expect(room.state.hostId).toBe("host"); expect(guest.leave).not.toHaveBeenCalled();
+    target.connected = true;
+    room.state.phase = "live";
+    room.managePlayer(client, { action: "host", playerId: "guest" });
+    room.changeRoomSettings(client, settings); room.renamePlayer(guest, "Changed");
+    expect(room.state.hostId).toBe("host"); expect(room.maxClients).toBe(6); expect(target.name).toBe("Guest");
+  });
+
+  it("renames only the sender, sanitizes and deduplicates names, and preserves readiness", () => {
+    const { room, guest, host, target } = managed(); target.ready = true;
+    room.renamePlayer(guest, "  <Host>  ");
+    expect(target.name).toBe("Host2"); expect(host.name).toBe("Host"); expect(target.ready).toBe(true);
+    room.renamePlayer(guest, "HOST2"); expect(target.name).toBe("HOST2");
+    room.renamePlayer(guest, "LongPlayerNameBeyondTheLimit"); expect(target.name.length).toBeLessThanOrEqual(16);
+    const saved = target.name;
+    for (const value of [null, { name: "Oops" }, "", "<>!", "---"]) room.renamePlayer(guest, value);
+    expect(target.name).toBe(saved);
+    expect(guest.send).toHaveBeenCalledWith("nameChanged", saved);
+  });
+
+  it("updates settings for everyone and refuses sizes smaller than the roster or a team", () => {
+    const { room, client, guest, host } = managed();
+    room.changeRoomSettings(guest, settings); expect(room.maxClients).toBe(6);
+    room.state.players.get("guest").team = 1;
+    room.changeRoomSettings(client, { ...settings, maxPlayers: 2 });
+    expect(room.maxClients).toBe(6); expect(room.state.scoreLimit).not.toBe(200);
+    room.changeRoomSettings(client, settings);
+    expect(room.state).toMatchObject({ roomName: "New room", maxPlayers: 4, scoreLimit: 200, botFill: 4, privateRoom: false });
+    expect(room.maxClients).toBe(4); expect(host.ready).toBe(true);
+    expect(room.setPrivate).toHaveBeenCalledWith(false);
+    room.state.format = "2v2";
+    room.changeRoomSettings(client, { ...settings, maxPlayers: 6, practiceBots: false }); expect(room.maxClients).toBe(4);
+    room.changeRoomSettings(client, { ...settings, practiceBots: true }); expect(client.send).toHaveBeenCalledWith("lobbyError", expect.stringContaining("fixed"));
+  });
+
+  it("rejects invalid settings atomically", () => {
+    const { room, client } = managed();
+    for (const invalid of [null, {}, { ...settings, maxPlayers: 100 }, { ...settings, maxPlayers: 3 }, { ...settings, scoreLimit: 201 }, { ...settings, roomName: " " }, { ...settings, privateRoom: "yes" }]) room.changeRoomSettings(client, invalid);
+    expect(room.maxClients).toBe(6); expect(room.state.scoreLimit).not.toBe(200);
   });
 });

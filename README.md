@@ -150,7 +150,11 @@ Outpost is "LOWPOLY | FPS | TDM | GAME | MAP" by ResoForge (Sketchfab, licensed 
 
 Male and female Rangers have animated selection previews and shared lobby showoffs (At ease, Dance, Talk and Spell stance). See [character assets and lobby showoffs](docs/characters.md) for optimization budgets, pack overrides, and validation commands.
 
-When creating a room with friends, **Score to win** sets the elimination target: 30, 60 (default), 100 or 150 for Team Deathmatch, and 20, 30 (default), 50 or 75 for Free for All. Higher targets get a longer clock (100 → 20 minutes, 150 → 25 minutes) so they stay reachable; the waiting room shows the target and match length.
+When creating a room with friends, **Score to win** sets the elimination target: 30, 60 (default), 100, 150 or 200 for Team Deathmatch, and 20, 30 (default), 50, 75, 100 or 200 for Free for All. Higher targets get a longer clock (TDM: 100 → 20 minutes, 150 → 25 minutes, 200 → 35 minutes) so they stay reachable; the waiting room shows the target and match length.
+
+In the waiting room, the host can drag player cards between teams, or open a player's **⋯** controls to move them, kick them, or transfer room ownership. When a team is full, drop onto one of its players to swap teams, or choose **Swap with** in the player controls. Kick and ownership transfer require confirmation. The new host immediately receives all host controls, and the previous host becomes a regular player. Every player can use their own **⋯** control to edit their name; the server keeps player names unique and remembers the accepted name in that player's browser. Team changes and name changes preserve readiness.
+
+The host's **Room settings** button edits the room name, size, score to win, privacy and practice bots without recreating the room. Sizes cannot shrink below the current player count or either team's capacity; move or remove players first. Duel and Doubles retain their fixed sizes and do not allow practice bots. All management changes are enforced by the server and are available only while waiting for a match.
 
 Room readiness stays set until the player cancels it, including roster changes, team changes, reconnects and subsequent rounds. The host still starts each round. Warmup and active matches remain open while seats are available; joining players can choose Blue, Red or Auto assign in the invite form or public room browser. Team capacity is enforced by the server and late joiners receive a protected spawn. Departures do not cancel the countdown.
 
