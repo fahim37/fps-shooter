@@ -1,0 +1,17 @@
+.dialog { width: min(420px, calc(100vw - 28px)); max-height: calc(100dvh - 28px); padding: 0; border: 1px solid #81927260; background: #141e16; color: #eeeede; box-shadow: 0 20px 100px #0009; overflow: auto; }
+.dialog::backdrop { background: #091008aa; backdrop-filter: blur(3px); }
+.panel { padding: 22px; }
+.panel header { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 18px; }
+.panel h2 { margin: 0; font-size: 23px; overflow-wrap: anywhere; }
+.panel p { color: #aebda3; font-size: 12px; line-height: 1.6; margin: 8px 0 14px; }
+.field { display: grid; gap: 8px; margin: 14px 0; color: #c9d3bf; font-size: 12px; }
+.field input, .field select { width: 100%; min-height: 44px; padding: 10px; border: 1px solid #ffffff30; background: #0b140d; color: #eeeede; font: inherit; }
+.field input:focus-visible, .field select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.check { display: flex; align-items: center; gap: 10px; margin: 14px 0; font-size: 12px; color: #c9d3bf; }
+.check input { width: 18px; height: 18px; accent-color: var(--accent); }
+.panel :global(.primary-button), .panel :global(.outline-button) { min-height: 44px; margin: 0; padding: 12px; font-size: 12px; width: 100%; }
+.actions { display: grid; gap: 10px; margin-top: 16px; }
+.actions .danger { color: #ffa89a; border-color: #ff8b7960; }
+.confirm { margin-top: 18px; padding-top: 8px; border-top: 1px solid #ffffff20; }
+.confirm > div { display: flex; gap: 10px; }
+@media (max-height: 500px) { .panel { padding: 14px 18px; } .field { margin: 10px 0; } }

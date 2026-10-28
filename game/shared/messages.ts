@@ -55,6 +55,18 @@ export const F_RELOADING = 16;
 
 // ----- client → server -----
 
+export type ManagePlayerMsg =
+  | { action: "team"; playerId: string; team: 1 | 2; swapWith?: string }
+  | { action: "kick" | "host"; playerId: string };
+
+export interface RoomSettingsMsg {
+  roomName: string;
+  maxPlayers: number;
+  scoreLimit: number;
+  privateRoom: boolean;
+  practiceBots: boolean;
+}
+
 export interface PoseMsg {
   x: number; y: number; z: number;
   yaw: number; pitch: number;

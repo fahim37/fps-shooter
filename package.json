@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently -k -n web,game \"next dev\" \"tsx watch server/index.ts\"",
-    "dev:web": "next dev",
-    "dev:server": "tsx watch server/index.ts",
-    "start:server": "tsx server/index.ts",
+    "dev": "node init && concurrently -k -n web,game \"next dev\" \"tsx watch server/index.ts\"",
+    "dev:web": "node init && next dev",
+    "dev:server": "node init && tsx watch server/index.ts",
+    "start:server": "node init && tsx server/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build": "next build",
-    "start": "next start",
+    "build": "node init && next build",
+    "start": "node init && next start",
     "lint": "eslint"
   },
   "dependencies": {

@@ -5,7 +5,7 @@ import Image from "next/image";
 import { assetUrl } from "./assets/url";
 import { createRoom, joinByCode, joinErrorMessage, leaveCurrentRoom, listRooms, quickPlay, type GameRoom, type PublicRoom } from "./net/session";
 import { useSettings } from "./settings";
-import { MAX_PLAYERS, MODE_INFO, SCORE_LIMITS, scoreLimitFor, type GameMode } from "../shared/constants";
+import { MAX_PLAYERS, MODE_INFO, ROOM_SIZES, SCORE_LIMITS, scoreLimitFor, type GameMode } from "../shared/constants";
 import type { JoinOptions } from "../shared/messages";
 import { audio } from "./core/audio";
 import { parseRoomCode } from "./net/invite";
@@ -50,8 +50,6 @@ function Choices<T extends string | number>({ label, hint, value, options, onCha
   </div>;
 }
 const FORMATS = [["1v1", "Duel", "2 players"], ["2v2", "Doubles", "4 players"], ["custom", "Your rules", `Up to ${MAX_PLAYERS}`]] as const;
-/** A handful of room sizes: 2v2 up to 10v10 (or that many players in Free for All). */
-const ROOM_SIZES = [4, 8, 12, 16, MAX_PLAYERS];
 
 function CharacterPicker({ value, onChange }: { value: number; onChange: (char: number) => void }) {
   return <div className="character-picker" role="radiogroup" aria-label="Character">
@@ -134,6 +132,7 @@ export default function Shooter() {
 
   async function leave() {
     await leaveCurrentRoom(); setRoom(null); audio.dispose();
+    setName(useSettings.getState().name || name);
     const url = new URL(window.location.href); url.searchParams.delete("room");
     window.history.replaceState(null, "", url); setCode(""); setError("");
   }

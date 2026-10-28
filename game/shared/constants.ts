@@ -41,7 +41,8 @@ export const MODE_INFO: Record<GameMode, { name: string; scoreLimit: number; min
 };
 
 /** Eliminations to win that a room creator can choose; the mode's default is among them. */
-export const SCORE_LIMITS: Record<GameMode, readonly number[]> = { tdm: [30, 60, 100, 150], ffa: [20, 30, 50, 75] };
+export const SCORE_LIMITS: Record<GameMode, readonly number[]> = { tdm: [30, 60, 100, 150, 200], ffa: [20, 30, 50, 75, 100, 200] };
+export const ROOM_SIZES = [2, 4, 6, 8, 10, 12, 16, 20] as const;
 
 /** A listed score limit for the mode, or the mode's default. */
 export function scoreLimitFor(mode: GameMode, requested?: unknown): number {
