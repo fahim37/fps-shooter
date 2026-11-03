@@ -739,9 +739,10 @@ small { display: block; }
 .format-options span { font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
 .format-options button.selected span { color: var(--accent); }
 @media (max-width: 760px) and (min-height: 521px) { .format-options button { min-height: 48px; padding: 6px 9px; } .format-options strong { font-size: 17px; } }
-/* Each choice row stays on one line; the buttons share it evenly. */
+/* Each choice row stays on one line; the buttons share it, each at least as wide as its label. */
 .choice-row { flex-wrap: nowrap; }
-.choice-row button { flex: 1 1 0; min-width: 0; padding: 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.choice-row button { flex: 1 1 0; min-width: max-content; padding: 0 6px; white-space: nowrap; }
+@media (max-width: 440px) { .choice-row button { padding: 0 2px; } }
 .custom-fields > .choice-field:not(.wide):not(:only-child) .choice-row button { font-size: 12px; }
 /* Narrow phones: tab labels only, so "With friends" fits. */
 @media (max-width: 440px) { .play-tabs button svg { display: none; } }

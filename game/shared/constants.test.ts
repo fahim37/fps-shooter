@@ -3,13 +3,13 @@ import { MODE_INFO, SCORE_LIMITS, matchMinutes, scoreLimitFor } from "./constant
 
 describe("room score limits", () => {
   it("accepts only the offered targets and falls back to the mode default", () => {
-    expect(scoreLimitFor("tdm", 150)).toBe(150);
+    expect(scoreLimitFor("tdm", 30)).toBe(30);
     expect(scoreLimitFor("tdm", 100)).toBe(100);
     expect(scoreLimitFor("tdm", 200)).toBe(200);
     expect(scoreLimitFor("ffa", 100)).toBe(100);
     expect(scoreLimitFor("ffa", 200)).toBe(200);
     expect(scoreLimitFor("ffa", 75)).toBe(75);
-    for (const bad of [undefined, 0, 99, 151, 1e6, "150", null]) expect(scoreLimitFor("tdm", bad)).toBe(MODE_INFO.tdm.scoreLimit);
+    for (const bad of [undefined, 0, 99, 150, 151, 1e6, "150", null]) expect(scoreLimitFor("tdm", bad)).toBe(MODE_INFO.tdm.scoreLimit);
     expect(scoreLimitFor("ffa", 150)).toBe(MODE_INFO.ffa.scoreLimit);
     for (const mode of ["tdm", "ffa"] as const) expect(SCORE_LIMITS[mode]).toContain(MODE_INFO[mode].scoreLimit);
   });

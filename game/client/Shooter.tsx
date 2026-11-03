@@ -140,9 +140,9 @@ export default function Shooter() {
 
   const visibleRooms = rooms.filter((r) => (filter !== "humans" || r.botFill === 0) && (filter !== "waiting" || r.phase === "waiting") && `${r.name} ${r.code} ${r.format}`.toLowerCase().includes(search.toLowerCase()));
   const roomMode: GameMode = format === "custom" ? mode : "tdm";
-  const scoreSelect = <Choices label="SCORE TO WIN" hint="kills" value={scoreLimitFor(roomMode, scoreTarget)} onChange={setScoreTarget}
+  const scoreSelect = <Choices wide label="SCORE TO WIN" hint="kills" value={scoreLimitFor(roomMode, scoreTarget)} onChange={setScoreTarget}
     options={SCORE_LIMITS[roomMode].map((n) => ({ value: n, text: String(n), name: `${n} kills` }))} />;
-  const modeSelect = <Choices<GameMode> label="MODE" value={mode} onChange={setMode}
+  const modeSelect = <Choices<GameMode> wide label="MODE" value={mode} onChange={setMode}
     options={[{ value: "tdm", text: "Team DM", name: "Team Deathmatch" }, { value: "ffa", text: "Free for All" }]} />;
   return <main className="lobby home-lobby" data-tab={tab} data-format={tab === "friends" ? format : undefined}>
     <LobbySounds />
