@@ -160,3 +160,22 @@ function touching(kcc: RAPIER.KinematicCharacterController, normal1: { x: number
   vi.spyOn(kcc, "numComputedCollisions").mockReturnValue(1);
   vi.spyOn(kcc, "computedCollision").mockReturnValue({ normal1 } as RAPIER.CharacterCollision);
 }
+
+describe.each([30, 60, 120])("steps at %i Hz", (rate) => {
+  // Bots move at the 30 Hz server tick and the local player at 120 Hz; both must climb what the
+  // bots' navmesh climbs (0.42 m) and stop at anything taller.
+  it.each([[0.2, true], [0.3, true], [0.42, true], [0.5, false], [0.7, false]] as const)("a %d m step: climbed %s", (height, climbs) => {
+    const world = new RAPIER.World({ x: 0, y: -20, z: 0 });
+    world.createCollider(RAPIER.ColliderDesc.cuboid(20, 0.5, 20).setTranslation(0, -0.5, 0));
+    world.createCollider(RAPIER.ColliderDesc.cuboid(5, height / 2, 5).setTranslation(0, height / 2, -6));
+    world.step();
+    const mover = new Mover(RAPIER, world), s = newMoveState(0, 0, 0);
+    mover.teleport(s, 0, 0.05, 0);
+    const input: MoveInput = { forward: 1, right: 0, yaw: 0, jump: false, sprint: false, crouch: false, ads: 0, speedMult: 1 };
+    try {
+      for (let i = 0; i < rate * 2; i++) mover.step(s, input, 1 / rate);
+      expect(s.z < -2, `stopped at ${s.z}`).toBe(climbs);
+      if (climbs) expect(s.y).toBeCloseTo(height, 1);
+    } finally { mover.dispose(); world.free(); }
+  });
+});

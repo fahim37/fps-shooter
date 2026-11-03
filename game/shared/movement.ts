@@ -41,6 +41,8 @@ const CENTER = PLAYER_HEIGHT / 2;
 const MAX_SLOPE = (50 * Math.PI) / 180;
 /** Contact normals at least this upright are floor (the climbable slope limit). */
 const WALKABLE_NORMAL_Y = Math.cos(MAX_SLOPE) - 1e-3;
+/** How far ahead a blocked move probes for a step: a 30 Hz tick at walking speed, as bots move. */
+const STEP_PROBE = 0.17;
 
 /**
  * Kinematic character movement on top of Rapier's character controller. Shared by the
@@ -126,6 +128,23 @@ export class Mover {
       m = this.kcc.computedMovement();
       s.grounded ||= this.kcc.computedGrounded();
       wall = this.touchedWall();
+    }
+    if (wasGrounded && wall && desired.y <= 0) {
+      // Rapier's autostep only takes a step when one move carries the capsule far enough past its
+      // edge: at the client's 120 Hz a tick's few centimeters stop dead at anything over 0.25 m.
+      // Probe the same way further, and if that climbs a step, rise onto it and go this tick's
+      // distance.
+      const want = Math.hypot(desired.x, desired.z), got = Math.hypot(m.x, m.z);
+      if (want > 1e-4 && got < want * 0.9) {
+        const k = Math.max(1, STEP_PROBE / want);
+        this.kcc.computeColliderMovement(this.collider, { x: desired.x * k, y: 0, z: desired.z * k }, this.R.QueryFilterFlags.EXCLUDE_SENSORS, QUERY_MOVE);
+        const probe = this.kcc.computedMovement();
+        if (probe.y > 0.02 && Math.hypot(probe.x, probe.z) > want) {
+          m = { x: desired.x, y: probe.y, z: desired.z };
+          s.grounded = true;
+          wall = false;
+        }
+      }
     }
 
     s.x += m.x; s.y += m.y; s.z += m.z;
