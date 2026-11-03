@@ -42,6 +42,8 @@ export function Ground({ map }: { map: MapId }) {
   // stays untextured and sits below the asphalt (which is at y = 0) to avoid z-fighting.
   // The freight yard brings its own ground: the kit's floating-island terrain, asphalt at y = 0.
   if (map === "industrial") return null;
+  // Chiba Arena brings its own: the event floor is at y = 0, the ballpark's field below it.
+  if (map === "arena") return null;
   if (map === "desert") return <Suspense fallback={null}><SandGround /></Suspense>;
   if (map === "downtown" || map === "outpost") return <mesh rotation-x={-Math.PI / 2} position-y={-0.06} receiveShadow>
     <planeGeometry args={[SIZE, SIZE]} />

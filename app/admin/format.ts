@@ -65,7 +65,7 @@ export function weaponName(id: string): string {
 }
 
 // Names only: importing game/shared/map/maps would bundle every map generator into the dashboard.
-const MAP_NAMES: Record<string, string> = { village: "Village", downtown: "Downtown", industrial: "Freight Yard", outpost: "Outpost" };
+const MAP_NAMES: Record<string, string> = { village: "Village", downtown: "Downtown", industrial: "Freight Yard", outpost: "Outpost", arena: "Chiba Arena" };
 export function mapName(id: string): string {
   return MAP_NAMES[id] ?? (id ? id[0].toUpperCase() + id.slice(1) : "—");
 }

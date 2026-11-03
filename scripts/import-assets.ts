@@ -7,6 +7,7 @@ import { importCharacters } from "./assets/characters";
 import { importIndustrial } from "./assets/industrial";
 import { importOutpost } from "./assets/outpost";
 import { importDesert } from "./assets/desert";
+import { importArena } from "./assets/arena";
 
 const STAGES: Record<string, () => Promise<void>> = {
   village: () => importKit(KITS.village),
@@ -16,6 +17,7 @@ const STAGES: Record<string, () => Promise<void>> = {
   industrial: importIndustrial,
   outpost: importOutpost,
   desert: importDesert,
+  arena: importArena,
   weapons: importWeapons,
   characters: importCharacters,
 };

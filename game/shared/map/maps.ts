@@ -4,6 +4,7 @@ import { getCity } from "./city";
 import { getIndustrial } from "./industrial";
 import { getOutpost } from "./outpost";
 import { getDesert } from "./desert";
+import { getArena } from "./arena";
 
 export interface MapInfo {
   id: MapId;
@@ -25,6 +26,7 @@ export const MAPS: Record<MapId, MapInfo> = {
     credit: "\"LOWPOLY | FPS | TDM | GAME | MAP\" by ResoForge · CC BY 4.0",
   },
   desert: { id: "desert", name: "Desert City", tagline: "Sun-baked streets, raised plazas and two sites between walled bases.", style: "Two sites · Mid-range lanes" },
+  arena: { id: "arena", name: "Chiba Arena", tagline: "A stadium skate course: ramps, decks and rails ringed by crowd barriers.", style: "Vertical center · Flanking lanes" },
 };
 
 export const MAP_IDS = Object.keys(MAPS) as MapId[];
@@ -42,5 +44,5 @@ export function mapId(value: unknown): MapId {
 /** The deterministic map for an id (built once, then cached). */
 export function getMap(id?: unknown): MapData {
   const map = mapId(id);
-  return map === "downtown" ? getCity() : map === "industrial" ? getIndustrial() : map === "outpost" ? getOutpost() : map === "desert" ? getDesert() : getVillage();
+  return map === "downtown" ? getCity() : map === "industrial" ? getIndustrial() : map === "outpost" ? getOutpost() : map === "desert" ? getDesert() : map === "arena" ? getArena() : getVillage();
 }

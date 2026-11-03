@@ -3,7 +3,7 @@ import type { Kit } from "../assets/kits";
 import type { KitName, PlacedPiece } from "../../shared/map/types";
 
 /** Pieces that never cast shadows (small foliage), to keep the shadow pass cheap. */
-const NO_SHADOW = /^(Grass_|Clover|Flower_|Pebble_|Mushroom|Fern|Plant_|Prop_Vine|Floor_|Petal|Island|Drain|Manhole|Detail_|Desert_Backdrop)/;
+const NO_SHADOW = /^(Grass_|Clover|Flower_|Pebble_|Mushroom|Fern|Plant_|Prop_Vine|Floor_|Petal|Island|Drain|Manhole|Detail_|Desert_Backdrop|Arena_Backdrop)/;
 export const DECORATIVE = /^(Grass_|Flower_|Clover|Fern|Plant_|Pebble_|Mushroom)/;
 /** Merged clutter chunks (decals, posters, small props): never collide, left out on Low. */
 export const DETAIL = /^Detail_/;

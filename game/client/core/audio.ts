@@ -604,6 +604,8 @@ export class AudioEngine {
       case "downtown": this.downtownBed(bed); break;
       case "industrial": this.freightBed(bed); break;
       case "outpost": this.outpostBed(bed); break;
+      // Chiba Arena: an event floor's generators, radios and TV helicopters.
+      case "arena": this.outpostBed(bed); break;
       case "desert": this.desertBed(bed); break;
       default: this.villageBed(bed);
     }

@@ -154,6 +154,11 @@ function tuneMaterials(kits: Kit[]) {
           m.polygonOffset = true;
           m.polygonOffsetUnits = -2;
         }
+        // Chiba Arena: skid marks and logos lie on the course's surfaces.
+        if (m.name.startsWith("Arena_") && m.alphaTest > 0) {
+          m.polygonOffset = true;
+          m.polygonOffsetUnits = -4;
+        }
         if (/Glass/i.test(m.name)) {
           m.roughness = 0.08;
           m.metalness = 0.2;
