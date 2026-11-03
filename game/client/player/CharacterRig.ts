@@ -137,6 +137,11 @@ const PORT_BUTT = [0.16, -0.32, 0.2] as const;
 const PORT_PITCH = 0.8;
 const PORT_YAW = 0.9;
 const PORT_ROLL = -0.35;
+/** TPP reload: the gun's move (m: right, up, back from where it's held) and turn (rad). */
+const RELOAD_OUT = [0.28, -0.1, -0.05] as const;
+const RELOAD_PITCH = 0.35;
+const RELOAD_YAW = -0.12;
+const RELOAD_ROLL = -0.6;
 
 /** Head position in the aim pose, model space: the FPP body hangs from it behind the camera. */
 function headRef(template: CharacterTemplate) {
@@ -510,7 +515,11 @@ export class CharacterRig {
       // dips the pistol further; long guns go across the chest instead (portArms).
       const carry = this.carry * (1 - run);
       const dip = pistol ? run : 0;
-      _e.set(s.pitch + s.recoil * (pistol ? 0.075 : 0.035) + hPitch * 0.5 - dip * 0.6 - carry * (pistol ? 0.25 : 0.5), yaw + dip * 0.6 + hYaw + carry * 0.12, hRoll - (s.lean ?? 0) * LEAN_ANGLE * 0.6, "YXZ");
+      // Reloading, the gun comes down to the right of the body and cants over, so the mag change
+      // shows from the over-the-shoulder camera instead of happening behind the chest.
+      const tilt = s.reload >= 0 ? THREE.MathUtils.smoothstep(s.reload, 0, 0.12) * (1 - THREE.MathUtils.smoothstep(s.reload, 0.88, 1)) * (pistol ? 0.5 : 1) : 0;
+      _e.set(s.pitch * (1 - tilt * 0.7) + s.recoil * (pistol ? 0.075 : 0.035) + hPitch * 0.5 - dip * 0.6 - carry * (pistol ? 0.25 : 0.5) - tilt * RELOAD_PITCH,
+        yaw + dip * 0.6 + hYaw + carry * 0.12 + tilt * RELOAD_YAW, hRoll - (s.lean ?? 0) * LEAN_ANGLE * 0.6 + tilt * RELOAD_ROLL, "YXZ");
       _q.setFromEuler(_e);
       const fwd = _v2.set(0, 0, -1).applyQuaternion(_q);
       const reach = pistol ? 0.43 : meta.max[2] + 0.02;
@@ -520,7 +529,7 @@ export class CharacterRig {
       // lowers it in front of the chest, the stock dropping toward the right armpit. It never
       // comes back toward the body: the first-person pull toward the eye would bury the stock.
       const lift = Math.max(0, hy) * 1.5;
-      shoulder.add(_v2.set(hx * 0.5 + (pistol ? 0.02 : -STOCK_POCKET) + lift * 0.3, Math.min(0, hy) - lift * 1.1, Math.min(0, hz) - lift * 0.4).applyAxisAngle(UP, yaw));
+      shoulder.add(_v2.set(hx * 0.5 + (pistol ? 0.02 : -STOCK_POCKET) + lift * 0.3 + tilt * RELOAD_OUT[0], Math.min(0, hy) - lift * 1.1 + tilt * RELOAD_OUT[1], Math.min(0, hz) - lift * 0.4 + tilt * RELOAD_OUT[2]).applyAxisAngle(UP, yaw));
       this.gunPivot.position.copy(shoulder);
       this.gunPivot.quaternion.copy(_q);
       if (!pistol && run > 1e-3) this.portArms(run, yaw, meta.max[2]);
