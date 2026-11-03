@@ -3,6 +3,8 @@ import sharp from "sharp";
 import { getBounds, type Document, type Material, type Node, type Primitive } from "@gltf-transform/core";
 import { dedup, join, prune, weld } from "@gltf-transform/functions";
 import { MeshoptSimplifier } from "meshoptimizer";
+import { init as initRecast } from "recast-navigation";
+import { navMeshFromTriangles } from "../../server/navmesh";
 import {
   ROOT, RAW, PUBLIC_MODELS, GENERATED, readModel, writeGLB, buildCollision, writeCollisionBin, pieceBounds, writeJSON,
   compressTextures, multiply, type CollisionMesh, type PieceInfo,
@@ -16,8 +18,8 @@ import {
  * and the play area.
  *
  * Built for low-end PCs first:
- * - Materials are opaque and single-sided (as the source engine drew them). Only wall decals
- *   keep alpha testing; only the soft-edged floor overlays blend.
+ * - Materials are opaque and single-sided (as the source engine drew them); decals and the
+ *   fading floor sheets are alpha-tested, nothing blends.
  * - The town is merged per material into a few large chunks: a handful of draw calls per chunk,
  *   with chunks still big enough to frustum-cull.
  * - Small clutter (decals, posters, lamps, vases, papers...) goes into `Detail_` pieces that never
@@ -167,9 +169,12 @@ export async function importDesert() {
     if (solid) collision.set(name, withRamps(buildCollision(piece, NO_COLLIDE, COLLISION_ERROR), flights.filter((f) => `Desert_${f.chunk}` === name)));
     info[name] = pieceBounds(piece);
   }
-  collision.set("Clip_Desert", boxesMesh(markers.clips));
+  // The town's outer edge had terrain hills between its buildings and rocks; without them the
+  // sand outside is open. Seal those gaps with player clips of our own.
+  const seal = await perimeter([...[...collision.values()].filter((m): m is CollisionMesh => !!m), boxesMesh(markers.clips)]);
+  collision.set("Clip_Desert", boxesMesh([...markers.clips, ...seal]));
   const { ranges, positionsByteLength } = writeCollisionBin(path.join(PUBLIC_MODELS, "desert.collision.bin"), collision);
-  for (const [name, range] of ranges) (info[name] ??= boxBounds(markers.clips)).col = range;
+  for (const [name, range] of ranges) (info[name] ??= boxBounds([...markers.clips, ...seal])).col = range;
 
   const solid = new Surfaces([...collision].filter(([name, m]) => m && !name.startsWith("Clip_")).map(([, m]) => m!));
   const layout = playLayout(solid, markers);
@@ -181,7 +186,7 @@ export async function importDesert() {
   for (const r of ranges.values()) tris += r[3] / 3;
   let drawn = 0, prims = 0;
   for (const mesh of root.listMeshes()) for (const prim of mesh.listPrimitives()) { prims++; drawn += (prim.getIndices()?.getCount() ?? 0) / 3; }
-  console.log(`[desert] ${(bytes / 1e6).toFixed(2)} MB glb, ${pieces.size} pieces, ${flights.length} stair ramps, ${prims} primitives, ${drawn} tris drawn, ${tris} collision tris, ${markers.clips.length} clip boxes, spawns ${layout.spawns.blue.length}/${layout.spawns.red.length}/${layout.spawns.ffa.length}, ${layout.footprints.length} footprints`);
+  console.log(`[desert] ${(bytes / 1e6).toFixed(2)} MB glb, ${pieces.size} pieces, ${flights.length} stair ramps, ${prims} primitives, ${drawn} tris drawn, ${tris} collision tris, ${markers.clips.length} + ${seal.length} clip boxes, spawns ${layout.spawns.blue.length}/${layout.spawns.red.length}/${layout.spawns.ffa.length}, ${layout.footprints.length} footprints`);
 }
 
 /** Merges the source's duplicate materials and sets them up for the game's renderer. */
@@ -199,7 +204,8 @@ function materials(doc: Document) {
   let blend: Material | null = null;
   for (const mesh of doc.getRoot().listMeshes()) for (const prim of mesh.listPrimitives()) {
     if (prim.getMaterial()?.getName() !== "Desert_Floor" || !fades(prim)) continue;
-    blend ??= prim.getMaterial()!.clone().setName("Desert_FloorBlend").setAlphaMode("BLEND");
+    // Cut out at half fade, opaque: blended, stairs paved with it looked like glass.
+    blend ??= prim.getMaterial()!.clone().setName("Desert_FloorBlend").setAlphaMode("MASK").setAlphaCutoff(0.5);
     prim.setMaterial(blend);
   }
 }
@@ -627,8 +633,68 @@ function playLayout(surfaces: Surfaces, markers: Markers) {
   return { spawns: { blue: zoneSpawns(markers.teams[0], 10), red: zoneSpawns(markers.teams[1], 10), ffa }, teams: markers.teams, sites: markers.sites, footprints: rectangles(roof, N, -H) };
 }
 
-/** Greedy merge of set grid cells into rectangles {x, z, sx, sz}. */
-function rectangles(cells: Float32Array, n: number, origin: number) {
+/**
+ * Player clips across the gaps in the town's outer edge. A navmesh of the collision (the same one
+ * bots use) says where a player can stand; every meter where nobody can is wall. Closing that mask
+ * (grow 5 m, shrink 5 m) bridges gaps up to 10 m wide, and whatever the map's edge can't reach
+ * through it is the town. Where open ground outside touches open ground inside, a clip column
+ * stands on the outside cell.
+ */
+async function perimeter(meshes: CollisionMesh[]): Promise<Box[]> {
+  const H = TERRAIN_HALF, N = H * 2, R = 5;
+  await initRecast();
+  const positions: number[] = [], indices: number[] = [];
+  for (const m of meshes) {
+    const base = positions.length / 3;
+    for (const v of m.positions) positions.push(v);
+    for (const i of m.indices) indices.push(base + i);
+  }
+  const nav = navMeshFromTriangles(positions, indices, H);
+  const wall = new Uint8Array(N * N);
+  for (let k = 0; k < N; k++) for (let i = 0; i < N; i++) {
+    // Standing room anywhere under the roof lid (8.4 m).
+    const x = i - H + 0.5, z = k - H + 0.5;
+    const p = nav.findClosestPoint({ x, y: 3.5, z }, { halfExtents: { x: 0.5, y: 4, z: 0.5 } });
+    if (!p.success || Math.hypot(p.point.x - x, p.point.z - z) > 0.5) wall[k * N + i] = 1;
+  }
+  const grow = (src: Uint8Array, value: number) => {
+    const out = new Uint8Array(N * N);
+    for (let k = 0; k < N; k++) for (let i = 0; i < N; i++) {
+      let hit = false;
+      for (let b = Math.max(0, k - R); b <= Math.min(N - 1, k + R) && !hit; b++) for (let a = Math.max(0, i - R); a <= Math.min(N - 1, i + R); a++) if (src[b * N + a] === value) { hit = true; break; }
+      out[k * N + i] = hit === (value === 1) ? 1 : 0;
+    }
+    return out;
+  };
+  const closed = grow(grow(wall, 1), 0);
+  for (let c = 0; c < N * N; c++) closed[c] |= wall[c];
+  // Flood the outside in from the map's edge.
+  const outside = new Uint8Array(N * N), queue: number[] = [];
+  for (let k = 0; k < N; k++) for (let i = 0; i < N; i++) if ((i === 0 || k === 0 || i === N - 1 || k === N - 1) && !closed[k * N + i]) { outside[k * N + i] = 1; queue.push(k * N + i); }
+  while (queue.length) {
+    const c = queue.pop()!, i = c % N, k = (c - i) / N;
+    for (const [a, b] of [[i - 1, k], [i + 1, k], [i, k - 1], [i, k + 1]]) {
+      if (a < 0 || b < 0 || a >= N || b >= N) continue;
+      const n = b * N + a;
+      if (!outside[n] && !closed[n]) { outside[n] = 1; queue.push(n); }
+    }
+  }
+  const seal = new Float32Array(N * N);
+  for (let k = 1; k < N - 1; k++) for (let i = 1; i < N - 1; i++) {
+    const c = k * N + i;
+    if (!outside[c]) continue;
+    for (let b = k - 1; b <= k + 1; b++) for (let a = i - 1; a <= i + 1; a++) if (!outside[b * N + a] && !wall[b * N + a]) seal[c] = 1;
+  }
+  if (process.env.DEBUG_SEAL) {
+    const img = Buffer.alloc(N * N * 3);
+    for (let c = 0; c < N * N; c++) img.set(seal[c] ? [255, 0, 255] : wall[c] ? [200, 200, 200] : closed[c] ? [120, 120, 120] : outside[c] ? [20, 20, 20] : [30, 110, 30], c * 3);
+    void sharp(img, { raw: { width: N, height: N, channels: 3 } }).resize(N * 4, N * 4, { kernel: "nearest" }).png().toFile(process.env.DEBUG_SEAL);
+  }
+  return rectangles(seal, N, -H, 1).map(({ x, z, sx, sz }) => [0, 1, 2, 3, 4, 5, 6, 7].map((j): V3 => [j & 1 ? x + sx : x, j & 2 ? 16 : -1, j & 4 ? z + sz : z]));
+}
+
+/** Greedy merge of set grid cells into rectangles {x, z, sx, sz}; smaller than `minArea` cells is dropped. */
+function rectangles(cells: Float32Array, n: number, origin: number, minArea = 3) {
   const used = new Uint8Array(n * n), out: { x: number; z: number; sx: number; sz: number }[] = [];
   for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
     if (!cells[j * n + i] || used[j * n + i]) continue;
@@ -641,8 +707,8 @@ function rectangles(cells: Float32Array, n: number, origin: number) {
       if (!row) break;
     }
     for (let b = j; b < j + h; b++) for (let a = i; a < i + w; a++) used[b * n + a] = 1;
-    // Single cells are noise (posts, antennas).
-    if (w * h >= 3) out.push({ x: origin + i, z: origin + j, sx: w, sz: h });
+    // For footprints, single cells are noise (posts, antennas).
+    if (w * h >= minArea) out.push({ x: origin + i, z: origin + j, sx: w, sz: h });
   }
   return out;
 }
