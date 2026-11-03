@@ -53,15 +53,12 @@ export interface Settings {
 
 const KEY = "hollowmere.settings.v1";
 
-function detectQuality(): Quality {
-  if (typeof window === "undefined") return "high";
-  const touch = matchMedia("(pointer: coarse)").matches;
-  if (touch) return "low";
-  const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
-  const cores = navigator.hardwareConcurrency ?? 4;
-  if (mem <= 4 || cores <= 4) return "low";
-  return cores >= 8 && mem >= 8 ? "high" : "medium";
-}
+/**
+ * Bumped when the default graphics quality changes: a stored quality saved under an older
+ * default (often just the old auto-detected value) is dropped once, so every player starts on
+ * the new default and can raise it from there.
+ */
+const QUALITY_DEFAULTS = 2;
 
 /** Only load known settings so older or damaged browser storage cannot break a match. */
 export function sanitizeSettings(value: unknown): Partial<Omit<Settings, "set">> {
@@ -69,7 +66,7 @@ export function sanitizeSettings(value: unknown): Partial<Omit<Settings, "set">>
   const input = value as Record<string, unknown>;
   const out: Partial<Omit<Settings, "set">> = {};
   if (typeof input.name === "string") out.name = input.name.slice(0, 20);
-  if (QUALITY_ORDER.includes(input.quality as Quality)) out.quality = input.quality as Quality;
+  if (input.qualityDefaults === QUALITY_DEFAULTS && QUALITY_ORDER.includes(input.quality as Quality)) out.quality = input.quality as Quality;
   for (const key of ["adaptiveResolution", "clearView", "invertY", "thirdPerson", "leanToggle", "fpsMeter"] as const) {
     if (typeof input[key] === "boolean") out[key] = input[key];
   }
@@ -92,7 +89,8 @@ function load(): Partial<Omit<Settings, "set">> {
 
 export const useSettings = create<Settings>((set, get) => ({
   name: "",
-  quality: detectQuality(),
+  // Low on every device: most players are on office PCs and integrated graphics.
+  quality: "low",
   adaptiveResolution: true,
   clearView: true,
   sensitivity: 1,
@@ -109,7 +107,7 @@ export const useSettings = create<Settings>((set, get) => ({
     try {
       const { set: _omit, ...rest } = get();
       void _omit;
-      localStorage.setItem(KEY, JSON.stringify(rest));
+      localStorage.setItem(KEY, JSON.stringify({ ...rest, qualityDefaults: QUALITY_DEFAULTS }));
     } catch {
       /* storage unavailable (private mode): settings just won't persist */
     }

@@ -3,7 +3,10 @@ import { sanitizeSettings } from "./settings";
 
 describe("stored graphics settings", () => {
   it("preserves valid quality preferences and adaptive resolution", () => {
-    expect(sanitizeSettings({ quality: "low", adaptiveResolution: false, clearView: false })).toEqual({ quality: "low", adaptiveResolution: false, clearView: false });
+    expect(sanitizeSettings({ quality: "high", qualityDefaults: 2, adaptiveResolution: false, clearView: false })).toEqual({ quality: "high", adaptiveResolution: false, clearView: false });
+  });
+  it("drops a quality saved under an older default so players start on Low once", () => {
+    expect(sanitizeSettings({ quality: "high", name: "Ana" })).toEqual({ name: "Ana" });
   });
   it("ignores invalid qualities, unexpected fields and invalid numeric values", () => {
     expect(sanitizeSettings({ quality: "broken", adaptiveResolution: "false", clearView: "false", volume: NaN, set: "bad" })).toEqual({});

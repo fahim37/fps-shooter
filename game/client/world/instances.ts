@@ -24,6 +24,25 @@ export function placementMatrix(p: PlacedPiece, out = new THREE.Matrix4()) {
   return out.compose(pos, quat, scl);
 }
 
+const frontSided = new WeakMap<THREE.Material, THREE.Material>();
+/**
+ * Downtown's prefab buildings are closed and never entered, but the kit exports every material
+ * double-sided, so their inner faces were rasterized too. Culling them made Downtown's
+ * buildings ~33% cheaper to draw on a software renderer (stand-in for office iGPUs).
+ * Shared kit materials stay double-sided for the modular pieces players walk inside.
+ */
+function frontSide(material: THREE.Material) {
+  // The fake-interior cards behind the windows face inward; culled, the windows turn see-through.
+  if (material.side !== THREE.DoubleSide || material.transparent || /FakeInterior/.test(material.name)) return material;
+  let m = frontSided.get(material);
+  if (!m) {
+    m = material.clone();
+    m.side = THREE.FrontSide;
+    frontSided.set(material, m);
+  }
+  return m;
+}
+
 /**
  * One InstancedMesh per (piece, primitive). Instances are split into spatial chunks so
  * frustum culling works on a map-sized set of pieces. Prefab buildings (many materials,
@@ -65,8 +84,9 @@ export function buildInstancedMeshes(
       console.warn(`missing kit piece ${kitName}/${name}`);
       continue;
     }
+    const solid = kitName === "city" && key.endsWith("|all");
     for (const part of piece.parts) {
-      const mesh = new THREE.InstancedMesh(part.geometry, part.material, list.length);
+      const mesh = new THREE.InstancedMesh(part.geometry, solid ? frontSide(part.material) : part.material, list.length);
       list.forEach((p, i) => mesh.setMatrixAt(i, placementMatrix(p, tmp).multiply(part.matrix)));
       mesh.instanceMatrix.needsUpdate = true;
       mesh.computeBoundingSphere();
