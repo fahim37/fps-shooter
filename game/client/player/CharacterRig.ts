@@ -114,9 +114,12 @@ const CLIP_SPEED = { walk: 1.04, jog: 6.2, sprint: 9.5, crouchWalk: 0.77 };
 /** Movement clips switch from walking to running at this speed (m/s). */
 const RUN_SPEED = 2.6;
 /** Legs turn this far (rad) toward a sideways move; past BACKPEDAL they run the clip backwards. */
-const MAX_LEG_YAW = 1.25;
+const MAX_LEG_YAW = 0.8;
 const BACKPEDAL = (105 * Math.PI) / 180;
-/** Forward lean (rad) of the chest while running and sprinting. */
+/** Sprint plays no slower than this, so a slower sprint keeps a brisk stride rather than floating. */
+const SPRINT_MIN_RATE = 0.95;
+/** Chest lean (rad, from upright) held steady while moving on foot, plus more when running and sprinting. */
+const CHEST_LEAN = 0.12;
 const RUN_LEAN = 0.1;
 const SPRINT_LEAN = 0.17;
 /** Seconds after a shot before a moving rifleman drops back to a relaxed carry. */
@@ -129,6 +132,11 @@ const STOCK_POCKET = 0.05;
 const TORSO_HALF_WIDTH = 0.15;
 const TORSO_HALF_DEPTH = 0.12;
 const TORSO_SKIN = 0.02;
+/** TPP sprint carry: the butt (m: right, up, ahead of the upper chest) and the gun's turn (rad). */
+const PORT_BUTT = [0.16, -0.32, 0.2] as const;
+const PORT_PITCH = 0.8;
+const PORT_YAW = 0.9;
+const PORT_ROLL = -0.35;
 
 /** Head position in the aim pose, model space: the FPP body hangs from it behind the camera. */
 function headRef(template: CharacterTemplate) {
@@ -179,6 +187,12 @@ export class CharacterRig {
   /** 0..1 forward lean while moving fast and relaxed low-ready carry while moving (TPP). */
   private run = 0;
   private carry = 0;
+  /**
+   * 0..1 (TPP): moving upright on foot, when the chest is held steady over the stride; and
+   * sprinting, when the whole body turns to the run and the rifle is carried across the chest.
+   */
+  private steady = 0;
+  private follow = 0;
   private dead = false;
   private deadTime = 0;
   private animationPose: { bone: THREE.Bone; quaternion: THREE.Quaternion }[];
@@ -308,25 +322,27 @@ export class CharacterRig {
     this.placeRoot(s, this.mode === "tpp" ? this.legYaw : 0);
     this.object.updateMatrixWorld(true);
     // Long guns are shot bladed: the chest turns right so the support arm can reach the
-    // handguard with a bent elbow, and the head turns back onto the aim.
-    const stance = this.weapon && this.weapon !== "pistol" ? RIFLE_STANCE : 0;
+    // handguard with a bent elbow, and the head turns back onto the aim. Moving with the gun
+    // lowered, the shoulders square up to the run.
+    const stance = this.weapon && this.weapon !== "pistol" ? RIFLE_STANCE * (1 - Math.max(this.carry, this.follow)) : 0;
     this.stance += (stance - this.stance) * Math.min(1, dt * 10);
     const legYaw = this.mode === "tpp" ? this.legYaw : 0;
-    if (Math.abs(legYaw) > 1e-3 || this.stance > 1e-4) {
+    // Sprinting, the whole body turns to the run; otherwise the chest stays on the aim.
+    const facing = s.yaw + legYaw * this.follow;
+    const twist = legYaw * (1 - this.follow);
+    if (Math.abs(twist) > 1e-3 || this.stance > 1e-4) {
       // Legs face the movement direction; turn the torso back onto the aim.
-      rotateBoneWorld(this.inst.bones.get("spine_01")!, _q.setFromAxisAngle(UP, -legYaw * 0.6 - this.stance * 0.4), true);
-      rotateBoneWorld(this.inst.bones.get("spine_03")!, _q.setFromAxisAngle(UP, -legYaw * 0.4 - this.stance * 0.6), true);
+      rotateBoneWorld(this.inst.bones.get("spine_01")!, _q.setFromAxisAngle(UP, -twist * 0.6 - this.stance * 0.4), true);
+      rotateBoneWorld(this.inst.bones.get("spine_03")!, _q.setFromAxisAngle(UP, -twist * 0.4 - this.stance * 0.6), true);
       const neck = this.inst.bones.get("neck_01");
       if (neck && this.stance > 1e-4) rotateBoneWorld(neck, _q.setFromAxisAngle(UP, this.stance), true);
     }
-    if (this.mode === "tpp" && this.run > 1e-3) {
-      // Running leans the chest into the stride; the neck takes most of it back so the head
+    if (this.mode === "tpp" && this.steady > 1e-3) this.steadyChest(facing);
+    if (this.mode === "tpp" && Math.abs(this.run) > 1e-3) {
+      // The steadied chest leans into the stride by `run`; the neck takes it back so the head
       // keeps looking where the player aims.
-      _v.set(-Math.cos(s.yaw), 0, Math.sin(s.yaw)); // left of the aim: + tips the chest forward
-      rotateBoneWorld(this.inst.bones.get("spine_01")!, _q.setFromAxisAngle(_v, this.run * 0.6), true);
-      rotateBoneWorld(this.inst.bones.get("spine_03")!, _q.setFromAxisAngle(_v, this.run * 0.4), true);
       const neck = this.inst.bones.get("neck_01");
-      if (neck) rotateBoneWorld(neck, _q.setFromAxisAngle(_v, -this.run * 0.75), true);
+      if (neck) rotateBoneWorld(neck, _q.setFromAxisAngle(_v.set(-Math.cos(facing), 0, Math.sin(facing)), -this.run), true);
     }
     const lean = s.lean ?? 0;
     if (this.mode === "tpp" && Math.abs(lean) > 1e-3) {
@@ -358,6 +374,21 @@ export class CharacterRig {
     return !!this.emote;
   }
 
+  /**
+   * TPP: the run clips pitch and rock the hips with every stride, and the upper body, posed by
+   * the aim layer, rides along stiffly on top. Swings the spine from the hips so the chest
+   * points a set lean ahead of upright instead: a level, steady carriage over the legs.
+   */
+  private steadyChest(facing: number) {
+    const spine = this.inst.bones.get("spine_01")!;
+    const chest = _ta.setFromMatrixPosition(this.inst.bones.get("neck_01")!.matrixWorld)
+      .sub(_tb.setFromMatrixPosition(spine.matrixWorld)).normalize();
+    const lean = CHEST_LEAN + this.run;
+    const want = _v.set(-Math.sin(facing) * Math.sin(lean), Math.cos(lean), -Math.cos(facing) * Math.sin(lean));
+    _q.setFromUnitVectors(chest, want);
+    rotateBoneWorld(spine, _q2.identity().slerp(_q, this.steady), true);
+  }
+
   private captureAnimationPose() {
     for (const pose of this.animationPose) pose.quaternion.copy(pose.bone.quaternion);
   }
@@ -386,7 +417,12 @@ export class CharacterRig {
       backwards = true;
       rel = wrapAngle(rel - Math.PI);
     }
-    const targetLeg = moving ? THREE.MathUtils.clamp(rel, -MAX_LEG_YAW, MAX_LEG_YAW) : 0;
+    const sprinting = moving && !s.crouch && !backwards && s.sprint * (1 - s.ads) > 0.5;
+    this.follow += ((sprinting ? 1 : 0) - this.follow) * Math.min(1, dt * 7);
+    this.steady += ((moving && !s.crouch ? 1 : 0) - this.steady) * Math.min(1, dt * 6);
+    // A sprint turns the whole body, so the legs may face any forward-going run.
+    const maxLeg = MAX_LEG_YAW + (Math.PI / 2 - MAX_LEG_YAW) * this.follow;
+    const targetLeg = moving ? THREE.MathUtils.clamp(rel, -maxLeg, maxLeg) : 0;
     this.legYaw += (targetLeg - this.legYaw) * Math.min(1, dt * 8);
 
     // Clips play at the rate that keeps the planted foot still on the ground. The walk and
@@ -399,7 +435,7 @@ export class CharacterRig {
     else if (!moving) pick = "idle";
     else if (s.speed < RUN_SPEED) { pick = "walk"; rate = s.speed / CLIP_SPEED.walk; maxRate = 2.2; }
     else if (s.speed < 6.6 || backwards) { pick = "jog"; rate = s.speed / CLIP_SPEED.jog; }
-    else { pick = "sprint"; rate = s.speed / CLIP_SPEED.sprint; }
+    else { pick = "sprint"; rate = Math.max(SPRINT_MIN_RATE, s.speed / CLIP_SPEED.sprint); }
 
     const running = moving && !s.crouch && s.speed >= RUN_SPEED;
     const lean = running ? (pick === "sprint" ? SPRINT_LEAN : RUN_LEAN) * (backwards ? -0.4 : 1) : 0;
@@ -466,29 +502,49 @@ export class CharacterRig {
       this.gunPivot.position.copy(s.eye).add(hip.applyQuaternion(s.view));
       this.gunPivot.quaternion.copy(_q);
     } else {
-      // Stock in the right shoulder, pointing along the aim.
+      // Stock in the right shoulder, pointing along the aim (or, sprinting, along the run).
+      const run = this.mode === "tpp" ? this.follow : sprint;
+      const yaw = s.yaw + this.legYaw * this.follow;
       const shoulder = _v.setFromMatrixPosition(this.inst.bones.get(pistol ? "neck_01" : "upperarm_r")!.matrixWorld);
-      // Moving without aiming, the gun rides a little lower with the muzzle dipped (low ready).
-      const carry = this.carry * (1 - sprint);
-      _e.set(s.pitch + s.recoil * (pistol ? 0.075 : 0.035) + hPitch * 0.5 - sprint * 0.6 - carry * (pistol ? 0.25 : 0.32), s.yaw + sprint * 0.6 + hYaw + carry * 0.12, hRoll - (s.lean ?? 0) * LEAN_ANGLE * 0.6, "YXZ");
+      // Moving without aiming, the gun rides lower with the muzzle dipped (low ready). A sprint
+      // dips the pistol further; long guns go across the chest instead (portArms).
+      const carry = this.carry * (1 - run);
+      const dip = pistol ? run : 0;
+      _e.set(s.pitch + s.recoil * (pistol ? 0.075 : 0.035) + hPitch * 0.5 - dip * 0.6 - carry * (pistol ? 0.25 : 0.5), yaw + dip * 0.6 + hYaw + carry * 0.12, hRoll - (s.lean ?? 0) * LEAN_ANGLE * 0.6, "YXZ");
       _q.setFromEuler(_e);
       const fwd = _v2.set(0, 0, -1).applyQuaternion(_q);
       const reach = pistol ? 0.43 : meta.max[2] + 0.02;
       shoulder.addScaledVector(fwd, reach - s.recoil * 0.015);
-      shoulder.y += (pistol ? -0.06 : -0.035) + s.ads * 0.03 - sprint * 0.12 - carry * 0.06;
+      shoulder.y += (pistol ? -0.06 : -0.035) + s.ads * 0.03 - dip * 0.12 - carry * 0.1;
       // Handling lifts the gun into the first-person view; seen from outside, the same move
       // lowers it in front of the chest, the stock dropping toward the right armpit. It never
       // comes back toward the body: the first-person pull toward the eye would bury the stock.
       const lift = Math.max(0, hy) * 1.5;
-      shoulder.add(_v2.set(hx * 0.5 + (pistol ? 0.02 : -STOCK_POCKET) + lift * 0.3, Math.min(0, hy) - lift * 1.1, Math.min(0, hz) - lift * 0.4).applyAxisAngle(UP, s.yaw));
+      shoulder.add(_v2.set(hx * 0.5 + (pistol ? 0.02 : -STOCK_POCKET) + lift * 0.3, Math.min(0, hy) - lift * 1.1, Math.min(0, hz) - lift * 0.4).applyAxisAngle(UP, yaw));
       this.gunPivot.position.copy(shoulder);
       this.gunPivot.quaternion.copy(_q);
-      if (!pistol) this.clearTorso(meta.max[2], s.yaw);
+      if (!pistol && run > 1e-3) this.portArms(run, yaw, meta.max[2]);
+      if (!pistol) this.clearTorso(meta.max[2], yaw);
     }
     this.placeParts();
     this.gunPivot.updateMatrixWorld(true);
     this.muzzle.set(...meta.muzzle).applyMatrix4(this.gunPivot.matrixWorld);
     this.muzzleDir.set(0, 0, -1).applyQuaternion(this.gunPivot.quaternion);
+  }
+
+  /**
+   * TPP sprint, `k` of the way: a long gun carried diagonally across the chest, butt low at the
+   * right hip and muzzle up past the left shoulder, as soldiers run with a rifle.
+   */
+  private portArms(k: number, yaw: number, stock: number) {
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    const butt = _ta.setFromMatrixPosition(this.inst.bones.get("spine_03")!.matrixWorld)
+      .add(_tb.set(fx * PORT_BUTT[2] - fz * PORT_BUTT[0], PORT_BUTT[1], fz * PORT_BUTT[2] + fx * PORT_BUTT[0]));
+    _q.setFromEuler(_e.set(PORT_PITCH, yaw + PORT_YAW, PORT_ROLL, "YXZ"));
+    // The butt sits `stock` behind the gun's origin.
+    butt.add(_tb.set(0, 0, -stock).applyQuaternion(_q));
+    this.gunPivot.position.lerp(butt, k);
+    this.gunPivot.quaternion.slerp(_q, k);
   }
 
   /**

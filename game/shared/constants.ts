@@ -13,8 +13,8 @@ export const EYE_HEIGHT = 1.62;
 export const CROUCH_EYE_HEIGHT = 1.12;
 
 /** Movement (m/s, m/s²). */
-export const WALK_SPEED = 5.2;
-export const SPRINT_SPEED = 7.6;
+export const WALK_SPEED = 5.5;
+export const SPRINT_SPEED = 8;
 export const CROUCH_SPEED = 2.5;
 export const ADS_SPEED_MULT = 0.62;
 export const GROUND_ACCEL = 55;

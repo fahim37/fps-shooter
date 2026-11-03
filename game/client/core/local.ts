@@ -30,6 +30,8 @@ function onStone(x: number, z: number, y: number) {
 
 /** A throw's swing and follow-through take 1 / this seconds. */
 const THROW_ANIM_RATE = 2.4;
+/** Third person widens the view this much (degrees) at a sprint. */
+const TPP_SPRINT_FOV = 5;
 
 export class LocalPlayer {
   readonly ms: MoveState;
@@ -102,6 +104,10 @@ export class LocalPlayer {
   readonly bob = new THREE.Vector2();
   readonly sway = new THREE.Vector2();
   private tppDist = 2.6;
+  /** Third person: the camera's eased height, its roll-free turn, and 0..1 sprint widening the view. */
+  private tppY = NaN;
+  private tppQuat = new THREE.Quaternion();
+  private tppSprint = 0;
 
   constructor(private game: Game, private R: Rapier, private world: World) {
     this.ms = newMoveState(0, 0, 0);
@@ -341,6 +347,8 @@ export class LocalPlayer {
     const bobScale = (1 - this.ads * 0.85) * this.bobAmount;
     this.bob.set(Math.cos(this.bobPhase) * 0.012 * bobScale, -Math.abs(Math.sin(this.bobPhase)) * 0.014 * bobScale);
     this.sway.set(this.swayX * (1 - this.ads * 0.7), this.swayY * (1 - this.ads * 0.7));
+    const tppSprint = this.thirdPerson && !this.emote && this.ms.sprinting && moving ? 1 : 0;
+    this.tppSprint += (tppSprint - this.tppSprint) * Math.min(1, dt * 5);
     if (moving) {
       this.stepDist += speed * dt;
       const stride = this.ms.sprinting ? 2.6 : input.crouch ? 1.4 : 2.1;
@@ -409,7 +417,7 @@ export class LocalPlayer {
   currentFov() {
     const base = useSettings.getState().fov;
     const target = opticFov(this.weapon, this.optic, base);
-    return base + (target - base) * this.ads;
+    return base + (target - base) * this.ads + this.tppSprint * TPP_SPRINT_FOV;
   }
 
   get scoped() {
@@ -431,11 +439,17 @@ export class LocalPlayer {
       cam.quaternion.copy(this.viewQuat);
       return;
     }
-    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(this.viewQuat);
-    const rightV = new THREE.Vector3(1, 0, 0).applyQuaternion(this.viewQuat);
+    // Third person follows the body, not the first-person head: no head bob or lean roll, and
+    // steps up and down ease in instead of jolting the view.
+    const view = this.tppQuat.setFromEuler(this.viewEuler.set(this.pitch + this.kickPitch, this.yaw + this.kickYaw, 0));
+    const y = eye.y - this.bob.y * 0.4;
+    if (!(Math.abs(y - this.tppY) < 1)) this.tppY = y;
+    else this.tppY += (y - this.tppY) * Math.min(1, dt * 14);
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(view);
+    const rightV = new THREE.Vector3(1, 0, 0).applyQuaternion(view);
     // An emote is framed from straight behind the camera's orbit, a little further out.
     const pivot = eye.clone().addScaledVector(rightV, this.emote ? 0 : 0.55 - this.ads * 0.1);
-    pivot.y += 0.12;
+    pivot.y = this.tppY + 0.12;
     const shoulder = pivot.clone().sub(eye);
     const shoulderLength = shoulder.length();
     shoulder.normalize();
@@ -448,7 +462,7 @@ export class LocalPlayer {
     // Snap in when blocked, ease out when clear.
     this.tppDist = allowed < this.tppDist ? allowed : this.tppDist + (allowed - this.tppDist) * Math.min(1, dt * 4);
     cam.position.copy(pivot).addScaledVector(back, this.tppDist);
-    cam.quaternion.copy(this.viewQuat);
+    cam.quaternion.copy(view);
   }
 
   switchTo(w: WeaponId, now: number) {
