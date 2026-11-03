@@ -6,12 +6,15 @@ import { use, useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { loadKit, type Kit } from "../assets/kits";
-import { buildInstancedMeshes, DECORATIVE } from "./instances";
+import { buildInstancedMeshes, DECORATIVE, DETAIL } from "./instances";
 import { applyWind } from "./wind";
 import type { KitName, MapData } from "../../shared/map/types";
 import { useSettings, PRESETS } from "../settings";
 
 export type MapKits = Partial<Record<KitName, Kit>>;
+
+/** Collision-only pieces (player clips): nothing to draw. */
+const CLIP = /^Clip_/;
 
 const kitSets = new Map<string, Promise<MapKits>>();
 /** Loads (once) and tunes only the kits a map places, so other maps' models never download. */
@@ -40,9 +43,10 @@ export function StaticWorld({ map }: { map: MapData }) {
   const warmed = useRef<{ meshes: THREE.InstancedMesh[]; env: THREE.Texture | null; shadows: boolean; anisotropy: number } | null>(null);
 
   const meshes = useMemo(() => {
-    // Thin out decorative foliage on lower quality settings (deterministically).
+    // Thin out decorative foliage on lower quality settings (deterministically); clutter goes
+    // with the foliage on Low.
     let k = 0;
-    const pieces = map.pieces.filter((p) => !DECORATIVE.test(p.name) || ((k++ * 0.618034) % 1) < foliage);
+    const pieces = map.pieces.filter((p) => !CLIP.test(p.name) && (DETAIL.test(p.name) ? foliage > 0 : !DECORATIVE.test(p.name) || ((k++ * 0.618034) % 1) < foliage));
     return buildInstancedMeshes(pieces, kits);
   }, [map, kits, foliage]);
 
@@ -135,6 +139,20 @@ function tuneMaterials(kits: Kit[]) {
           m.polygonOffsetFactor = -2;
           m.polygonOffsetUnits = -4;
           m.depthWrite = false;
+        }
+        // Desert City: decals are cut out and the floor overlays fade in over the ground.
+        // A constant depth offset only: one scaled by slope shows ground decals through walls at
+        // grazing angles (the rebuilt ground already sits a few centimeters under them).
+        if (m.name === "Desert_Decal") {
+          m.alphaTest = 0.5;
+          m.transparent = false;
+          m.polygonOffset = true;
+          m.polygonOffsetUnits = -4;
+        }
+        if (m.name === "Desert_FloorBlend") {
+          m.depthWrite = false;
+          m.polygonOffset = true;
+          m.polygonOffsetUnits = -2;
         }
         if (/Glass/i.test(m.name)) {
           m.roughness = 0.08;

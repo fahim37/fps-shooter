@@ -1,6 +1,6 @@
 import type RAPIER_NS from "@dimforge/rapier3d-compat";
 import type { Rapier, World } from "./physics";
-import { GROUP_CHARACTER, QUERY_WORLD } from "./physics";
+import { GROUP_CHARACTER, QUERY_MOVE } from "./physics";
 import {
   PLAYER_RADIUS, PLAYER_HEIGHT, WALK_SPEED, SPRINT_SPEED, CROUCH_SPEED, ADS_SPEED_MULT,
   GROUND_ACCEL, AIR_ACCEL, FRICTION, JUMP_VELOCITY, GRAVITY,
@@ -114,7 +114,7 @@ export class Mover {
 
     const desired = { x: s.vx * dt, y: s.vy * dt, z: s.vz * dt };
     this.collider.setTranslation({ x: s.x, y: s.y + CENTER, z: s.z });
-    this.kcc.computeColliderMovement(this.collider, desired, this.R.QueryFilterFlags.EXCLUDE_SENSORS, QUERY_WORLD);
+    this.kcc.computeColliderMovement(this.collider, desired, this.R.QueryFilterFlags.EXCLUDE_SENSORS, QUERY_MOVE);
     let m = this.kcc.computedMovement();
     const wasGrounded = s.grounded;
     s.grounded = this.kcc.computedGrounded();
@@ -122,7 +122,7 @@ export class Mover {
     if (wasGrounded && !wall && desired.y <= 0 && Math.hypot(m.x, m.z) < Math.hypot(desired.x, desired.z) * 0.5) {
       // Rapier now and then stops a step dead on flat floor when it carries gravity's small
       // downward pull, instead of sliding along it; the same move made level goes through.
-      this.kcc.computeColliderMovement(this.collider, { x: desired.x, y: 0, z: desired.z }, this.R.QueryFilterFlags.EXCLUDE_SENSORS, QUERY_WORLD);
+      this.kcc.computeColliderMovement(this.collider, { x: desired.x, y: 0, z: desired.z }, this.R.QueryFilterFlags.EXCLUDE_SENSORS, QUERY_MOVE);
       m = this.kcc.computedMovement();
       s.grounded ||= this.kcc.computedGrounded();
       wall = this.touchedWall();

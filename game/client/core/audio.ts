@@ -604,6 +604,7 @@ export class AudioEngine {
       case "downtown": this.downtownBed(bed); break;
       case "industrial": this.freightBed(bed); break;
       case "outpost": this.outpostBed(bed); break;
+      case "desert": this.desertBed(bed); break;
       default: this.villageBed(bed);
     }
     return bed;
@@ -929,6 +930,33 @@ export class AudioEngine {
     this.lfo(b, 6.5, 0.0018, generator.gain);
     this.every(b, 14000, 32000, () => this.radio(b), 7000);
     this.every(b, 50000, 110000, () => this.helicopter(b), 25000 + Math.random() * 20000);
+  }
+
+  /** Desert City: dry wind over open streets, sand hissing through in gusts, a far helicopter. */
+  private desertBed(b: Bed) {
+    const wind = this.loopNoise(b, "lowpass", 420, 0.6, 0.02, 0.8);
+    this.lfo(b, 0.05, 0.01, wind.gain);
+    this.every(b, 9000, 22000, () => this.sandGust(b), 6000);
+    this.every(b, 60000, 130000, () => this.helicopter(b), 25000 + Math.random() * 20000);
+  }
+
+  private sandGust(b: Bed) {
+    const ctx = this.ctx!;
+    const t = ctx.currentTime + 0.02;
+    const len = 3 + Math.random() * 3;
+    const from = Math.random() * 1.6 - 0.8;
+    const [bus, pan] = this.eventBus(b.out, len, from, 0.5);
+    pan.pan.setValueAtTime(from, t);
+    pan.pan.linearRampToValueAtTime(-from * 0.5, t + len);
+    const f = ctx.createBiquadFilter();
+    f.type = "bandpass";
+    f.frequency.setValueAtTime(2400, t);
+    f.frequency.linearRampToValueAtTime(3600, t + len * 0.5);
+    f.frequency.linearRampToValueAtTime(2200, t + len);
+    f.Q.value = 0.6;
+    const g = ctx.createGain();
+    this.swell(g, t, 0.007, len * 0.45, len);
+    this.noiseLoop(t, len).connect(f).connect(g).connect(bus);
   }
 
   private radio(b: Bed) {

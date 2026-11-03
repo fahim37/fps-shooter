@@ -6,6 +6,7 @@ import propsPieces from "./generated/props-pieces.json";
 import cityPieces from "./generated/city-pieces.json";
 import industrialPieces from "./generated/industrial-pieces.json";
 import outpostPieces from "./generated/outpost-pieces.json";
+import desertPieces from "./generated/desert-pieces.json";
 import { GRAVITY } from "./constants";
 
 export type Rapier = typeof RAPIER_NS;
@@ -20,6 +21,7 @@ export const PIECES: Record<KitName, PiecesJson> = {
   city: cityPieces as PiecesJson,
   industrial: industrialPieces as PiecesJson,
   outpost: outpostPieces as PiecesJson,
+  desert: desertPieces as unknown as PiecesJson,
 };
 
 export interface KitCollision {
@@ -41,12 +43,21 @@ export function parseCollision(kit: KitName, bytes: ArrayBuffer): KitCollision {
 // Rapier interaction groups: high 16 bits = memberships, low 16 bits = filter.
 /** Map geometry: member of group 0, interacts with everything. */
 export const GROUP_WORLD = 0x0001_ffff;
+/**
+ * Player clips: invisible volumes that stop players (and bots, through the navmesh) but not
+ * bullets, line-of-sight checks or grenades. Member of group 3, interacts with characters.
+ */
+export const GROUP_CLIP = 0x0008_0002;
 /** Characters collide with the map only (players pass through each other). */
 export const GROUP_CHARACTER = 0x0002_0001;
 /** Grenades bounce off the map only. */
 export const GROUP_GRENADE = 0x0004_0001;
 /** Scene queries that should only see map geometry. */
 export const QUERY_WORLD = 0xffff_0001;
+/** Character movement: map geometry plus player clips. */
+export const QUERY_MOVE = 0xffff_0009;
+/** Pieces made of player-clip volumes. */
+const CLIP_PIECE = /^Clip_/;
 
 /**
  * Builds the static collision world for a map: ground, boundary walls and every placed
@@ -63,7 +74,7 @@ export function buildWorld(R: Rapier, map: MapData, kits: Partial<Record<KitName
 
   for (const c of mapTriangles(map, kits, chunkSize)) {
     world.createCollider(
-      R.ColliderDesc.trimesh(new Float32Array(c.pos), new Uint32Array(c.idx)).setCollisionGroups(GROUP_WORLD),
+      R.ColliderDesc.trimesh(new Float32Array(c.pos), new Uint32Array(c.idx)).setCollisionGroups(c.clip ? GROUP_CLIP : GROUP_WORLD),
     );
   }
   // Populate the query pipeline so raycasts work before the first real step.
@@ -71,18 +82,22 @@ export function buildWorld(R: Rapier, map: MapData, kits: Partial<Record<KitName
   return world;
 }
 
-/** Every placed piece's collision triangles in world space, merged per spatial chunk. */
+/**
+ * Every placed piece's collision triangles in world space, merged per spatial chunk. Player
+ * clips get chunks of their own (`clip`).
+ */
 export function mapTriangles(map: MapData, kits: Partial<Record<KitName, KitCollision>>, chunkSize = 24) {
-  const chunks = new Map<string, { pos: number[]; idx: number[] }>();
+  const chunks = new Map<string, { pos: number[]; idx: number[]; clip: boolean }>();
   for (const p of map.pieces) {
     const kit = kits[p.kit];
     if (!kit) throw new Error(`map ${map.id} places ${p.kit}/${p.name} but that kit is not loaded`);
     const col = kit.pieces[p.name]?.col;
     if (!col) continue;
     const [v0, vc, i0, ic] = col;
-    const key = `${Math.floor(p.x / chunkSize)},${Math.floor(p.z / chunkSize)}`;
+    const clip = CLIP_PIECE.test(p.name);
+    const key = `${Math.floor(p.x / chunkSize)},${Math.floor(p.z / chunkSize)}${clip ? ",clip" : ""}`;
     let c = chunks.get(key);
-    if (!c) chunks.set(key, (c = { pos: [], idx: [] }));
+    if (!c) chunks.set(key, (c = { pos: [], idx: [], clip }));
     const base = c.pos.length / 3;
     const cos = Math.cos(p.ry), sin = Math.sin(p.ry), s = p.s ?? 1;
     for (let v = v0; v < v0 + vc; v++) {

@@ -52,11 +52,17 @@ function buildNavMesh(map: MapData) {
   const indices: number[] = [];
   for (const c of mapTriangles(map, kits)) {
     const base = positions.length / 3;
-    positions.push(...c.pos);
+    // A loop, not push(...c.pos): a whole-map piece is one chunk, too long for spread arguments.
+    for (const v of c.pos) positions.push(v);
     for (const i of c.idx) indices.push(base + i);
   }
+  return navMeshFromTriangles(positions, indices, map.half);
+}
+
+/** A navmesh query over map triangles in world space, plus the ground plane of a `half`-sized play area. */
+export function navMeshFromTriangles(positions: number[], indices: number[], half: number) {
   // Ground covering the playable area (the boundary walls stay out of the navmesh).
-  const h = map.half - 0.5;
+  const h = half - 0.5;
   const g = positions.length / 3;
   positions.push(-h, 0, -h, h, 0, -h, h, 0, h, -h, 0, h);
   indices.push(g, g + 2, g + 1, g, g + 3, g + 2);
@@ -77,6 +83,6 @@ function buildNavMesh(map: MapData) {
     detailSampleDist: 6,
     detailSampleMaxError: 1,
   });
-  if (!result.success) throw new Error(`navmesh generation failed for ${map.id}: ${result.error}`);
+  if (!result.success) throw new Error(`navmesh generation failed: ${result.error}`);
   return new NavMeshQuery(result.navMesh);
 }

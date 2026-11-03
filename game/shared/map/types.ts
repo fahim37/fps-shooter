@@ -1,7 +1,7 @@
-export type KitName = "village" | "nature" | "props" | "city" | "industrial" | "outpost";
+export type KitName = "village" | "nature" | "props" | "city" | "industrial" | "outpost" | "desert";
 
 /** Maps a room can be played on. */
-export type MapId = "village" | "downtown" | "industrial" | "outpost";
+export type MapId = "village" | "downtown" | "industrial" | "outpost" | "desert";
 
 /** A kit piece placed in the world. Rotation is about +Y, in radians. */
 export interface PlacedPiece {

@@ -42,11 +42,29 @@ export function Ground({ map }: { map: MapId }) {
   // stays untextured and sits below the asphalt (which is at y = 0) to avoid z-fighting.
   // The freight yard brings its own ground: the kit's floating-island terrain, asphalt at y = 0.
   if (map === "industrial") return null;
+  if (map === "desert") return <Suspense fallback={null}><SandGround /></Suspense>;
   if (map === "downtown" || map === "outpost") return <mesh rotation-x={-Math.PI / 2} position-y={-0.06} receiveShadow>
     <planeGeometry args={[SIZE, SIZE]} />
     <meshStandardMaterial color="#3d4044" roughness={1} />
   </mesh>;
   return <GrassGround />;
+}
+
+/** Desert City's streets: the town's own tiling sand on one flat plane (one draw, one texture). */
+function SandGround() {
+  const sand = use(loadTexture("/env/desert_sand.webp"));
+  const anisotropy = useSettings((s) => PRESETS[s.quality].textureAnisotropy);
+  const gl = useThree((s) => s.gl);
+  useEffect(() => {
+    sand.repeat.set(SIZE / 4, SIZE / 4);
+    const value = Math.min(anisotropy, gl.capabilities.getMaxAnisotropy());
+    // eslint-disable-next-line react-hooks/immutability -- the cached texture is an imperative Three object.
+    if (sand.anisotropy !== value) { sand.anisotropy = value; sand.needsUpdate = true; }
+  }, [sand, anisotropy, gl]);
+  return <mesh rotation-x={-Math.PI / 2} position-y={-0.02} receiveShadow>
+    <planeGeometry args={[SIZE, SIZE]} />
+    <meshStandardMaterial map={sand} color="#e8d8bc" roughness={1} metalness={0} />
+  </mesh>;
 }
 
 function GrassGround() {

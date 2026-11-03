@@ -3,8 +3,10 @@ import type { Kit } from "../assets/kits";
 import type { KitName, PlacedPiece } from "../../shared/map/types";
 
 /** Pieces that never cast shadows (small foliage), to keep the shadow pass cheap. */
-const NO_SHADOW = /^(Grass_|Clover|Flower_|Pebble_|Mushroom|Fern|Plant_|Prop_Vine|Floor_|Petal|Island|Drain|Manhole)/;
+const NO_SHADOW = /^(Grass_|Clover|Flower_|Pebble_|Mushroom|Fern|Plant_|Prop_Vine|Floor_|Petal|Island|Drain|Manhole|Detail_|Desert_Backdrop)/;
 export const DECORATIVE = /^(Grass_|Flower_|Clover|Fern|Plant_|Pebble_|Mushroom)/;
+/** Merged clutter chunks (decals, posters, small props): never collide, left out on Low. */
+export const DETAIL = /^Detail_/;
 /** Pieces that sway in the wind. */
 export const WINDY = /^(Grass_|Clover|Flower_|Fern|Plant_|Bush_|CommonTree|Pine_|TwistedTree|DeadTree)/;
 
@@ -77,7 +79,7 @@ export function buildInstancedMeshes(
       mesh.receiveShadow = true;
       mesh.name = name;
       mesh.userData.windy = WINDY.test(name);
-      mesh.userData.decorative = DECORATIVE.test(name);
+      mesh.userData.decorative = DECORATIVE.test(name) || DETAIL.test(name);
       out.push(mesh);
     }
   }
