@@ -114,6 +114,25 @@ describe("browser shortcut suppression", () => {
     input.detach();
   });
 
+  it("asks for the pointer lock inside the click, before fullscreen, and retries if it was lost", async () => {
+    const { input, doc, element } = attachedInput();
+    const order: string[] = [];
+    const lock = vi.fn(() => { order.push("lock"); return Promise.resolve(); });
+    const requestFullscreen = vi.fn(() => { order.push("fullscreen"); return Promise.resolve(); });
+    Object.assign(element, { requestPointerLock: lock, closest: () => ({ requestFullscreen }) });
+    input.requestLock(true);
+    expect(order).toEqual(["lock", "fullscreen"]);
+    await Promise.resolve(); await Promise.resolve();
+    expect(lock).toHaveBeenCalledTimes(2);
+
+    lock.mockClear();
+    doc.pointerLockElement = element;
+    input.requestLock(true);
+    await Promise.resolve(); await Promise.resolve();
+    expect(lock).toHaveBeenCalledOnce();
+    input.detach();
+  });
+
   it("continues normal shortcut blocking if fullscreen capture is denied", async () => {
     const { input, doc, keyboard, key } = attachedInput();
     keyboard.lock.mockRejectedValue(new Error("Permission denied"));

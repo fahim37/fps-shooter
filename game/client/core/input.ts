@@ -160,22 +160,26 @@ export class Input {
 
   requestLock(fullscreen = false) {
     if (this.touch) return;
-    if (fullscreen && !document.fullscreenElement) {
-      const container = this.element.closest<HTMLElement>(".game-view");
-      if (container?.requestFullscreen) {
-        // Fullscreen must begin inside this click; keyboard capture activates once
-        // both fullscreen and pointer lock have been granted by the browser.
-        try { void container.requestFullscreen().then(() => this.requestLock()).catch(() => this.requestLock()); }
-        catch { this.requestLock(); }
-        return;
-      }
-    }
+    // Both requests go out inside the click: by the time fullscreen settles, Chrome may refuse the
+    // lock for lacking a user gesture, which left the first press stuck on the deploy menu.
+    // Keyboard capture activates once the browser has granted both.
+    this.lockPointer();
+    if (!fullscreen || document.fullscreenElement) return;
+    const container = this.element.closest<HTMLElement>(".game-view");
+    const retry = () => { if (document.pointerLockElement !== this.element) this.lockPointer(); };
+    try { void container?.requestFullscreen?.().then(retry, retry); }
+    catch { retry(); }
+  }
+
+  private lockPointer() {
     const el = this.element as HTMLElement & { requestPointerLock(opts?: { unadjustedMovement?: boolean }): Promise<void> | void };
+    // Raw mouse input isn't available everywhere, so fall back to a plain lock.
+    const plain = () => { void Promise.resolve(el.requestPointerLock()).catch(() => {}); };
     try {
       const r = el.requestPointerLock({ unadjustedMovement: true });
-      if (r && typeof (r as Promise<void>).catch === "function") (r as Promise<void>).catch(() => el.requestPointerLock());
+      if (r && typeof (r as Promise<void>).catch === "function") (r as Promise<void>).catch(plain);
     } catch {
-      el.requestPointerLock();
+      plain();
     }
   }
 
