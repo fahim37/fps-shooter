@@ -9,7 +9,7 @@ import {
   ROOT, RAW, PUBLIC_MODELS, GENERATED, readModel, writeGLB, buildCollision, writeCollisionBin, pieceBounds, writeJSON,
   compressTextures, multiply, type CollisionMesh, type PieceInfo,
 } from "./common";
-import { ROUTES, blockMesh, cutDoors, insideFaces, stairMesh, stairRamp, stairWalls, type FlatGround } from "./desert-routes";
+import { ROUTES, blockMesh, cutDoors, insideFaces, pavingMesh, plinthMesh, stairMesh, stairRamp, stairWalls, wallMesh, type FlatGround } from "./desert-routes";
 
 /**
  * "Desert City": a finished Unity level (a walled desert town built for 5v5) exported through
@@ -155,7 +155,14 @@ export async function importDesert() {
   // Rebuild the scene as flat pieces at the origin: Desert_<chunk>, Detail_Desert_<chunk> and
   // Desert_Backdrop, each holding its mesh nodes with transforms baked in.
   const original = root.listNodes();
-  const ground = terrain(doc, markers, placed, ROUTES.flat);
+  const { piece: ground, heightAt } = terrain(doc, markers, placed, ROUTES.flat);
+  // Foundations under walls left hanging over the rebuilt ground, then the walls closing it off.
+  const strips = plinths(placed, heightAt);
+  const wallsMaterial = root.listMaterials().find((m) => m.getName() === "Desert_Walls")!;
+  // A chunk of their own: seen from every side already, they need no inner faces.
+  placed.push({ node: plinthMesh(doc, strips, floor, "Route_Plinths"), matrix: IDENTITY, tier: "solid", chunk: "route" });
+  placed.push({ node: wallMesh(doc, ROUTES.walls, wallsMaterial, "Route_Walls"), matrix: IDENTITY, tier: "solid", chunk: "route" });
+  placed.push({ node: pavingMesh(doc, ROUTES.paving, floor, "Route_Paving"), matrix: IDENTITY, tier: "solid", chunk: "route" });
   const pieces = new Map<string, Node>();
   const pieceFor = (tier: Tier, chunk: string) => {
     const name = tier === "backdrop" ? "Desert_Backdrop" : tier === "detail" ? `Detail_Desert_${chunk}` : `Desert_${chunk}`;
@@ -215,7 +222,7 @@ export async function importDesert() {
   for (const r of ranges.values()) tris += r[3] / 3;
   let drawn = 0, prims = 0;
   for (const mesh of root.listMeshes()) for (const prim of mesh.listPrimitives()) { prims++; drawn += (prim.getIndices()?.getCount() ?? 0) / 3; }
-  console.log(`[desert] ${(bytes / 1e6).toFixed(2)} MB glb, ${pieces.size} pieces, ${flights.length} stair ramps, ${ROUTES.doors.length} doors (${doors.cut} tris cut, ${doors.caps} cap tris), ${inside?.tris ?? 0} inside tris, ${prims} primitives, ${drawn} tris drawn, ${tris} collision tris, ${markers.clips.length} + ${seal.length} clip boxes, spawns ${layout.spawns.blue.length}/${layout.spawns.red.length}/${layout.spawns.ffa.length}, ${layout.footprints.length} footprints`);
+  console.log(`[desert] ${(bytes / 1e6).toFixed(2)} MB glb, ${pieces.size} pieces, ${flights.length} stair ramps, ${ROUTES.doors.length} doors (${doors.cut} tris cut, ${doors.caps} cap tris), ${inside?.tris ?? 0} inside tris, ${strips.length} plinth strips, ${prims} primitives, ${drawn} tris drawn, ${tris} collision tris, ${markers.clips.length} + ${seal.length} clip boxes, spawns ${layout.spawns.blue.length}/${layout.spawns.red.length}/${layout.spawns.ffa.length}, ${layout.footprints.length} footprints`);
 }
 
 /** Merges the source's duplicate materials and sets them up for the game's renderer. */
@@ -453,19 +460,29 @@ function withRamps(mesh: CollisionMesh | null, flights: Flight[]): CollisionMesh
   if (!mesh || !flights.length) return mesh;
   const { positions: p, indices } = mesh;
   // Under a flight's ramp (with room for a riser's top edge, read on the ramp's 20 cm grid): part of the steps.
-  const under = (v: number, among = flights) => among.some((f) => {
-    const i = Math.round((p[v * 3] - f.x0) / RAMP_GRID), k = Math.round((p[v * 3 + 2] - f.z0) / RAMP_GRID);
+  const below = (x: number, y: number, z: number, among: Flight[]) => among.some((f) => {
+    const i = Math.round((x - f.x0) / RAMP_GRID), k = Math.round((z - f.z0) / RAMP_GRID);
     if (i < 0 || k < 0 || i >= f.nx || k >= f.nz) return false;
     const r = f.ramp[k * f.nx + i];
-    return !Number.isNaN(r) && p[v * 3 + 1] <= r + 0.3;
+    return !Number.isNaN(r) && y <= r + 0.3;
   });
+  // A whole triangle, sampled across it: a landing's corners touch the ramp, its middle doesn't.
+  const under = (a: number, b: number, c: number, among = flights) => {
+    const steps = 4;
+    for (let i = 0; i <= steps; i++) for (let j = 0; i + j <= steps; j++) {
+      const l0 = i / steps, l1 = j / steps, l2 = 1 - l0 - l1;
+      const at = (k: number) => l0 * p[a * 3 + k] + l1 * p[b * 3 + k] + l2 * p[c * 3 + k];
+      if (!below(at(0), at(1), at(2), among)) return false;
+    }
+    return true;
+  };
   // A tread or riser is step-sized; anything taller under a ramp is a wall beside or below it.
   const stepSized = (a: number, b: number, c: number) => Math.max(p[a * 3 + 1], p[b * 3 + 1], p[c * 3 + 1]) - Math.min(p[a * 3 + 1], p[b * 3 + 1], p[c * 3 + 1]) <= 0.6;
   const kept: number[] = [];
   for (let t = 0; t < indices.length; t += 3) {
     const [a, b, c] = [indices[t], indices[t + 1], indices[t + 2]];
     const ours = flights.filter((f) => f.solid);
-    if (!((stepSized(a, b, c) && under(a) && under(b) && under(c)) || (under(a, ours) && under(b, ours) && under(c, ours)))) kept.push(a, b, c);
+    if (!((stepSized(a, b, c) && under(a, b, c)) || under(a, b, c, ours))) kept.push(a, b, c);
   }
   const pos = Array.from(p);
   for (const f of flights) {
@@ -501,7 +518,7 @@ const TERRAIN_HALF = 66;
  * streets are filled smoothly in between, fading to the flat ground outside the play area.
  * Simplified flat areas collapse to a few large triangles.
  */
-function terrain(doc: Document, markers: Markers, placed: { node: Node; matrix: number[]; tier: Tier }[], flat: FlatGround[]): Node {
+function terrain(doc: Document, markers: Markers, placed: { node: Node; matrix: number[]; tier: Tier }[], flat: FlatGround[]) {
   const H = TERRAIN_HALF, N = H * 2 + 1; // vertices at integer meters
   const known = new Float32Array(N * N).fill(Infinity);
   const cell = (x: number, z: number) => {
@@ -576,7 +593,7 @@ function terrain(doc: Document, markers: Markers, placed: { node: Node; matrix: 
   for (let c = 0; c < evidence.length; c++) if (evidence[c] < -1) evidence[c] = Infinity; // cliff bases outside the walls
   for (const f of flat) for (let z = Math.ceil(f.z[0]); z <= Math.floor(f.z[1]); z++) for (let x = Math.ceil(f.x[0]); x <= Math.floor(f.x[1]); x++) {
     const c = cell(x, z);
-    if (c >= 0) evidence[c] = f.y;
+    if (c >= 0) evidence[c] = f.y + ((f.to ?? f.y) - f.y) * (x - f.x[0]) / (f.x[1] - f.x[0]);
   }
 
   // Fill the gaps (Laplace relaxation with the evidence held fixed), then soften.
@@ -653,7 +670,79 @@ function terrain(doc: Document, markers: Markers, placed: { node: Node; matrix: 
   const piece = doc.createNode("Desert_Ground");
   piece.addChild(doc.createNode("Desert_Ground_mesh").setMesh(doc.createMesh("Desert_Ground").addPrimitive(prim)));
   console.log(`[desert] terrain ${idx.length / 3} tris (from ${grid.length / 3}), height ${Math.min(...soft).toFixed(2)}..${Math.max(...soft).toFixed(2)}`);
-  return piece;
+  /** Height of the rebuilt ground at a point. */
+  const heightAt = (x: number, z: number) => {
+    const fx = Math.min(N - 1.001, Math.max(0, x + H)), fz = Math.min(N - 1.001, Math.max(0, z + H));
+    const i = Math.floor(fx), k = Math.floor(fz), u = fx - i, w = fz - k;
+    return (soft[k * N + i] * (1 - u) + soft[k * N + i + 1] * u) * (1 - w) + (soft[(k + 1) * N + i] * (1 - u) + soft[(k + 1) * N + i + 1] * u) * w;
+  };
+  return { piece, heightAt };
+}
+
+/** Taller gaps than this are doorways and passages; a player can't stand in a shorter one. */
+const PLINTH_GAP = 2;
+/** Gaps smaller than this don't read as a wall left hanging. */
+const PLINTH_MIN = 0.25;
+/** Materials of building fabric (awnings, frames and props may hang free). */
+const FABRIC = /^Desert_(Walls|Floor|FloorBlend|Interior|Rock)$/;
+
+/**
+ * Where a wall's bottom edge hangs over the rebuilt ground (it stood on terrain that was lost),
+ * strips down to whatever lies under it. A bottom edge is a level edge with a wall rising from it
+ * and nothing below but, at most, the wall's own underside.
+ */
+function plinths(placed: { node: Node; matrix: number[]; tier: Tier }[], heightAt: (x: number, z: number) => number) {
+  const tris: number[][] = [];
+  const edges = new Map<string, { a: V3; b: V3; up: number; other: number }>();
+  const key = (p: V3) => p.map((v) => Math.round(v * 50)).join();
+  const v = [0, 0, 0];
+  for (const { node, matrix: m, tier } of placed) {
+    if (tier !== "solid") continue;
+    for (const prim of node.getMesh()?.listPrimitives() ?? []) {
+      const fabric = FABRIC.test(prim.getMaterial()?.getName() ?? "");
+      const pos = prim.getAttribute("POSITION")!, idx = prim.getIndices()!;
+      const w: V3[] = [];
+      for (let i = 0; i < pos.getCount(); i++) {
+        pos.getElement(i, v);
+        w.push([0, 1, 2].map((k) => m[k] * v[0] + m[4 + k] * v[1] + m[8 + k] * v[2] + m[12 + k]) as V3);
+      }
+      for (let t = 0; t < idx.getCount(); t += 3) {
+        const c = [w[idx.getScalar(t)], w[idx.getScalar(t + 1)], w[idx.getScalar(t + 2)]];
+        tris.push(c.flat());
+        if (!fabric) continue;
+        const ux = c[1][0] - c[0][0], uy = c[1][1] - c[0][1], uz = c[1][2] - c[0][2], vx = c[2][0] - c[0][0], vy = c[2][1] - c[0][1], vz = c[2][2] - c[0][2];
+        const ny = uz * vx - ux * vz, len = Math.hypot(uy * vz - uz * vy, ny, ux * vy - uy * vx);
+        if (len < 1e-9) continue;
+        const wall = Math.abs(ny) / len < 0.3, under = ny / len < -0.5;
+        for (let e = 0; e < 3; e++) {
+          const a = c[e], b = c[(e + 1) % 3], o = c[(e + 2) % 3];
+          const k = [key(a), key(b)].sort().join("|");
+          let edge = edges.get(k);
+          if (!edge) edges.set(k, (edge = { a, b, up: 0, other: 0 }));
+          if (wall && o[1] > Math.max(a[1], b[1]) + 0.3) edge.up++;
+          else if (!under) edge.other++;
+        }
+      }
+    }
+  }
+  const surfaces = new Surfaces([{ positions: new Float32Array(tris.flat()), indices: Uint32Array.from({ length: tris.length * 3 }, (_, i) => i) }]);
+  /** What lies under a point: the ground, or anything solid above it. */
+  const below = (x: number, y: number, z: number) => Math.max(heightAt(x, z), ...surfaces.at(x, z).filter((h) => h < y - 0.03));
+  const strips: { a: V3; b: V3; ga: number; gb: number }[] = [];
+  for (const { a, b, up, other } of edges.values()) {
+    const len = Math.hypot(b[0] - a[0], b[2] - a[2]);
+    if (!up || other || len < 0.25 || Math.abs(b[1] - a[1]) > 0.1 * len) continue;
+    const n = Math.ceil(len / 2);
+    for (let i = 0; i < n; i++) {
+      const lerp = (t: number): V3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+      const p = lerp(i / n), q = lerp((i + 1) / n);
+      if (Math.max(Math.abs(p[0]), Math.abs(p[2])) > DESERT_HALF) continue;
+      const gp = below(p[0], p[1], p[2]), gq = below(q[0], q[1], q[2]);
+      const gap = Math.max(p[1] - gp, q[1] - gq);
+      if (gap > PLINTH_MIN && gap <= PLINTH_GAP) strips.push({ a: p, b: q, ga: gp - 0.15, gb: gq - 0.15 });
+    }
+  }
+  return strips;
 }
 
 /**

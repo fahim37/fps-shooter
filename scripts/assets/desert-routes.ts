@@ -35,6 +35,8 @@ export interface FlatGround {
   x: [number, number];
   z: [number, number];
   y: number;
+  /** Height at the far end of `x`, for ground sloping along it. */
+  to?: number;
 }
 
 /** A box of the town that players walk through but the source only ever showed from outside. */
@@ -49,11 +51,22 @@ export interface RouteBlock {
   max: V3;
 }
 
-export const ROUTES: { stairs: RouteStair[]; doors: RouteDoor[]; flat: FlatGround[]; inside: InsideZone[]; blocks: RouteBlock[] } = {
+/** A plaster wall along a line, closing off ground the town never showed. */
+export interface RouteWall {
+  a: [number, number];
+  b: [number, number];
+  /** Ground height along it, where the plaster's base band sits. */
+  base: number;
+  /** Height of its top. */
+  top: number;
+}
+
+export const ROUTES: { stairs: RouteStair[]; doors: RouteDoor[]; flat: FlatGround[]; inside: InsideZone[]; blocks: RouteBlock[]; walls: RouteWall[]; paving: FlatGround[] } = {
   stairs: [
     // South: from the courtyard behind Blue's arcade up beside the hall, whose upper story
     // overhangs the courtyard at the hall's floor height; a passage through it leads in.
-    // Steep (45°) to start clear of the corner of the building west of the courtyard.
+    // Steep (45°) to start clear of the corner of the building west of the courtyard. It fills the
+    // alley between that building and the hall's retaining wall, with nothing beside it.
     { x: [-18.05, -15.85], z: [14.4, 18.15], up: "+z", from: 0, to: 3.75, landing: 1.25 },
     // North: from the yard north of Blue's spawn up its retaining wall onto the B side's ledge,
     // where three of the yard's crates stood.
@@ -66,16 +79,62 @@ export const ROUTES: { stairs: RouteStair[]; doors: RouteDoor[]; flat: FlatGroun
     { min: [-17.4, 0.02, 8.4], max: [-15.8, 2.3, 9.4], through: 2 },
     // Through the hall's overhanging upper story (its underside is a few cm above the floors).
     { min: [-15.9, 3.85, 17.9], max: [-12.6, 5.95, 19.4], through: 0 },
+    // Through the wall across the paved way north of Red's spawn, which stood clear of the old ground.
+    { min: [28.62, 4.02, -23.2], max: [29, 6.4, -21], through: 0 },
   ],
   flat: [
     { x: [-18.2, -14.8], z: [10.3, 23.3], y: 0 },
     // In front of the hall's retaining wall, and under it (where the terrain heaped a sand bank).
     { x: [-15, -8], z: [10, 12.5], y: 0 },
     { x: [-14.5, -9], z: [13, 23.5], y: 2 },
+    { x: [-15.5, -14.5], z: [15, 23.5], y: 2 },
+    { x: [-14.6, -13.6], z: [10, 15], y: 0 },
+    // Under the hall, at the foot of its stair.
+    { x: [-8.8, 2], z: [12.5, 21], y: 0 },
+    // Under the paved way north of Red's spawn (see `paving`).
+    { x: [23, 31.5], z: [-25, -15.8], y: 4.9, to: 3.35 },
+    { x: [31, 36], z: [-25, -20.8], y: 3.3 },
+  ],
+  // The way from the street north of Red's spawn up to the plaza west of it, which the source
+  // closed off with a gate and left as bare terrain.
+  paving: [
+    { x: [23.5, 31], z: [-24.6, -16.2], y: 5.05, to: 3.5 },
+    { x: [31, 35.7], z: [-24.6, -21], y: 3.4 },
   ],
   // The hall's retaining wall along the courtyard, its top just under the hall's floor.
   blocks: [
     { min: [-14.8, -0.1, 12.5], max: [-8.8, 3.72, 24] },
+    // Beside the stair it comes out to the flight (below that, the corner opposite needs the room).
+    { min: [-15.85, -0.1, 14.4], max: [-14.8, 3.72, 24] },
+    // The courtyard's floor, up to the stair's first step and along the retaining wall.
+    { min: [-18.05, -0.1, 10.3], max: [-14.8, 0.03, 14.4] },
+    { min: [-14.8, -0.1, 10.3], max: [-8.8, 0.03, 12.5] },
+    // The floor under the hall, where it stops short of the wall.
+    { min: [-8.8, -0.1, 12.6], max: [-4.6, 0.1, 20.3] },
+  ],
+  // The sand past these lines is rebuilt terrain the source never showed.
+  walls: [
+    // Behind the south stair's landing, and on around the sand south of the courtyard.
+    { a: [-24.5, 19.6], b: [-14.5, 19.6], base: 0, top: 8 },
+    { a: [-24.3, 19.4], b: [-24.3, 29.2], base: 0, top: 8 },
+    { a: [-24.5, 29], b: [-13.8, 29], base: 3.4, top: 9.2 },
+    // Plaster over the retaining wall's faces, just proud of them.
+    { a: [-15.66, 14.39], b: [-15.66, 24], base: 0, top: 3.85 },
+    { a: [-15.86, 14.59], b: [-14.8, 14.59], base: 0, top: 3.85 },
+    { a: [-14.61, 12.49], b: [-14.61, 14.4], base: 0, top: 3.85 },
+    { a: [-14.81, 12.69], b: [-8.8, 12.69], base: 0, top: 3.85 },
+    // The town's western edge.
+    { a: [-38.5, 10], b: [-38.5, 30.2], base: 0, top: 7.5 },
+    { a: [-38.5, 30], b: [-42, 36], base: 1, top: 8 },
+    // The north-west corner.
+    { a: [-41, -27.5], b: [-33.8, -27.5], base: 3, top: 9.2 },
+    { a: [-34, -27.7], b: [-34, -39], base: 3, top: 9.2 },
+    // Along the paved way north of Red's spawn, and around the plaza east of it.
+    { a: [18, -36], b: [18, -24.6], base: 5, top: 9.2 },
+    { a: [17.8, -24.8], b: [36.1, -24.8], base: 3.4, top: 9.2 },
+    { a: [35.9, -25], b: [35.9, -15.7], base: 3.3, top: 9.2 },
+    { a: [35.7, -15.9], b: [42.4, -15.9], base: 3.3, top: 9.2 },
+    { a: [42.2, -16.1], b: [42.2, -7.5], base: 3.3, top: 9.2 },
   ],
   // The town's walls are one-sided shells. These stretches were closed off in the source, and the
   // flank routes and the opened gate north of Red's spawn lead players in behind them.
@@ -84,6 +143,10 @@ export const ROUTES: { stairs: RouteStair[]; doors: RouteDoor[]; flat: FlatGroun
     { min: [-41, -0.5, 8], max: [-4, 10, 36.5] },
     // The passage into the hall, as far as mid's south side.
     { min: [-4.5, 1.5, 23.5], max: [1, 3, 26.5] },
+    // The hall's upper parts, seen from its stair and the rooms around it.
+    { min: [-8.5, 3.5, 16], max: [7, 11.5, 37.5] },
+    { min: [-16.5, 3.5, 36], max: [-13.5, 9.5, 41] },
+    { min: [13, 5, 32], max: [15.5, 12, 46] },
     // North of Red's spawn, through the opened gate.
     { min: [13, 3, -36.5], max: [44.5, 13.5, -10.5] },
   ],
@@ -125,6 +188,20 @@ class Builder {
       this.col.push(shade, shade, shade, 1);
     }
     this.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  }
+
+  /** A quad with its own UVs, shaded white. */
+  panel(corners: V3[], normal: V3, uvs: number[][]) {
+    const base = this.pos.length / 3;
+    for (let i = 0; i < 4; i++) {
+      this.pos.push(...corners[i]);
+      this.nrm.push(...normal);
+      this.uv.push(...uvs[i]);
+      this.col.push(1, 1, 1, 1);
+    }
+    const n = cross(sub(corners[1], corners[0]), sub(corners[3], corners[0]));
+    if (dot(n, normal) >= 0) this.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    else this.idx.push(base, base + 2, base + 1, base, base + 3, base + 2);
   }
 
   private rand() {
@@ -176,6 +253,69 @@ export function blockMesh(doc: Document, k: RouteBlock, material: Material, name
   for (const [a, c] of spans(x0, x1)) for (const [u, v] of spans(y0, y1)) {
     b.quad([[a, u, z0], [c, u, z0], [c, v, z0], [a, v, z0]], [0, 0, -1], 0.86);
     b.quad([[a, u, z1], [c, u, z1], [c, v, z1], [a, v, z1]], [0, 0, 1], 0.86);
+  }
+  return doc.createNode(name).setMesh(doc.createMesh(name).addPrimitive(b.primitive(doc, material)));
+}
+
+/** The town's plaster panel in the wall atlas: the left half of the image, its base band at the bottom. */
+const PANEL = { u: [0.001, 0.498], v: [0.995, 0.002], width: 6.1 };
+
+/** Plaster walls as thin slabs: one panel high, side by side like the town's, sunk into the ground. */
+export function wallMesh(doc: Document, walls: RouteWall[], material: Material, name: string): Node {
+  const b = new Builder();
+  const T = 0.2, BASE = -1;
+  for (const { a, b: e, base, top } of walls) {
+    const len = Math.hypot(e[0] - a[0], e[1] - a[1]), dx = (e[0] - a[0]) / len, dz = (e[1] - a[1]) / len;
+    const n: V3 = [dz, 0, -dx];
+    const at = (s: number, y: number, side: number): V3 => [a[0] + dx * s + n[0] * T * side, y, a[1] + dz * s + n[2] * T * side];
+    const count = Math.max(1, Math.round(len / PANEL.width)), w = len / count;
+    const uvs = [[PANEL.u[0], PANEL.v[0]], [PANEL.u[1], PANEL.v[0]], [PANEL.u[1], PANEL.v[1]], [PANEL.u[0], PANEL.v[1]]];
+    const footing = uvs.map(([u]) => [u, PANEL.v[0]]);
+    for (let i = 0; i < count; i++) for (const side of [1, -1]) {
+      const s0 = i * w, s1 = (i + 1) * w, normal: V3 = [n[0] * side, 0, n[2] * side];
+      b.panel([at(s0, base, side), at(s1, base, side), at(s1, top, side), at(s0, top, side)], normal, uvs);
+      b.panel([at(s0, BASE, side), at(s1, BASE, side), at(s1, base, side), at(s0, base, side)], normal, footing);
+    }
+    // Top and ends: a strip of plain plaster.
+    const strip = [[0.05, 0.9], [0.07, 0.9], [0.07, 0.1], [0.05, 0.1]];
+    b.panel([at(0, top, 1), at(len, top, 1), at(len, top, -1), at(0, top, -1)], [0, 1, 0], strip);
+    b.panel([at(0, BASE, -1), at(0, BASE, 1), at(0, top, 1), at(0, top, -1)], [-dx, 0, -dz], strip);
+    b.panel([at(len, BASE, 1), at(len, BASE, -1), at(len, top, -1), at(len, top, 1)], [dx, 0, dz], strip);
+  }
+  return doc.createNode(name).setMesh(doc.createMesh(name).addPrimitive(b.primitive(doc, material)));
+}
+
+/** Paved ground: concrete tiles along a slope, with closed sides. */
+export function pavingMesh(doc: Document, paving: FlatGround[], material: Material, name: string): Node {
+  const b = new Builder();
+  const TILE = 3.5;
+  const spans = (lo: number, hi: number) => {
+    const n = Math.ceil((hi - lo) / TILE), out: [number, number][] = [];
+    for (let i = 0; i < n; i++) out.push([lo + ((hi - lo) * i) / n, lo + ((hi - lo) * (i + 1)) / n]);
+    return out;
+  };
+  for (const { x, z, y, to = y } of paving) {
+    const at = (px: number) => y + ((to - y) * (px - x[0])) / (x[1] - x[0]);
+    const n: V3 = [(y - to) / (x[1] - x[0]), 1, 0], l = Math.hypot(...n), up: V3 = [n[0] / l, n[1] / l, 0];
+    for (const [a, c] of spans(x[0], x[1])) {
+      for (const [p, q] of spans(z[0], z[1])) b.quad([[a, at(a), p], [c, at(c), p], [c, at(c), q], [a, at(a), q]], up, 1);
+      const floor = Math.min(y, to) - 2;
+      b.quad([[a, floor, z[0]], [c, floor, z[0]], [c, at(c), z[0]], [a, at(a), z[0]]], [0, 0, -1], 0.86);
+      b.quad([[a, floor, z[1]], [c, floor, z[1]], [c, at(c), z[1]], [a, at(a), z[1]]], [0, 0, 1], 0.86);
+    }
+  }
+  return doc.createNode(name).setMesh(doc.createMesh(name).addPrimitive(b.primitive(doc, material)));
+}
+
+/** Foundations: concrete strips from a wall's bottom edge down to the ground, seen from both sides. */
+export function plinthMesh(doc: Document, strips: { a: V3; b: V3; ga: number; gb: number }[], material: Material, name: string): Node {
+  const b = new Builder();
+  for (const { a, b: e, ga, gb } of strips) {
+    const dx = e[0] - a[0], dz = e[2] - a[2], l = Math.hypot(dx, dz) || 1;
+    const n: V3 = [dz / l, 0, -dx / l];
+    const c: V3[] = [[a[0], ga, a[2]], [e[0], gb, e[2]], e, a];
+    b.quad(c, n, 0.8);
+    b.quad(c, [-n[0], 0, -n[2]], 0.8);
   }
   return doc.createNode(name).setMesh(doc.createMesh(name).addPrimitive(b.primitive(doc, material)));
 }
@@ -335,7 +475,8 @@ function worldPositions(prim: Primitive, m: number[]) {
  * solid (a wall, a lintel, a sill), a concrete face closes it. `capPiece` says where caps go.
  */
 export function cutDoors(doc: Document, pieces: Node[], doors: RouteDoor[], capMaterial: Material, capPiece: (door: RouteDoor) => Node) {
-  const original = nearbyTriangles(pieces.filter((p) => !p.getName().startsWith("Detail_")), doors);
+  // Town geometry only: what we add ourselves (plinths, walls) says nothing about what a door crosses.
+  const original = nearbyTriangles(pieces.filter((p) => !p.getName().startsWith("Detail_") && p.getName() !== "Desert_route"), doors);
   // Joined meshes keep a node transform: bake it into those the doors cross, so cuts are in world space.
   for (const piece of pieces) piece.traverse((node) => {
     const mesh = node.getMesh();

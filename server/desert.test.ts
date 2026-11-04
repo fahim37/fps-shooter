@@ -39,6 +39,25 @@ describe("desert city", () => {
     expect(hit).not.toBeNull();
   });
 
+  it("keeps the hall stair's landing under foot", () => {
+    for (const z of [24.8, 25.5, 26.2]) {
+      const hit = world.castRay(new RAPIER.Ray({ x: -3, y: 3, z }, { x: 0, y: -1, z: 0 }), 3, true, undefined, QUERY_MOVE);
+      expect(3 - hit!.timeOfImpact, `at z ${z}`).toBeGreaterThan(1.9);
+    }
+  });
+
+  it.each([
+    ["the western sand", { x: -45, y: 1, z: 24 }],
+    ["the north-west corner", { x: -37, y: 3, z: -33 }],
+    ["the sand behind the plaza", { x: 28, y: 2, z: -28 }],
+    ["the sand south of the courtyard", { x: -19, y: 2, z: 25 }],
+  ])("walls off %s", (_, point) => {
+    const start = map.spawns.find((s) => s.team === 1)!;
+    const path = getNav("desert").computePath(start, point, { halfExtents: { x: 1.5, y: 3, z: 1.5 }, maxPathPolys: 4096 }).path;
+    const last = path[path.length - 1];
+    expect(!last || Math.hypot(last.x - point.x, last.z - point.z) > 2).toBe(true);
+  });
+
   it("stops players at the source's player clips but lets bullets through them", () => {
     // The clip lid over the town (8.4 to 13.4 m) keeps players off the roofs.
     const { x, z } = map.spawns.find((s) => s.team === 1)!;
@@ -54,6 +73,10 @@ describe("desert city", () => {
     ["south", [-16.6, 0.1, 6], [[-16.6, 9], [-16.5, 13.6], [-16.9, 15], [-16.9, 18.7], [-11, 18.65]], [-11, 3.75, 18.65]],
     // North: the yard north of Blue's spawn up onto the B side's ledge.
     ["north", [-27, 1.6, -15], [[-24.5, -15], [-21.5, -15], [-19.5, -15]], [-19.5, 3.8, -15]],
+    // North of Red's spawn: the paved way from the street up to the plaza.
+    ["north-east", [33, 3.4, -19], [[30, -22.1], [27, -22.1], [23, -22.3]], [23, 5.05, -22.3]],
+    // The hall's own stair, down its landing to the room under the hall.
+    ["hall", [-3, 0.7, 21.5], [[-3, 23], [-3, 26], [-3, 29]], [-3, 3.3, 29]],
   ] as const)("climbs the %s flank stair smoothly, and bots take it", (_, [sx, sy, sz], waypoints, [ex, ey, ez]) => {
     const mover = new Mover(RAPIER, world), s = newMoveState(0, 0, 0);
     mover.teleport(s, sx, sy, sz);
