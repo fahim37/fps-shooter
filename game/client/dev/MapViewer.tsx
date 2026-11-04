@@ -4,7 +4,7 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { OrbitControls } from "@react-three/drei";
+import { OrbitControls, OrthographicCamera } from "@react-three/drei";
 import * as THREE from "three";
 import { SkyAndSun } from "../world/SkyAndSun";
 import { Ground } from "../world/Ground";
@@ -38,7 +38,43 @@ function RenderStats({ onStats }: { onStats: (text: string) => void }) {
   return null;
 }
 
-export default function MapViewer({ map: mapId, cam, target, quality }: { map?: string; cam: [number, number, number]; target: [number, number, number]; quality?: Quality }) {
+/** Everything above `clip` meters is cut away, to see a level of a town from above. */
+function ClipAbove({ clip }: { clip: number }) {
+  const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+  useEffect(() => {
+    gl.clippingPlanes = [new THREE.Plane(new THREE.Vector3(0, -1, 0), clip)];
+    return () => { gl.clippingPlanes = []; };
+  }, [gl, clip]);
+  // Cut walls show their insides, drawn dark so the plan reads as walls and floors.
+  useFrame(() => {
+    scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+      if (!m || m.side === THREE.DoubleSide || !(o as THREE.Mesh).isMesh) return;
+      m.side = THREE.DoubleSide;
+      m.onBeforeCompile = (shader) => {
+        shader.fragmentShader = shader.fragmentShader.replace("#include <dithering_fragment>", "#include <dithering_fragment>\n  if (!gl_FrontFacing) gl_FragColor = vec4(0.08, 0.05, 0.1, 1.0);");
+      };
+      m.needsUpdate = true;
+    });
+  });
+  return null;
+}
+
+function PlanCamera({ plan: [x, z, width] }: { plan: [number, number, number] }) {
+  const size = useThree((s) => s.size);
+  return (
+    <OrthographicCamera makeDefault position={[x, 80, z]} up={[0, 0, -1]} zoom={size.width / width} near={1} far={200}
+      onUpdate={(c) => c.lookAt(x, 0, z)} />
+  );
+}
+
+export default function MapViewer({ map: mapId, cam, target, quality, plan, clip }: {
+  map?: string; cam: [number, number, number]; target: [number, number, number]; quality?: Quality;
+  /** Straight-down orthographic view: center x, z and the visible width in meters. */
+  plan?: [number, number, number];
+  clip?: number;
+}) {
   const map = useMemo(() => getMap(mapId), [mapId]);
   const [stats, setStats] = useState("");
   useEffect(() => {
@@ -59,7 +95,12 @@ export default function MapViewer({ map: mapId, cam, target, quality }: { map?: 
           <PostFX />
           <RenderStats onStats={setStats} />
         </Suspense>
-        <OrbitControls target={target} />
+        {clip !== undefined && <ClipAbove clip={clip} />}
+        {plan ? (
+          <PlanCamera plan={plan} />
+        ) : (
+          <OrbitControls target={target} />
+        )}
       </Canvas>
       <div style={{ position: "fixed", left: 8, top: 8, color: "#fff", font: "12px monospace", textShadow: "0 1px 2px #000" }}>
         {map.id} · {map.pieces.length} pieces{stats}

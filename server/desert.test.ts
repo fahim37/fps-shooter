@@ -38,6 +38,38 @@ describe("desert city", () => {
   });
 
   it.each([
+    // South: the courtyard door off the street west of mid, its stair, the passage into the hall.
+    ["south", [-16.6, 0.1, 6], [[-16.6, 9], [-16.5, 13.6], [-16.9, 15], [-16.9, 18.7], [-11, 18.65]], [-11, 3.75, 18.65]],
+    // North: the yard north of Blue's spawn up onto the B side's ledge.
+    ["north", [-27, 1.6, -15], [[-24.5, -15], [-21.5, -15], [-19.5, -15]], [-19.5, 3.8, -15]],
+  ] as const)("climbs the %s flank stair smoothly, and bots take it", (_, [sx, sy, sz], waypoints, [ex, ey, ez]) => {
+    const mover = new Mover(RAPIER, world), s = newMoveState(0, 0, 0);
+    mover.teleport(s, sx, sy, sz);
+    const input: MoveInput = { forward: 1, right: 0, yaw: 0, jump: false, sprint: false, crouch: false, ads: 0, speedMult: 1 };
+    let worst = 0;
+    try {
+      let k = 0;
+      for (let i = 0; i < 120 * 10 && k < waypoints.length; i++) {
+        const [tx, tz] = waypoints[k];
+        if (Math.hypot(tx - s.x, tz - s.z) < 0.35) { k++; continue; }
+        input.yaw = Math.atan2(-(tx - s.x), -(tz - s.z));
+        const { x, y, z } = s;
+        mover.step(s, input, 1 / 120);
+        // Height may change no faster than a 50° slope over the tick's travel, plus a little.
+        if (i > 12) worst = Math.max(worst, Math.abs(s.y - y) - 1.2 * Math.hypot(s.x - x, s.z - z));
+      }
+      expect(k, `stopped at ${s.x},${s.y},${s.z}`).toBe(waypoints.length);
+      expect(Math.abs(s.y - ey)).toBeLessThan(0.2);
+      expect(worst).toBeLessThan(0.12);
+    } finally { mover.dispose(); }
+    // The bots' navmesh goes the same way, not around.
+    const path = getNav("desert").computePath({ x: sx, y: sy, z: sz }, { x: ex, y: ey, z: ez }, { halfExtents: { x: 1, y: 2, z: 1 }, maxPathPolys: 4096 }).path;
+    let length = 0;
+    for (let i = 1; i < path.length; i++) length += Math.hypot(path[i].x - path[i - 1].x, path[i].z - path[i - 1].z);
+    expect(length).toBeLessThan(25);
+  });
+
+  it.each([
     ["the Red spawn", map.spawns.find((s) => s.team === 2)!],
     ["site A", { x: sites.A[0], y: sites.A[1], z: sites.A[2] }],
     ["site B", { x: sites.B[0], y: sites.B[1], z: sites.B[2] }],

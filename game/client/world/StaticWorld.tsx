@@ -140,7 +140,7 @@ function tuneMaterials(kits: Kit[]) {
           m.polygonOffsetUnits = -4;
           m.depthWrite = false;
         }
-        // Desert City: decals and the fading floor sheets are cut out.
+        // Desert City: decals are cut out.
         // A constant depth offset only: one scaled by slope shows ground decals through walls at
         // grazing angles (the rebuilt ground already sits a few centimeters under them).
         if (m.name === "Desert_Decal") {
@@ -149,6 +149,7 @@ function tuneMaterials(kits: Kit[]) {
           m.polygonOffset = true;
           m.polygonOffsetUnits = -4;
         }
+        // Desert City's vertex-painted floor sheets: some lie on other floors.
         if (m.name === "Desert_FloorBlend") {
           m.polygonOffset = true;
           m.polygonOffsetUnits = -2;

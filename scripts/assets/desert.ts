@@ -9,6 +9,7 @@ import {
   ROOT, RAW, PUBLIC_MODELS, GENERATED, readModel, writeGLB, buildCollision, writeCollisionBin, pieceBounds, writeJSON,
   compressTextures, multiply, type CollisionMesh, type PieceInfo,
 } from "./common";
+import { ROUTES, cutDoors, stairMesh, stairRamp, stairWalls, type FlatGround } from "./desert-routes";
 
 /**
  * "Desert City": a finished Unity level (a walled desert town built for 5v5) exported through
@@ -18,8 +19,8 @@ import {
  * and the play area.
  *
  * Built for low-end PCs first:
- * - Materials are opaque and single-sided (as the source engine drew them); decals and the
- *   fading floor sheets are alpha-tested, nothing blends.
+ * - Materials are opaque and single-sided (as the source engine drew them); decals are
+ *   alpha-tested, nothing blends.
  * - The town is merged per material into a few large chunks: a handful of draw calls per chunk,
  *   with chunks still big enough to frustum-cull.
  * - Small clutter (decals, posters, lamps, vases, papers...) goes into `Detail_` pieces that never
@@ -50,9 +51,11 @@ const DETAIL_CHUNK = 30;
 const KEEP = ["DesertTown", "Instances", "Background_mountain"];
 /**
  * Source objects left out: the poster hung on the Blue spawn's round-start door (the door itself,
- * "Door_CTSoawn", is a separate group that isn't kept: matches here have no rounds).
+ * "Door_CTSoawn", is a separate group that isn't kept: matches here have no rounds), the
+ * closed gate north of the Red spawn, which opens Red's way to the north side, and the crates
+ * where the north flank stair stands (see desert-routes.ts).
  */
-const DROP_NODE = /^Decal_poster_concerte_A_002$/;
+const DROP_NODE = /^(Decal_poster_concerte_A_002|Big_gate_metal_0[01]|Crate_wood_A \((2|5)\)|Crate_wood_B \(1\))$/;
 /** Clutter: no collision, skipped on Low. */
 const DETAIL_NODE = /^(Decal_|decal_|additive_|Vase_metal|Carboard|Box_deco|Box_medic|Paper_pile|paper_decal|Carpet|Lamp|Stool|PlasticGarbage)/i;
 /**
@@ -130,11 +133,19 @@ export async function importDesert() {
   placed.push(...kept);
 
   const flights = stairs(placed);
+  // The flank routes' stairs: solid town geometry like the rest, with ramps of their own.
+  const floor = root.listMaterials().find((m) => m.getName() === "Desert_Floor")!;
+  const chunkAt = (x: number, z: number) => `${Math.floor(x / CHUNK + 0.5)}_${Math.floor(z / CHUNK + 0.5)}`;
+  ROUTES.stairs.forEach((s, i) => {
+    const chunk = chunkAt((s.x[0] + s.x[1]) / 2, (s.z[0] + s.z[1]) / 2);
+    placed.push({ node: stairMesh(doc, s, floor, `Route_Stair_${i}`), matrix: IDENTITY, tier: "solid", chunk });
+    flights.push({ chunk, ...stairRamp(s, RAMP_GRID) });
+  });
 
   // Rebuild the scene as flat pieces at the origin: Desert_<chunk>, Detail_Desert_<chunk> and
   // Desert_Backdrop, each holding its mesh nodes with transforms baked in.
   const original = root.listNodes();
-  const ground = terrain(doc, markers, placed);
+  const ground = terrain(doc, markers, placed, ROUTES.flat);
   const pieces = new Map<string, Node>();
   const pieceFor = (tier: Tier, chunk: string) => {
     const name = tier === "backdrop" ? "Desert_Backdrop" : tier === "detail" ? `Detail_Desert_${chunk}` : `Desert_${chunk}`;
@@ -155,6 +166,8 @@ export async function importDesert() {
   // Primitives must share attributes to merge: give the few without vertex colors plain white.
   for (const mesh of root.listMeshes()) for (const prim of mesh.listPrimitives()) ensureColor(doc, prim);
   await doc.transform(prune(), dedup(), weld(), join({ keepNamed: false }));
+  const doors = cutDoors(doc, [...pieces.values()].filter((p) => p.getName() !== "Desert_Backdrop"), ROUTES.doors, floor,
+    (d) => pieceFor("solid", chunkAt((d.min[0] + d.max[0]) / 2, (d.min[2] + d.max[2]) / 2)));
 
   await compressTextures(doc, 1024, 84);
   const bytes = await writeGLB(doc, path.join(PUBLIC_MODELS, "desert.glb"));
@@ -166,7 +179,9 @@ export async function importDesert() {
   for (const piece of scene.listChildren()) {
     const name = piece.getName();
     const solid = !name.startsWith("Detail_") && name !== "Desert_Backdrop";
-    if (solid) collision.set(name, withRamps(buildCollision(piece, NO_COLLIDE, COLLISION_ERROR), flights.filter((f) => `Desert_${f.chunk}` === name)));
+    if (!solid) { info[name] = pieceBounds(piece); continue; }
+    const walls = ROUTES.stairs.filter((st) => `Desert_${chunkAt((st.x[0] + st.x[1]) / 2, (st.z[0] + st.z[1]) / 2)}` === name).map(stairWalls);
+    collision.set(name, merge([withRamps(buildCollision(piece, NO_COLLIDE, COLLISION_ERROR), flights.filter((f) => `Desert_${f.chunk}` === name)), ...walls]));
     info[name] = pieceBounds(piece);
   }
   // The town's outer edge had terrain hills between its buildings and rocks; without them the
@@ -186,7 +201,7 @@ export async function importDesert() {
   for (const r of ranges.values()) tris += r[3] / 3;
   let drawn = 0, prims = 0;
   for (const mesh of root.listMeshes()) for (const prim of mesh.listPrimitives()) { prims++; drawn += (prim.getIndices()?.getCount() ?? 0) / 3; }
-  console.log(`[desert] ${(bytes / 1e6).toFixed(2)} MB glb, ${pieces.size} pieces, ${flights.length} stair ramps, ${prims} primitives, ${drawn} tris drawn, ${tris} collision tris, ${markers.clips.length} + ${seal.length} clip boxes, spawns ${layout.spawns.blue.length}/${layout.spawns.red.length}/${layout.spawns.ffa.length}, ${layout.footprints.length} footprints`);
+  console.log(`[desert] ${(bytes / 1e6).toFixed(2)} MB glb, ${pieces.size} pieces, ${flights.length} stair ramps, ${ROUTES.doors.length} doors (${doors.cut} tris cut, ${doors.caps} cap tris), ${prims} primitives, ${drawn} tris drawn, ${tris} collision tris, ${markers.clips.length} + ${seal.length} clip boxes, spawns ${layout.spawns.blue.length}/${layout.spawns.red.length}/${layout.spawns.ffa.length}, ${layout.footprints.length} footprints`);
 }
 
 /** Merges the source's duplicate materials and sets them up for the game's renderer. */
@@ -200,15 +215,30 @@ function materials(doc: Document) {
     m.setDoubleSided(name === "Desert_Decal");
     m.setAlphaMode(name === "Desert_Decal" ? "MASK" : /Blend/.test(name) ? "BLEND" : "OPAQUE");
   }
-  // Floor primitives that fade out through vertex alpha are overlays; the rest are opaque floor.
+  // Floor primitives whose vertex alpha varies were vertex-painted for the source shader, which
+  // blended floor tiles by it; it never meant transparency (whole staircases are painted to 0,
+  // so drawn see-through they looked like glass, and cut out they vanished). They are drawn
+  // opaque, their own tile. Their vertex shading darkens risers to near black: half of it keeps
+  // steps readable. They keep a material of their own (the extras stop dedup merging it) because
+  // some lie on other floors and need the client's depth offset.
   let blend: Material | null = null;
   for (const mesh of doc.getRoot().listMeshes()) for (const prim of mesh.listPrimitives()) {
     if (prim.getMaterial()?.getName() !== "Desert_Floor" || !fades(prim)) continue;
-    // Cut out at half fade, opaque: blended, stairs paved with it looked like glass.
-    blend ??= prim.getMaterial()!.clone().setName("Desert_FloorBlend").setAlphaMode("MASK").setAlphaCutoff(0.5);
+    blend ??= prim.getMaterial()!.clone().setName("Desert_FloorBlend").setExtras({ paving: true });
     prim.setMaterial(blend);
+    const color = prim.getAttribute("COLOR_0")!.clone();
+    const c: number[] = [];
+    for (let i = 0; i < color.getCount(); i++) {
+      color.getElement(i, c);
+      color.setElement(i, [0.5 + c[0] / 2, 0.5 + c[1] / 2, 0.5 + c[2] / 2, 1]);
+    }
+    prim.setAttribute("COLOR_0", color);
+    PAVING.add(prim);
   }
 }
+
+/** The vertex-painted floor primitives: paving that lay on the lost terrain (see `terrain`). */
+const PAVING = new WeakSet<Primitive>();
 
 function fades(prim: Primitive) {
   const c = prim.getAttribute("COLOR_0");
@@ -256,6 +286,19 @@ function readMarkers(groups: Map<string, Node>, toGame: number[], at: (n: Node) 
     sites: { A: at(groups.get("BombsiteA")!), B: at(groups.get("BombsiteB")!) },
     clips,
   };
+}
+
+/** Several collision meshes as one. */
+function merge(meshes: (CollisionMesh | null)[]): CollisionMesh | null {
+  const parts = meshes.filter((m): m is CollisionMesh => !!m);
+  if (parts.length <= 1) return parts[0] ?? null;
+  const pos: number[] = [], idx: number[] = [];
+  for (const m of parts) {
+    const base = pos.length / 3;
+    for (const v of m.positions) pos.push(v);
+    for (const i of m.indices) idx.push(base + i);
+  }
+  return { positions: new Float32Array(pos), indices: new Uint32Array(idx) };
 }
 
 /** Collision triangles for the clip boxes. */
@@ -398,7 +441,7 @@ const TERRAIN_HALF = 66;
  * streets are filled smoothly in between, fading to the flat ground outside the play area.
  * Simplified flat areas collapse to a few large triangles.
  */
-function terrain(doc: Document, markers: Markers, placed: { node: Node; matrix: number[]; tier: Tier }[]): Node {
+function terrain(doc: Document, markers: Markers, placed: { node: Node; matrix: number[]; tier: Tier }[], flat: FlatGround[]): Node {
   const H = TERRAIN_HALF, N = H * 2 + 1; // vertices at integer meters
   const known = new Float32Array(N * N).fill(Infinity);
   const cell = (x: number, z: number) => {
@@ -421,7 +464,7 @@ function terrain(doc: Document, markers: Markers, placed: { node: Node; matrix: 
     {
       for (const prim of node.getMesh()?.listPrimitives() ?? []) {
         // Paving that fades out at its edges was made to blend into the terrain, so it lay on it.
-        into = prim.getMaterial()!.getName() === "Desert_FloorBlend" && !/^Rooftop/i.test(node.getName()) ? paving : known;
+        into = PAVING.has(prim) && !/^Rooftop/i.test(node.getName()) ? paving : known;
         const pos = prim.getAttribute("POSITION")!, w = new Float32Array(pos.getCount() * 3);
         for (let i = 0; i < pos.getCount(); i++) {
           pos.getElement(i, v);
@@ -471,6 +514,10 @@ function terrain(doc: Document, markers: Markers, placed: { node: Node; matrix: 
     if (c >= 0) evidence[c] = Math.min(evidence[c], y - 0.15);
   }
   for (let c = 0; c < evidence.length; c++) if (evidence[c] < -1) evidence[c] = Infinity; // cliff bases outside the walls
+  for (const f of flat) for (let z = Math.ceil(f.z[0]); z <= Math.floor(f.z[1]); z++) for (let x = Math.ceil(f.x[0]); x <= Math.floor(f.x[1]); x++) {
+    const c = cell(x, z);
+    if (c >= 0) evidence[c] = f.y;
+  }
 
   // Fill the gaps (Laplace relaxation with the evidence held fixed), then soften.
   const h = new Float32Array(N * N);
@@ -714,3 +761,4 @@ function rectangles(cells: Float32Array, n: number, origin: number, minArea = 3)
 }
 
 const round = (v: number) => Math.round(v * 100) / 100;
+const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];

@@ -88,6 +88,11 @@ export class LocalPlayer {
   private sendAt = 0;
   private pendingLand = 0;
   private landDip = 0;
+  /**
+   * The view's lag behind a step the feet just took (curbs, sills, a stair's lip): the mover
+   * climbs those in one tick, and the view eases the rest of the way instead of jolting.
+   */
+  private stepEase = 0;
   private bobPhase = 0;
   private bobAmount = 0;
   private stepDist = 0;
@@ -156,7 +161,7 @@ export class LocalPlayer {
     this.alive = true;
     this.ads = this.adsProgress = 0;
     this.sendAt = 0;
-    this.acc = this.pendingLand = this.landDip = this.crouchT = this.recoil = this.burst = 0;
+    this.acc = this.pendingLand = this.landDip = this.stepEase = this.crouchT = this.recoil = this.burst = 0;
     this.lean = this.leanLatch = 0;
     this.peeking = false;
     this.emote = null;
@@ -298,11 +303,19 @@ export class LocalPlayer {
     while (this.acc >= STEP) {
       this.acc -= STEP;
       this.motion.beforeStep(this.ms);
+      const { x, y, z, grounded } = this.ms;
       this.mover.step(this.ms, {
         forward: fwd, right, yaw: this.yaw, jump: input.jump, crouch: input.crouch, sprint: wantsSprint,
         ads: this.ads, speedMult: def.moveMult * (1 - Math.abs(this.lean) * 0.2),
       }, STEP);
+      // A step: on the ground throughout, rising or dropping faster than a walkable slope.
+      const dy = this.ms.y - y;
+      if (grounded && this.ms.grounded && Math.abs(dy) > 0.02 && Math.abs(dy) > 1.3 * Math.hypot(this.ms.x - x, this.ms.z - z)) {
+        this.stepEase = THREE.MathUtils.clamp(this.stepEase - dy, -0.45, 0.45);
+      }
     }
+    // Eased out in about a tenth of a second.
+    this.stepEase *= Math.exp(-dt * 22);
     this.motion.sample(this.ms, this.acc / STEP);
     if (wasSprinting && input.fire) this.switchEnd = Math.max(this.switchEnd, now + 150);
     if (this.ms.landSpeed > 0) {
@@ -410,7 +423,7 @@ export class LocalPlayer {
     this.eye.set(this.ms.x + lx, this.ms.y + eyeH + ly - this.landDip + this.bob.y * 0.4, this.ms.z + lz);
     this.viewEye.copy(this.motion.position);
     this.viewEye.x += lx; this.viewEye.z += lz;
-    this.viewEye.y += eyeH + ly - this.landDip + this.bob.y * 0.4;
+    this.viewEye.y += eyeH + ly - this.landDip + this.bob.y * 0.4 + this.stepEase;
     this.viewQuat.setFromEuler(this.viewEuler.set(this.pitch + this.kickPitch, this.yaw + this.kickYaw, -this.lean * LEAN_ROLL));
   }
 

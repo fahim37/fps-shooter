@@ -26,6 +26,14 @@ describe("adaptive render resolution", () => {
     expect(recovered[0]).toBe(0.7);
     expect(governor.dpr).toBe(1);
   });
+  it("lowers resolution when a 60 Hz screen keeps dropping frames, and holds the level that keeps 60", () => {
+    const governor = new ResolutionGovernor(0.8, 0.65);
+    run(governor, 60, 6);
+    expect(run(governor, 52, 6)).toEqual([0.7]);
+    // Holding 60 at 0.7 must not climb straight back to 0.8, which dropped frames.
+    expect(run(governor, 60, 40)).toEqual([0.75]);
+    expect(run(governor, 60, 30)).toEqual([0.8]);
+  });
   it("still lowers resolution when a very slow machine renders only a few frames per second", () => {
     const governor = new ResolutionGovernor(1, 0.65);
     expect(run(governor, 3, 10)).toEqual([0.9]);

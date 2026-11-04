@@ -65,7 +65,7 @@ export default function GameView({ room, map: mapId, onLeave, voice }: { room: G
   const [screenMessage, setScreenMessage] = useState("");
   const fullscreenAttempted = useRef(false);
   useEffect(() => () => { if (game?.input.touch) void exitMobileFullscreen(); }, [game]);
-  return <div className="game-view" data-touch={game?.input.touch || undefined} onPointerDownCapture={(e) => {
+  return <div className="game-view" data-quality={quality} data-touch={game?.input.touch || undefined} onPointerDownCapture={(e) => {
     if (!game?.input.touch || !hud().ready || fullscreenAttempted.current || (e.target as HTMLElement).closest('[aria-label="Mobile screen options"], [aria-label="Landscape required"]')) return;
     fullscreenAttempted.current = true;
     void enterMobileFullscreen(e.currentTarget).then(setScreenMessage);
