@@ -117,7 +117,7 @@ export function ConnectedRoom({ room, onLeave }: { room: GameRoom; onLeave: () =
           <span className="player-details"><strong>Open slot</strong><small>{me?.team === side.team ? "Invite a friend" : "Click to join team"}</small></span>
         </button>;
         const canSwap = !!p?.connected && !!dragging?.connected && isHost && !disabled && s.mode === "tdm" && p.team !== dragging.team && !canMoveTo(p.team);
-        return <div key={p?.id ?? `empty-${slot}`} className={`player-slot ${p ? "occupied" : ""} ${p?.id === room.sessionId ? "is-me" : ""} ${p?.id === draggedPlayer ? "is-dragging" : ""} ${canSwap ? "can-swap" : ""}`}
+        return <div key={p?.id ?? `empty-${slot}`} className={`player-slot ${p ? "occupied" : ""} ${p?.id === room.sessionId ? "is-me" : ""} ${p && p.id === s.host ? "is-host" : ""} ${p?.id === draggedPlayer ? "is-dragging" : ""} ${canSwap ? "can-swap" : ""}`}
           draggable={!!p?.connected && isHost && !disabled && s.mode === "tdm"}
           title={p && isHost && s.mode === "tdm" ? "Drag to the other team, or open player controls" : undefined}
           onDragStart={(e) => {
@@ -132,8 +132,8 @@ export function ConnectedRoom({ room, onLeave }: { room: GameRoom; onLeave: () =
             if (e.dataTransfer.getData("application/x-hollowmere-player") === dragging.id) manage({ action: "team", playerId: dragging.id, team: p.team as 1 | 2, swapWith: p.id });
             setDraggedPlayer(null); setDropTeam(0);
           }}>
-          <span className="player-avatar" aria-hidden="true">{p ? p.name.slice(0, 1).toUpperCase() : "+"}</span>
-          <div><strong>{p ? `${p.name}${p.id === room.sessionId ? " (you)" : ""}` : "Open slot"}</strong><small>{p ? `${p.id === s.host ? "Host · " : ""}${p.char === 1 ? "Female" : "Male"} Operator` : "Invite a friend"}</small></div>
+          <span className="player-avatar" aria-hidden="true">{p ? p.name.slice(0, 1).toUpperCase() : "+"}{p && p.id === s.host && <svg className="host-crown" viewBox="0 0 24 24"><path d="M3 19 2 7l6 4 4-7 4 7 6-4-1 12z" /></svg>}</span>
+          <div><strong>{p ? `${p.name}${p.id === room.sessionId ? " (you)" : ""}` : "Open slot"}</strong><small>{p ? <>{p.id === s.host && <b className="host-label">Host · </b>}{p.char === 1 ? "Female" : "Male"} Operator</> : "Invite a friend"}</small></div>
           {p && <span className={`ready-badge ${p.ready && p.connected ? "is-ready" : ""}`}>{!p.connected ? "Reconnecting" : p.ready ? "Ready" : "Not ready"}</span>}
           {p && (isHost || p.id === room.sessionId) && <button type="button" className="player-controls-button" disabled={disabled} onClick={() => setSelectedPlayer(p.id)} aria-label={p.id === room.sessionId ? "Edit your player" : `Manage ${p.name}`} title={p.id === room.sessionId ? "Edit name and player controls" : "Manage player"}>⋯</button>}
         </div>;
@@ -146,7 +146,7 @@ export function ConnectedRoom({ room, onLeave }: { room: GameRoom; onLeave: () =
     <footer className="room-bar">
       <RoomInvite code={room.roomId} />
       <div className="room-map" aria-live="polite">
-        <div className="room-settings-heading"><span className="eyebrow">{isHost ? "PICK THE MAP" : "MAP · HOST PICKS"}</span>{isHost && <button type="button" className="text-button" disabled={disabled} onClick={() => setRoomSettings(true)}>Room settings</button>}</div>
+        <div className="room-settings-heading"><span className="eyebrow">{isHost ? "PICK THE MAP" : "MAP · HOST PICKS"}</span>{isHost && <button type="button" className="room-settings-button" disabled={disabled} onClick={() => setRoomSettings(true)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M18 7h2M4 17h2M11 17h9" /><circle cx="15.5" cy="7" r="2.5" /><circle cx="8.5" cy="17" r="2.5" /></svg>Room settings</button>}</div>
         <MapPicker compact value={s.map} onChange={isHost && !disabled ? (id) => send("map", id) : undefined} />
       </div>
       <div className="room-start" aria-live="polite">

@@ -231,7 +231,7 @@ small { display: block; }
 .team-blue .player-slot.occupied { border-left-color: var(--team-blue); }
 .team-red .player-slot.occupied { border-left-color: var(--team-red); }
 .player-slot.is-me { background: linear-gradient(90deg, #d9ed7918, #ffffff02); }
-.player-avatar { display: grid; place-items: center; flex: none; width: 34px; height: 34px; background: #d9ed790b; border: 1px solid #d9ed7930; color: var(--accent); font: 15px var(--font-geist-mono), monospace; }
+.player-avatar { position: relative; display: grid; place-items: center; flex: none; width: 34px; height: 34px; background: #d9ed790b; border: 1px solid #d9ed7930; color: var(--accent); font: 15px var(--font-geist-mono), monospace; }
 .player-slot:not(.occupied) .player-avatar { color: #7d8a73; border-style: dashed; background: transparent; }
 .player-slot > div, .player-slot > .player-details { flex: 1; min-width: 0; }
 .open-slot { width: 100%; background: transparent; color: inherit; font: inherit; text-align: left; }
@@ -242,6 +242,11 @@ small { display: block; }
 .player-slot small { margin-top: 3px; color: #87977b; font-size: 10px; }
 .ready-badge { flex: none; padding: 4px 6px; background: #ffffff08; color: #aeb89e; font: 9px var(--font-geist-mono), monospace; letter-spacing: .06em; text-transform: uppercase; }
 .ready-badge.is-ready { background: #d9ed7918; color: var(--accent); }
+/* The room's host, in gold on every player's screen: apart from the lime accent and both team colours. */
+.player-slot.occupied.is-host { border-color: #f2c14e80; border-left-color: #f2c14e; background: linear-gradient(90deg, #f2c14e26, #f2c14e05); box-shadow: inset 0 0 14px #f2c14e14; }
+.player-slot.is-host .player-avatar { border-color: #f2c14e; background: #f2c14e1a; color: #f2c14e; }
+.host-crown { position: absolute; top: -8px; right: -7px; width: 15px; height: 15px; fill: #f2c14e; stroke: #0d130f; stroke-width: 1.5; stroke-linejoin: round; transform: rotate(14deg); }
+.host-label { color: #f2c14e; font-weight: 700; }
 .player-slot[draggable="true"] { cursor: grab; }
 .player-slot.is-dragging { opacity: .45; }
 .player-slot.can-swap { outline: 1px dashed var(--accent); outline-offset: -3px; }
@@ -251,7 +256,11 @@ small { display: block; }
 .player-controls-button:hover { background: #d9ed7920; }
 .player-controls-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .room-settings-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
-.room-settings-heading .text-button { padding: 2px 0; font-size: 11px; }
+.room-settings-button { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 14px; border: 1px solid #d9ed7980; background: #d9ed7918; color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: .04em; white-space: nowrap; cursor: pointer; transition: background .15s, border-color .15s; }
+.room-settings-button svg { flex: none; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.room-settings-button:hover:not(:disabled) { border-color: var(--accent); background: #d9ed7930; }
+.room-settings-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.room-settings-button:disabled { opacity: .5; cursor: default; }
 .room-stage { grid-area: stage; display: flex; min-width: 0; min-height: 0; }
 .room-bar { grid-area: bar; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(260px, 1fr); gap: 12px; }
 .room-bar > * { min-width: 0; margin: 0; padding: 12px 14px; border: 1px solid var(--line-strong); background: var(--panel); }
@@ -789,4 +798,8 @@ small { display: block; }
   .room-bar .room-map [role=radiogroup] { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
   .room-bar .room-map [data-map] strong { padding: 12px 4px 3px; font-size: 9px; letter-spacing: 0; }
   .room-bar .room-map [data-map] > span:first-child { aspect-ratio: 16 / 6; min-height: 0; }
+  .room-bar .room-map { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .room-bar .room-map .eyebrow { writing-mode: horizontal-tb; transform: none; }
+  .room-settings-button { min-height: 26px; padding: 0 8px; gap: 5px; font-size: 10px; }
+  .room-settings-button svg { width: 13px; height: 13px; }
 }

@@ -85,8 +85,8 @@ export const ROUTES: { stairs: RouteStair[]; doors: RouteDoor[]; flat: FlatGroun
   flat: [
     { x: [-18.2, -14.8], z: [10.3, 23.3], y: 0 },
     // In front of the hall's retaining wall, and under it (where the terrain heaped a sand bank).
-    { x: [-15, -8], z: [10, 12.5], y: 0 },
-    { x: [-14.5, -9], z: [13, 23.5], y: 2 },
+    { x: [-15, -4.9], z: [10, 13.5], y: 0 },
+    { x: [-14.5, -9], z: [15, 23.5], y: 2 },
     { x: [-15.5, -14.5], z: [15, 23.5], y: 2 },
     { x: [-14.6, -13.6], z: [10, 15], y: 0 },
     // Under the hall, at the foot of its stair.
@@ -94,18 +94,27 @@ export const ROUTES: { stairs: RouteStair[]; doors: RouteDoor[]; flat: FlatGroun
     // Under the paved way north of Red's spawn (see `paving`).
     { x: [23, 31.5], z: [-25, -15.8], y: 4.9, to: 3.35 },
     { x: [31, 36], z: [-25, -20.8], y: 3.3 },
+    // Along the southern wall, where the sand heaped against the cliff reached the plaza.
+    { x: [-7.5, 14.5], z: [35.5, 37.8], y: 3.5 },
   ],
   // The way from the street north of Red's spawn up to the plaza west of it, which the source
   // closed off with a gate and left as bare terrain.
   paving: [
     { x: [23.5, 31], z: [-24.6, -16.2], y: 5.05, to: 3.5 },
     { x: [31, 35.7], z: [-24.6, -21], y: 3.4 },
+    // The passage along the hall's retaining wall, where sand showed through.
+    { x: [-14.6, -4.95], z: [10.2, 12.9], y: 0.06 },
+    // Over the slit in the walkway above the sealed strip beside the hall stair (see `SEALED`).
+    { x: [-6.85, -4.85], z: [18.5, 37.4], y: 3.82 },
+    // The plaza's last strip, up to the southern wall.
+    { x: [-7, 14], z: [36.4, 37.2], y: 3.82 },
   ],
   // The hall's retaining wall along the courtyard, its top just under the hall's floor.
   blocks: [
     { min: [-14.8, -0.1, 12.5], max: [-8.8, 3.72, 24] },
     // Beside the stair it comes out to the flight (below that, the corner opposite needs the room).
     { min: [-15.85, -0.1, 14.4], max: [-14.8, 3.72, 24] },
+    { min: [-15.2, -0.1, 12.5], max: [-14.8, 3.72, 14.4] },
     // The courtyard's floor, up to the stair's first step and along the retaining wall.
     { min: [-18.05, -0.1, 10.3], max: [-14.8, 0.03, 14.4] },
     { min: [-14.8, -0.1, 10.3], max: [-8.8, 0.03, 12.5] },
@@ -120,9 +129,16 @@ export const ROUTES: { stairs: RouteStair[]; doors: RouteDoor[]; flat: FlatGroun
     { a: [-24.5, 29], b: [-13.8, 29], base: 3.4, top: 9.2 },
     // Plaster over the retaining wall's faces, just proud of them.
     { a: [-15.66, 14.39], b: [-15.66, 24], base: 0, top: 3.85 },
-    { a: [-15.86, 14.59], b: [-14.8, 14.59], base: 0, top: 3.85 },
-    { a: [-14.61, 12.49], b: [-14.61, 14.4], base: 0, top: 3.85 },
-    { a: [-14.81, 12.69], b: [-8.8, 12.69], base: 0, top: 3.85 },
+    { a: [-15.86, 14.59], b: [-15.2, 14.59], base: 0, top: 3.85 },
+    { a: [-15, 12.49], b: [-15, 14.4], base: 0, top: 3.85 },
+    { a: [-15.2, 12.69], b: [-8.8, 12.69], base: 0, top: 3.85 },
+    // Across the mouth of the strip beside the hall stair, which leads nowhere (see `SEALED`).
+    { a: [-8.95, 13], b: [-4.85, 13], base: 0, top: 3.85 },
+    // Backing the hall stair's west wall, a single sheet that a sprint jump could pass.
+    { a: [-4.85, 17.4], b: [-4.85, 31], base: 0, top: 3.8 },
+    // The town's southern edge, in front of the sand heaped against the cliff.
+    { a: [-7, 37], b: [-7, 44], base: 3.7, top: 9.2 },
+    { a: [-7.2, 37.2], b: [14.2, 37.2], base: 3.7, top: 9.2 },
     // The town's western edge.
     { a: [-38.5, 10], b: [-38.5, 30.2], base: 0, top: 7.5 },
     { a: [-38.5, 30], b: [-42, 36], base: 1, top: 8 },
@@ -151,6 +167,9 @@ export const ROUTES: { stairs: RouteStair[]; doors: RouteDoor[]; flat: FlatGroun
     { min: [13, 3, -36.5], max: [44.5, 13.5, -10.5] },
   ],
 };
+
+/** The strip beside the hall stair, closed off by `walls` and `paving`. Nobody sees into it, so it gets no inner faces. */
+const SEALED: InsideZone = { min: [-8.9, -1, 13], max: [-4.9, 3.75, 37.3] };
 
 /**
  * The floor atlas's worn concrete tile (the image's top right: this export's V runs bottom-up)
@@ -408,6 +427,11 @@ export function insideFaces(doc: Document, pieces: Node[], zones: InsideZone[], 
         return Math.max(...v) >= z.min[k] && Math.min(...v) <= z.max[k];
       }));
       if (!inZone) continue;
+      if ([0, 1, 2].every((k) => tri.every((q) => p[q * 3 + k] >= SEALED.min[k] && p[q * 3 + k] <= SEALED.max[k]))) continue;
+      // Undersides stay one-sided: flipped, a cornice's underside floats above it as a bare shard.
+      const u = [0, 1, 2].map((k) => p[tri[1] * 3 + k] - p[tri[0] * 3 + k]), v = [0, 1, 2].map((k) => p[tri[2] * 3 + k] - p[tri[0] * 3 + k]);
+      const face = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+      if (face[1] < -0.7 * Math.hypot(...face)) continue;
       let s = streams.get(material);
       if (!s) streams.set(material, (s = { pos: [], nrm: [], uv: [], col: [] }));
       for (const q of [tri[0], tri[2], tri[1]]) {

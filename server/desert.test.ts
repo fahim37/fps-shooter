@@ -51,11 +51,14 @@ describe("desert city", () => {
     ["the north-west corner", { x: -37, y: 3, z: -33 }],
     ["the sand behind the plaza", { x: 28, y: 2, z: -28 }],
     ["the sand south of the courtyard", { x: -19, y: 2, z: 25 }],
+    ["the strip beside the hall stair", { x: -7, y: 0.3, z: 18 }],
+    ["the sand against the southern cliff", { x: -3, y: 4.5, z: 39 }],
   ])("walls off %s", (_, point) => {
     const start = map.spawns.find((s) => s.team === 1)!;
     const path = getNav("desert").computePath(start, point, { halfExtents: { x: 1.5, y: 3, z: 1.5 }, maxPathPolys: 4096 }).path;
     const last = path[path.length - 1];
-    expect(!last || Math.hypot(last.x - point.x, last.z - point.z) > 2).toBe(true);
+    // A path may end on a floor above the spot, which isn't reaching it.
+    expect(!last || Math.hypot(last.x - point.x, last.z - point.z) > 2 || Math.abs(last.y - point.y) > 2).toBe(true);
   });
 
   it("stops players at the source's player clips but lets bullets through them", () => {
