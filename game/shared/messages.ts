@@ -100,8 +100,6 @@ export interface AmmoEvent {
 export interface GrenadeMsg {
   origin: [number, number, number];
   dir: [number, number, number];
-  /** Milliseconds the fuse burned in hand (cooked) before throwing. */
-  cooked: number;
   /** Throw strength: 1 for a full throw, GRENADE.lobPower for an underhand lob. */
   power?: number;
 }
@@ -165,6 +163,12 @@ export interface SpawnEvent {
   x: number; y: number; z: number;
   yaw: number;
   primary: WeaponId;
+}
+
+/** A live grenade struck the map: `speed` (m/s) is how hard. */
+export interface GrenadeHitEvent {
+  x: number; y: number; z: number;
+  speed: number;
 }
 
 export interface ExplosionEvent {

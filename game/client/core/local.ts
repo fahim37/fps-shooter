@@ -3,6 +3,7 @@ import { Mover, newMoveState, type MoveState } from "../../shared/movement";
 import { raycastWorld, type Rapier, type World } from "../../shared/physics";
 import { aimDir, spreadDir, zoomSensitivity } from "../../shared/aim";
 import { WEAPONS, GRENADE, currentSpread, fireIntervalMs, type WeaponId } from "../../shared/weapons";
+import { grenadeVelocity } from "../../shared/grenade";
 import { EYE_HEIGHT, CROUCH_EYE_HEIGHT, GRENADES_PER_LIFE, INTERP_DELAY_MS } from "../../shared/constants";
 import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_SPRINT, type AmmoEvent, type GrenadeMsg, type LoadoutEvent, type PoseMsg, type SpawnEvent } from "../../shared/messages";
 import type { Input } from "./input";
@@ -30,6 +31,8 @@ function onStone(x: number, z: number, y: number) {
 
 /** A throw's swing and follow-through take 1 / this seconds. */
 const THROW_ANIM_RATE = 2.4;
+/** Share of a throw's animation at which the grenade leaves the hand. */
+export const THROW_RELEASE = 0.14;
 /** Third person widens the view this much (degrees) at a sprint. */
 const TPP_SPRINT_FOV = 5;
 
@@ -70,6 +73,8 @@ export class LocalPlayer {
   grenades = GRENADES_PER_LIFE;
   /** Grenade in hand (C / G held) since, and its fuse burning since (the pin comes out on C). */
   private grenadeAt = 0;
+  /** The arm is swinging: the grenade goes when the hand reaches the release point. */
+  private releasing = false;
   private fuseAt = 0;
   /** An underhand lob instead of a full throw (right mouse while aiming). */
   lob = false;
@@ -158,6 +163,7 @@ export class LocalPlayer {
     this.drawAt = performance.now();
     this.lastShotAt = -Infinity;
     this.grenadeAt = this.fuseAt = this.grenadeHold = 0;
+    this.releasing = false;
     this.alive = true;
     this.ads = this.adsProgress = 0;
     this.sendAt = 0;
@@ -188,9 +194,12 @@ export class LocalPlayer {
     this.motion.reset(this.ms);
     this.reloadEnd = 0;
     this.grenadeAt = this.fuseAt = 0;
+    this.releasing = false;
   }
 
   cancelActions() {
+    // A throw already swinging still goes; one only held doesn't.
+    if (this.releasing) this.releaseGrenade(performance.now());
     // Opening a menu or editing the HUD must not turn a held grenade into a throw.
     if (this.grenadeAt) this.game.send("grenade:cook", false);
     this.grenadeAt = this.fuseAt = 0;
@@ -263,7 +272,7 @@ export class LocalPlayer {
     // Grenade: pressing C (or G) pulls the pin and the fuse starts burning; hold to aim along the
     // arc, release to throw. Right mouse switches to an underhand lob.
     const draw = input.consume("KeyC") || input.consume("KeyG");
-    if (draw && this.grenades > 0 && !this.grenadeAt) {
+    if (draw && this.grenades > 0 && !this.grenadeAt && !this.releasing) {
       this.endEmote(now);
       this.grenadeAt = this.fuseAt = now;
       this.tickAt = now + 500;
@@ -283,6 +292,7 @@ export class LocalPlayer {
       }
     }
     this.throwAnim = Math.max(0, this.throwAnim - dt * THROW_ANIM_RATE);
+    if (this.releasing && 1 - this.throwAnim >= THROW_RELEASE) this.releaseGrenade(now);
     this.grenadeHold += ((this.grenadeAt ? 1 : 0) - this.grenadeHold) * Math.min(1, dt * 12);
 
     // Reload completion.
@@ -506,7 +516,7 @@ export class LocalPlayer {
 
   private tryFire(now: number) {
     const def = this.def;
-    if (now < this.switchEnd || this.reloading || this.grenadeAt) return;
+    if (now < this.switchEnd || this.reloading || this.grenadeAt || this.releasing) return;
     if (!def.auto && !this.triggerReleased) return;
     const interval = fireIntervalMs(def);
     if (!this.cadence.ready(now, interval)) return;
@@ -556,24 +566,35 @@ export class LocalPlayer {
     this.burst++;
   }
 
-  /** Throws the grenade in hand, or with `drop` lets it fall (it has cooked off). */
+  /** Starts the throw of the grenade in hand, or with `drop` lets it fall (it has cooked off). */
   private throwGrenade(now: number, drop = false) {
-    const cooked = this.fuseAt ? now - this.fuseAt : 0;
-    this.grenadeAt = this.fuseAt = 0;
+    this.grenadeAt = 0;
+    this.throwAnim = drop ? 0 : 1;
+    if (drop) this.releaseGrenade(now, true);
+    else this.releasing = true;
+  }
+
+  /** The grenade leaves the hand: from where the hand is now, where the mouse points now. */
+  private releaseGrenade(now: number, drop = false) {
+    const fuse = this.fuseAt ? GRENADE.fuseMs - (now - this.fuseAt) : GRENADE.fuseMs;
+    this.releasing = false;
+    this.fuseAt = 0;
     if (this.grenades <= 0) return;
     this.grenades--;
-    this.throwAnim = drop ? 0 : 1;
-    const { origin, dir, power } = this.grenadeThrow();
-    this.game.send("grenade", { origin, dir, cooked, power: drop ? 0 : power } satisfies GrenadeMsg);
-    if (!drop) audio.grenadeThrow();
+    const { origin, dir, power, vel } = this.grenadeThrow();
+    this.game.send("grenade", { origin, dir, power: drop ? 0 : power } satisfies GrenadeMsg);
+    if (drop) return;
+    audio.grenadeThrow();
+    this.game.grenadeThrown(origin, vel, fuse / 1000);
   }
 
   /** Where a throw leaves the hand, which way and how hard: shared by the throw and its aiming arc. */
   grenadeThrow() {
+    const dir = aimDir(this.yaw, this.pitch + 0.12), power = this.lob ? GRENADE.lobPower : 1;
     return {
       origin: this.handGrenade ?? [this.eye.x, this.eye.y - 0.1, this.eye.z] as V3,
-      dir: aimDir(this.yaw, this.pitch + 0.12),
-      power: this.lob ? GRENADE.lobPower : 1,
+      dir, power,
+      vel: grenadeVelocity(dir, power, [this.ms.vx, this.ms.vy, this.ms.vz], !this.ms.grounded),
     };
   }
 

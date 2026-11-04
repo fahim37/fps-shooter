@@ -7,13 +7,13 @@ import {
   CROUCH_EYE_HEIGHT, SPRINT_SPEED, ROOM_SIZES, SCORE_LIMITS, type GameMode,
 } from "../game/shared/constants";
 import { WEAPONS, PRIMARIES, GRENADE, damageAt, fireIntervalMs, type WeaponId } from "../game/shared/weapons";
-import { GRENADE_STEP_HZ, createGrenadeBody, grenadeVelocity } from "../game/shared/grenade";
+import { GRENADE_STEP_HZ, blastDistance, createGrenadeBody, grenadeVelocity, impactSpeed } from "../game/shared/grenade";
 import { PoseHistory } from "../game/shared/lagcomp";
 import { rayVsPose, type HitPart, type Pose } from "../game/shared/hitboxes";
 import { clampLean, leanOffset } from "../game/shared/lean";
 import { raycastWorld, lineOfSight, type World } from "../game/shared/physics";
 import {
-  F_CROUCH, type JoinOptions, type PoseMsg, type FireMsg, type GrenadeMsg, type LoadoutMsg, type ShotEvent,
+  F_CROUCH, F_GROUNDED, type JoinOptions, type PoseMsg, type FireMsg, type GrenadeMsg, type GrenadeHitEvent, type LoadoutMsg, type ShotEvent,
   type HitConfirm, type DamagedEvent, type KillEvent, type SpawnEvent, type RoomMeta, type AmmoEvent, type LoadoutEvent,
 } from "../game/shared/messages";
 import { createRoomWorld, RAPIER } from "./world";
@@ -60,6 +60,10 @@ export interface ServerPlayer {
 }
 
 interface LiveGrenade {
+  /** Velocity at the last tick, to tell when it strikes something. */
+  vel: V3;
+  /** No impact sound before this: a settling grenade would rattle every tick. */
+  clinkAt: number;
   id: string;
   owner: string;
   body: RAPIER_NS.RigidBody;
@@ -73,6 +77,9 @@ function makeCode() {
   return s;
 }
 
+/** Slowest impact (m/s) worth a sound, and the least time between two from one grenade. */
+const CLINK_MIN_SPEED = 1.5;
+const CLINK_GAP_MS = 90;
 const now = () => Date.now();
 /** Longest a reported pose is carried forward on its velocity while the next one is late. */
 const POSE_CARRY_MS = 50;
@@ -834,7 +841,9 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     if (Math.hypot(m.origin[0] - eye[0], m.origin[1] - eye[1], m.origin[2] - eye[2]) > 2) return;
     p.st.protectedUntil = 0;
     const power = finite(m.power) ? clamp(m.power!, 0, 1) : 1;
-    this.spawnGrenade(p, m.origin, grenadeVelocity(m.dir, power, p.vel), finite(m.cooked) ? m.cooked : 0);
+    // The fuse is timed here, from the pin coming out: a client can't claim its own cook time.
+    const cooked = p.cookingSince ? now() - p.cookingSince : 0;
+    this.spawnGrenade(p, m.origin, grenadeVelocity(m.dir, power, p.vel, !(p.st.flags & F_GROUNDED)), cooked);
   }
 
   /** Puts `p`'s grenade in the world at `origin`, its fuse already `cooked` ms burnt. */
@@ -844,7 +853,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     const body = createGrenadeBody(RAPIER, this.world, origin, vel);
     const id = `g${++this.grenadeSeq}`;
     // A grenade cooked to the end goes off in the hand, a moment after it is dropped.
-    this.grenades.set(id, { id, owner: p.id, body, explodeAt: now() + GRENADE.fuseMs - clamp(cooked, 0, GRENADE.fuseMs - 50) });
+    this.grenades.set(id, { id, owner: p.id, body, explodeAt: now() + GRENADE.fuseMs - clamp(cooked, 0, GRENADE.fuseMs - 50), vel, clinkAt: 0 });
     const gs = new GrenadeState();
     gs.owner = p.id;
     gs.x = origin[0]; gs.y = origin[1]; gs.z = origin[2];
@@ -859,7 +868,14 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       const pos = g.body.translation();
       const gs = this.state.grenades.get(g.id);
       if (gs) { gs.x = pos.x; gs.y = pos.y; gs.z = pos.z; }
-      if (t >= g.explodeAt) this.explode(g, [pos.x, pos.y, pos.z]);
+      if (t >= g.explodeAt) { this.explode(g, [pos.x, pos.y, pos.z]); continue; }
+      const v = g.body.linvel(), vel: V3 = [v.x, v.y, v.z];
+      const speed = impactSpeed(g.vel, vel, TICK_MS / 1000);
+      g.vel = vel;
+      if (speed >= CLINK_MIN_SPEED && t >= g.clinkAt) {
+        g.clinkAt = t + CLINK_GAP_MS;
+        this.broadcast("grenade:hit", { x: pos.x, y: pos.y, z: pos.z, speed } satisfies GrenadeHitEvent);
+      }
     }
   }
 
@@ -873,10 +889,10 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     for (const p of this.players.values()) {
       if (!p.st.alive) continue;
       if (owner && p !== owner && !this.canDamage(owner, p)) continue;
-      const chest: V3 = [p.st.x, p.st.y + 1.1, p.st.z];
-      const d = Math.hypot(chest[0] - at[0], chest[1] - at[1], chest[2] - at[2]);
-      if (d > GRENADE.radius) continue;
-      if (!lineOfSight(RAPIER, this.world, lift, chest) && !lineOfSight(RAPIER, this.world, lift, [p.st.x, p.st.y + 0.3, p.st.z])) continue;
+      // Whatever part shows over cover catches it, at that part's distance.
+      const body: V3[] = [this.eyePos(p), [p.st.x, p.st.y + 1.1, p.st.z], [p.st.x, p.st.y + 0.3, p.st.z]];
+      const d = blastDistance(at, body, (point) => lineOfSight(RAPIER, this.world, lift, point));
+      if (d === null) continue;
       const k = 1 - d / GRENADE.radius;
       let dmg = GRENADE.damage * (GRENADE.edgeMult + (1 - GRENADE.edgeMult) * k ** GRENADE.falloffPower);
       if (p === owner) dmg *= 0.5;

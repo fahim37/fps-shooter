@@ -4,3 +4,8 @@
 .tip { fill: none; stroke: #ff6a5c; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
 @keyframes hit { from { stroke: #fff0ec; stroke-width: 14; } }
 @media (prefers-reduced-motion: reduce) { .arc { animation: none; } }
+.grenade { position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; }
+.grenadeIcon { position: absolute; left: -17px; top: calc(-17px - min(104px, 22vmin)); width: 34px; height: 34px; padding: 5px; border-radius: 50%; background: #1a0d0ad0; fill: none; stroke: #ff8a6a; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; box-shadow: 0 0 0 2px #ff6a4a; animation: grenadeNear .5s steps(2) infinite; }
+.grenadeArrow { position: absolute; left: -7px; top: calc(-32px - min(104px, 22vmin)); border: 7px solid transparent; border-top: 0; border-bottom: 9px solid #ff6a4a; }
+@keyframes grenadeNear { 50% { box-shadow: 0 0 0 2px #ffd2c4; } }
+@media (prefers-reduced-motion: reduce) { .grenadeIcon { animation: none; } }

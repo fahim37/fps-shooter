@@ -31,7 +31,7 @@ import { EmoteHint, EmoteMenu } from "./EmoteMenu";
 import { Minimap } from "./Minimap";
 import { HealthBar } from "./HealthBar";
 import { SquadPanel } from "./SquadPanel";
-import { DamageIndicator } from "./DamageIndicator";
+import { DamageIndicator, GrenadeWarning } from "./DamageIndicator";
 import { MatchStats } from "./MatchStats";
 import { HowToPlay } from "./HowToPlay";
 import { VoiceChat, type VoiceSession } from "./VoiceChat";
@@ -127,6 +127,7 @@ function MatchHud({ game, map, onLeave }: { game: Game | null; map: MapId; onLea
         {h.hitmarker.confirmed && !h.hitmarker.kill && now - h.hitmarker.at < 650 && <div className="hit-confirm">{h.hitmarker.damage} DAMAGE{h.hitmarker.head && " · HEADSHOT"}</div>}
         {h.hurtAt > 0 && now - h.hurtAt < 550 && <div className="hurt-vignette" />}
         <DamageIndicator now={now} />
+        <GrenadeWarning angle={h.grenadeThreat} />
         {h.protectedUntil > now + h.serverOffset && <div className="protected">SPAWN PROTECTION · {Math.ceil((h.protectedUntil - now - h.serverOffset) / 1000)}<small>FIRING OR THROWING ENDS IT</small></div>}
         {h.grenadeAim?.fuse != null && <svg className="fuse-ring" viewBox="0 0 60 60" aria-hidden="true" data-urgent={h.grenadeAim.fuse < 1000 || undefined}>
           <circle cx="30" cy="30" r="26" pathLength="100" className="fuse-track" />

@@ -1,5 +1,5 @@
 import type RAPIER_NS from "@dimforge/rapier3d-compat";
-import { GRAVITY } from "./constants";
+import { GRAVITY, SPRINT_SPEED } from "./constants";
 import { GRENADE } from "./weapons";
 import { GROUP_GRENADE, type Rapier, type World } from "./physics";
 
@@ -7,23 +7,47 @@ type Vec3 = [number, number, number];
 
 /** The server's grenade body. The map's colliders keep Rapier's defaults (friction 0.5, no bounce). */
 export const GRENADE_BODY = { radius: 0.07, restitution: 0.38, friction: 0.7, angularDamping: 1.5, density: 3 };
-/** Share of the thrower's horizontal speed, and of a jump's rise, carried into a throw. */
-const CARRY = 0.9;
-const CARRY_UP = 0.6;
+/** Share of the thrower's speed along the aim added to a full throw, and what being off the ground adds (m/s). */
+const RUN_CARRY = 0.25;
+const AIR_BONUS = 1.2;
+/** Share of the thrower's motion a dropped grenade keeps. */
+const DROP_CARRY = 0.9;
 /** Physics steps per second for grenades (Rapier's default step). */
 export const GRENADE_STEP_HZ = 60;
 
 /**
  * Launch velocity of a grenade thrown along `dir` at `power` (lob..1) by a player moving at `vel`.
- * Like PUBG, the thrower's movement carries into the throw: sprinting or jumping throws farther,
- * strafing bends the path sideways. Power 0 drops it: a grenade cooked too long goes off in the
- * thrower's hand.
+ * The grenade always goes where the mouse points: movement only changes how hard it's thrown.
+ * Running toward the aim and being off the ground each add a little range; strafing or backing
+ * away adds nothing and never bends the path. Speeds are capped, since clients report their own.
+ * Power 0 drops it, with the thrower's motion: a grenade cooked too long goes off in the hand.
  */
-export function grenadeVelocity(dir: Vec3, power: number, vel: Vec3): Vec3 {
+export function grenadeVelocity(dir: Vec3, power: number, vel: Vec3, airborne = false): Vec3 {
+  if (power <= 0) {
+    const keep = DROP_CARRY * Math.min(1, SPRINT_SPEED / (Math.hypot(vel[0], vel[2]) || 1));
+    return [vel[0] * keep, 0, vel[2] * keep];
+  }
   const len = Math.hypot(dir[0], dir[1], dir[2]) || 1;
-  const thrown = power > 0;
-  const speed = thrown ? GRENADE.throwSpeed * Math.min(1, Math.max(GRENADE.lobPower, power)) : 0;
-  return [dir[0] / len * speed + vel[0] * CARRY, dir[1] / len * speed + (thrown ? 2 : 0) + Math.max(0, vel[1]) * CARRY_UP, dir[2] / len * speed + vel[2] * CARRY];
+  const flat = Math.hypot(dir[0], dir[2]) || 1;
+  const strength = Math.min(1, Math.max(GRENADE.lobPower, power));
+  const forward = Math.min(SPRINT_SPEED, Math.max(0, (vel[0] * dir[0] + vel[2] * dir[2]) / flat));
+  const speed = (GRENADE.throwSpeed + forward * RUN_CARRY + (airborne ? AIR_BONUS : 0)) * strength;
+  return [dir[0] / len * speed, dir[1] / len * speed + 2, dir[2] / len * speed];
+}
+
+/** How far from the blast at `at` the nearest of `points` it can reach is, or null if it reaches none. */
+export function blastDistance(at: Vec3, points: Vec3[], reaches: (point: Vec3) => boolean): number | null {
+  let nearest: number | null = null;
+  for (const p of points) {
+    const d = Math.hypot(p[0] - at[0], p[1] - at[1], p[2] - at[2]);
+    if (d <= GRENADE.radius && (nearest === null || d < nearest) && reaches(p)) nearest = d;
+  }
+  return nearest;
+}
+
+/** Speed (m/s) a body lost to something other than gravity over `seconds`: how hard it hit. */
+export function impactSpeed(before: Vec3, after: Vec3, seconds: number) {
+  return Math.hypot(after[0] - before[0], after[1] - before[1] + GRAVITY * seconds, after[2] - before[2]);
 }
 
 /** The grenade as the server simulates it: a small, heavy ball that bounces a little and rolls. */

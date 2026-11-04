@@ -6,15 +6,16 @@ import { loadWeapons } from "../assets/weapons";
 import { CharacterRig, type RigState } from "../player/CharacterRig";
 import { gripPose } from "../player/grip";
 import { getMap } from "../../shared/map/maps";
-import { raycastWorld, type Rapier, type World } from "../../shared/physics";
+import { lineOfSight, raycastWorld, type Rapier, type World } from "../../shared/physics";
 import { INTERP_DELAY_MS, RESPAWN_MS, type GameMode } from "../../shared/constants";
 import { GRENADE, WEAPONS, type WeaponId } from "../../shared/weapons";
-import { GRENADE_BODY, grenadeFlight, grenadeVelocity } from "../../shared/grenade";
+import { GRENADE_BODY, grenadeFlight } from "../../shared/grenade";
 import { spreadRadius } from "../../shared/aim";
 import type { MatchState } from "../../shared/schema";
-import type { AmmoEvent, DamagedEvent, ExplosionEvent, HitConfirm, KillEvent, LoadoutEvent, Pong, ShotEvent, SpawnEvent } from "../../shared/messages";
+import type { AmmoEvent, DamagedEvent, ExplosionEvent, GrenadeHitEvent, HitConfirm, KillEvent, LoadoutEvent, Pong, ShotEvent, SpawnEvent } from "../../shared/messages";
 import { loadClientWorld } from "./physics";
-import { LocalPlayer } from "./local";
+import { LocalPlayer, THROW_RELEASE } from "./local";
+import { ThrownGrenades, createGrenadeParts } from "./thrownGrenades";
 import { RemotePlayer } from "./remotes";
 import { Input } from "./input";
 import { Effects } from "./effects";
@@ -24,7 +25,7 @@ import { PRESETS, useSettings } from "../settings";
 import { enemyAlongRay } from "./targeting";
 import { useLoadout } from "../loadout";
 import { DeathCamera } from "./deathcam";
-import { liveView, MARK_MS, THREAT_MS, addMark, addThreat, mapRelation, type MapMark, type MapPlayer } from "./minimap";
+import { bearingYaw, liveView, MARK_MS, THREAT_MS, addMark, addThreat, mapRelation, relativeBearing, type MapMark, type MapPlayer } from "./minimap";
 import { buildSquad } from "./squad";
 import { updateSightMotion } from "./sightMotion";
 
@@ -67,8 +68,8 @@ const _toHand = new THREE.Vector3();
 /** The grenade's center in the right hand bone's frame: in the palm, under the curled fingers. */
 const GRENADE_IN_HAND = new THREE.Vector3(-0.042, 0.075, -0.004);
 
-/** Share of a throw's animation at which the grenade leaves the hand. */
-const THROW_RELEASE = 0.14;
+/** How far off (m) a blast still shakes the camera. */
+const SHAKE_REACH = 28;
 /**
  * First-person right-hand keyframes through a throw: [progress, x, y, z (view space, meters),
  * pitch, roll, yaw (radians, from how the hand holds the gun)]. Cocked at the shoulder, whipped
@@ -131,9 +132,7 @@ export class Game {
   private killSeq = 0;
   private killer = "";
   private deathCamera = new DeathCamera();
-  private grenadeMeshes = new Map<string, THREE.Mesh>();
-  private grenadeGeo = new THREE.IcosahedronGeometry(0.09, 1);
-  private grenadeMat = new THREE.MeshStandardMaterial({ color: "#4e593c", roughness: 0.65 });
+  private thrown: ThrownGrenades;
   /** The aiming arc shown while a grenade is held: dots to the landing spot and its blast radius. */
   private arc = createGrenadeArc();
   private handGrenade = createHandGrenade();
@@ -157,6 +156,7 @@ export class Game {
     hud().set({ mobilePortrait: this.input.touch && window.innerHeight > window.innerWidth });
     this.input.attach();
     useLoadout.getState().hydrate();
+    this.thrown = new ThrownGrenades(scene);
     this.scene.add(this.effects.group, this.arc.group, this.handGrenade.group);
     this.bindRoom();
   }
@@ -241,8 +241,9 @@ export class Game {
       room.onMessage<ExplosionEvent>("explosion", (ev) => {
         const p = new THREE.Vector3(ev.x, ev.y, ev.z);
         this.effects.explosion(p); audio.explosion(p);
-        this.shake = Math.max(this.shake, 1 - this.camera.position.distanceTo(p) / (GRENADE.radius * 2.8));
+        this.shake = Math.max(this.shake, 1 - this.camera.position.distanceTo(p) / SHAKE_REACH);
       }),
+      room.onMessage<GrenadeHitEvent>("grenade:hit", (ev) => audio.grenadeHit(new THREE.Vector3(ev.x, ev.y, ev.z), ev.speed)),
       room.onMessage<{ text: string; sub?: string }>("announce", (ev) => hud().set({ announce: { ...ev, at: performance.now() } })),
     );
   }
@@ -413,9 +414,8 @@ export class Game {
     group.visible = !!this.world && local.alive && !!aim;
     if (!group.visible || !this.world || !aim) return false;
     const world = this.world;
-    const { origin, dir, power } = local.grenadeThrow();
-    const path = grenadeFlight(origin, grenadeVelocity(dir, power, [local.ms.vx, local.ms.vy, local.ms.vz]), (aim.fuse ?? GRENADE.fuseMs) / 1000,
-      (from, d, distance) => raycastWorld(this.R, world, from, d, distance));
+    const { origin, vel } = local.grenadeThrow();
+    const path = grenadeFlight(origin, vel, (aim.fuse ?? GRENADE.fuseMs) / 1000, (from, d, distance) => raycastWorld(this.R, world, from, d, distance));
     const landed = path.impact >= 0 ? path.impact : path.points.length - 1;
     // Evenly spaced dots, from just past the grenade in hand.
     const place = (dots: THREE.Points, from: number, to: number, start: number, spacing: number) => {
@@ -451,6 +451,26 @@ export class Game {
     }
     (blast.material as THREE.MeshBasicMaterial).opacity = airburst ? 0.55 : 0.3;
     return airburst;
+  }
+
+  /** Your grenade just left the hand: it's in the world from this frame, before the server answers. */
+  grenadeThrown(origin: V3, vel: V3, fuseSeconds: number) {
+    const world = this.world;
+    if (!world) return;
+    const { points } = grenadeFlight(origin, vel, fuseSeconds, (from, d, distance) => raycastWorld(this.R, world, from, d, distance));
+    this.thrown.predict(points, performance.now(), this.room.sessionId);
+  }
+
+  /** Which way (degrees clockwise from the view) the closest grenade that can hurt you lies, or null. */
+  private grenadeThreat(local: LocalPlayer, now: number) {
+    const world = this.world;
+    if (!world || !local.alive) return null;
+    const players = this.room.state.players, self = this.room.sessionId, eye = local.eye.toArray() as V3;
+    const team = this.room.state.mode === "tdm" ? players.get(self)?.team : undefined;
+    const at = this.thrown.nearest(eye, GRENADE.radius, now, self,
+      (owner) => owner === self || team === undefined || players.get(owner)?.team !== team,
+      (g) => lineOfSight(this.R, world, [g[0], g[1] + 0.25, g[2]], eye));
+    return at && Math.round(relativeBearing(local.yaw, bearingYaw(at[0] - eye[0], at[2] - eye[2])) * 180 / Math.PI);
   }
 
   /**
@@ -501,7 +521,7 @@ export class Game {
     group.position.copy(GRENADE_IN_HAND).applyMatrix4(palm.matrixWorld);
     palm.getWorldQuaternion(group.quaternion);
     // Throws (and the aiming arc) leave from the grenade in hand, unless it's poking into a wall.
-    if (throwing === 0 && this.world) {
+    if (this.world) {
       _toHand.subVectors(group.position, local.eye);
       const reach = _toHand.length();
       const wall = raycastWorld(this.R, this.world, local.eye.toArray() as V3, _toHand.divideScalar(reach).toArray() as V3, reach + GRENADE_BODY.radius);
@@ -634,13 +654,7 @@ export class Game {
     if (this.fpp?.object.visible) this.fpp.update(dt, s);
     if (this.tpp?.object.visible) this.tpp.update(dt, s);
     this.placeHandGrenade(local, now);
-    this.room.state.grenades?.forEach((g, id) => {
-      let mesh = this.grenadeMeshes.get(id);
-      if (!mesh) { mesh = new THREE.Mesh(this.grenadeGeo, this.grenadeMat); this.grenadeMeshes.set(id, mesh); this.scene.add(mesh); mesh.position.set(g.x, g.y, g.z); }
-      mesh.position.lerp(new THREE.Vector3(g.x, g.y, g.z), Math.min(1, dt * 25));
-      mesh.rotation.x += dt * 5;
-    });
-    for (const [id, mesh] of this.grenadeMeshes) if (!this.room.state.grenades.has(id)) { mesh.removeFromParent(); this.grenadeMeshes.delete(id); }
+    this.thrown.update(dt, now, this.room.state.grenades, this.room.sessionId);
     this.effects.setQuality(useSettings.getState().quality);
     this.effects.setViewportHeight(viewportHeight * pixelRatio);
     this.effects.update(dt);
@@ -682,7 +696,7 @@ export class Game {
       }
       hud().set({
         alive: local.alive, weapon: local.weapon, primary: local.primary, mag: ammo.mag, reserve: ammo.reserve,
-        grenades: local.grenades, grenadeAim: this.stableAim(local.grenadeAim(now), airburst), reloading: local.reloadProgress, ads: local.ads, scoped: local.scoped,
+        grenades: local.grenades, grenadeAim: this.stableAim(local.grenadeAim(now), airburst), grenadeThreat: this.grenadeThreat(local, now), reloading: local.reloadProgress, ads: local.ads, scoped: local.scoped,
         thirdPerson: local.thirdPerson, spreadDeg: local.spread, enemyInSight,
         crosshairRadius: Math.min(120, Math.max(3, spreadRadius(local.spread, fov, viewportHeight))),
         cameraFov: fov, locked: this.input.locked, scoreboard, fps: Math.round(1 / Math.max(this.averageFrameTime, 0.001)),
@@ -703,8 +717,7 @@ export class Game {
     this.input.detach(); this.local?.dispose(); this.world?.free(); this.world = null;
     this.fpp?.dispose(); this.tpp?.dispose();
     for (const remote of this.remotes.values()) remote.dispose();
-    for (const mesh of this.grenadeMeshes.values()) mesh.removeFromParent();
-    this.grenadeGeo.dispose(); this.grenadeMat.dispose();
+    this.thrown.dispose();
     this.arc.group.removeFromParent();
     this.handGrenade.group.removeFromParent();
     for (const group of [this.arc.group, this.handGrenade.group]) group.traverse((o) => {
@@ -752,11 +765,7 @@ function createGrenadeArc() {
 /** A frag grenade for the hand: olive body, steel fuse, lever and pull ring. */
 function createHandGrenade() {
   const group = new THREE.Group();
-  const steel = new THREE.MeshStandardMaterial({ color: "#8a8d86", roughness: 0.4, metalness: 0.6 });
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.034, 14, 10), new THREE.MeshStandardMaterial({ color: "#4e593c", roughness: 0.65 }));
-  body.scale.set(1, 1.18, 1);
-  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.014, 0.022, 10), steel);
-  cap.position.y = 0.045;
+  const { body, cap, steel } = createGrenadeParts();
   const lever = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.07, 0.014), steel);
   lever.position.set(0.026, 0.022, 0);
   lever.rotation.z = -0.25;

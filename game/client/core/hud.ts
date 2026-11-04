@@ -53,6 +53,8 @@ export interface HudState {
   grenades: number;
   /** Grenade in hand: aiming its arc, and the fuse left (ms) once cooked; null when not cooked. */
   grenadeAim: { lob: boolean; fuse: number | null; airburst: boolean } | null;
+  /** A live grenade that can reach you: degrees clockwise from the view. */
+  grenadeThreat: number | null;
   reloading: number; // -1 or 0..1
   ads: number;
   spreadDeg: number;
@@ -128,6 +130,7 @@ export const useHud = create<HudState>((set, get) => ({
   reserve: 0,
   grenades: 0,
   grenadeAim: null,
+  grenadeThreat: null,
   reloading: -1,
   ads: 0,
   spreadDeg: 2,

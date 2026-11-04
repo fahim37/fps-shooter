@@ -1,8 +1,10 @@
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { createRoomWorld, initWorldData, RAPIER } from "./world";
 import { getMap } from "../game/shared/map/maps";
 import { raycastWorld, type World } from "../game/shared/physics";
-import { GRENADE_STEP_HZ, createGrenadeBody, grenadeFlight, grenadeVelocity } from "../game/shared/grenade";
+import { GRENADE_STEP_HZ, createGrenadeBody, grenadeFlight, grenadeVelocity, impactSpeed } from "../game/shared/grenade";
+import { TICK_MS } from "../game/shared/constants";
+import { MatchRoom } from "./MatchRoom";
 import { GRENADE } from "../game/shared/weapons";
 
 type V3 = [number, number, number];
@@ -37,3 +39,29 @@ it("predicts where the server's grenade goes off, closely enough to aim by", () 
   expect(errors[errors.length >> 1]).toBeLessThan(1.2);
   expect(errors[Math.floor(errors.length * 0.9)]).toBeLessThan(GRENADE.radius * 0.35);
 }, 60_000);
+
+it("reads a landing as an impact, and flight or rest as none", () => {
+  const body = createGrenadeBody(RAPIER, world, [-40, 6, 20], [0, 0, 0]);
+  const speeds: number[] = [];
+  let before: V3 = [0, 0, 0];
+  for (let tick = 0; tick < 60; tick++) {
+    for (let i = 0; i < Math.round(GRENADE_STEP_HZ * TICK_MS / 1000); i++) world.step();
+    const v = body.linvel(), after: V3 = [v.x, v.y, v.z];
+    speeds.push(impactSpeed(before, after, TICK_MS / 1000));
+    before = after;
+  }
+  world.removeRigidBody(body);
+  expect(speeds.slice(0, 5).every((speed) => speed < 1.5)).toBe(true);
+  expect(Math.max(...speeds)).toBeGreaterThan(5);
+  expect(speeds[speeds.length - 1]).toBeLessThan(1.5);
+});
+
+it("times the fuse itself, whatever cook time a client claims", () => {
+  const spawnGrenade = vi.fn();
+  const room = Object.assign(Object.create(MatchRoom.prototype), { spawnGrenade, eyePos: () => [0, 1.5, 0] }) as MatchRoom;
+  const player = { st: { alive: true, flags: 0, protectedUntil: 0 }, grenades: 2, cookingSince: Date.now() - 1500, vel: [0, 0, 0] };
+  room.throwGrenade(player as never, { origin: [0, 1.5, 0], dir: [0, 0, -1], cooked: 3900 } as never);
+  const cooked = spawnGrenade.mock.calls[0][3];
+  expect(cooked).toBeGreaterThanOrEqual(1500);
+  expect(cooked).toBeLessThan(1700);
+});

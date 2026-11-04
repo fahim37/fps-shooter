@@ -491,6 +491,13 @@ export class AudioEngine {
     voice.nodes.push(send);
   }
 
+  /** A grenade striking the map: a metal clink you can place by ear, louder the harder it hit. */
+  grenadeHit(pos: V3, speed: number) {
+    const level = Math.min(0.45, 0.14 + speed * 0.025);
+    this.click(1500 + Math.random() * 500, level, pos);
+    this.click(3100 + Math.random() * 700, level * 0.55, pos, 0.012);
+  }
+
   /** A cooked grenade's fuse ticking in hand, quicker and higher in its last second. */
   fuseTick(urgent: boolean) {
     this.click(urgent ? 3600 : 2400, urgent ? 0.22 : 0.14);

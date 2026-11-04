@@ -205,7 +205,8 @@ export class Bot {
       if (d > 8 && d < 24) {
         const la = lookAt(eye, this.lastKnown);
         const dir = aimDir(la.yaw, Math.min(0.9, la.pitch + 0.25 + d * 0.012));
-        this.room.throwGrenade(this.p, { origin: eye, dir, cooked: 600 });
+        this.p.cookingSince = t - 600;
+        this.room.throwGrenade(this.p, { origin: eye, dir });
         this.nextGrenadeAt = t + 12000 + Math.random() * 12000;
       }
     }
