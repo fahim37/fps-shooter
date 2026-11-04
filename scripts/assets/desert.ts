@@ -9,7 +9,7 @@ import {
   ROOT, RAW, PUBLIC_MODELS, GENERATED, readModel, writeGLB, buildCollision, writeCollisionBin, pieceBounds, writeJSON,
   compressTextures, multiply, type CollisionMesh, type PieceInfo,
 } from "./common";
-import { ROUTES, cutDoors, stairMesh, stairRamp, stairWalls, type FlatGround } from "./desert-routes";
+import { ROUTES, blockMesh, cutDoors, insideFaces, stairMesh, stairRamp, stairWalls, type FlatGround } from "./desert-routes";
 
 /**
  * "Desert City": a finished Unity level (a walled desert town built for 5v5) exported through
@@ -78,10 +78,15 @@ const RENAME: Record<string, string> = {
 /**
  * Collision simplification, in meters. Flat walls and floors simplify exactly at any error, so
  * this only rounds off ornament (arches, cornices, railings); stairs get ramps of their own.
+ * It has to stay under the thickness of the thinnest wall: roller shutters are boxes a few
+ * centimeters deep, and a larger error flattens them away.
  */
-const COLLISION_ERROR = 0.12;
+const COLLISION_ERROR = 0.02;
 /** Materials whose primitives never collide. The fading floor sheets do: they pave stairs and ramps. */
 const NO_COLLIDE = /^Desert_Decal$/;
+
+/** The piece holding the inner faces of walkable shells. */
+const INSIDE = "Desert_Inside";
 
 type Tier = "solid" | "detail" | "backdrop";
 type V3 = [number, number, number];
@@ -139,7 +144,12 @@ export async function importDesert() {
   ROUTES.stairs.forEach((s, i) => {
     const chunk = chunkAt((s.x[0] + s.x[1]) / 2, (s.z[0] + s.z[1]) / 2);
     placed.push({ node: stairMesh(doc, s, floor, `Route_Stair_${i}`), matrix: IDENTITY, tier: "solid", chunk });
-    flights.push({ chunk, ...stairRamp(s, RAMP_GRID) });
+    flights.push({ chunk, solid: true, ...stairRamp(s, RAMP_GRID) });
+  });
+
+  ROUTES.blocks.forEach((k, i) => {
+    const chunk = chunkAt((k.min[0] + k.max[0]) / 2, (k.min[2] + k.max[2]) / 2);
+    placed.push({ node: blockMesh(doc, k, floor, `Route_Block_${i}`), matrix: IDENTITY, tier: "solid", chunk });
   });
 
   // Rebuild the scene as flat pieces at the origin: Desert_<chunk>, Detail_Desert_<chunk> and
@@ -169,6 +179,10 @@ export async function importDesert() {
   const doors = cutDoors(doc, [...pieces.values()].filter((p) => p.getName() !== "Desert_Backdrop"), ROUTES.doors, floor,
     (d) => pieceFor("solid", chunkAt((d.min[0] + d.max[0]) / 2, (d.min[2] + d.max[2]) / 2)));
 
+  // Walkable shells get their inner faces; they draw but never collide (the walls they back do).
+  const inside = insideFaces(doc, [...pieces.values()].filter((p) => /^Desert_-?[0-9]/.test(p.getName())), ROUTES.inside, INSIDE);
+  if (inside) scene.addChild(inside.node);
+
   await compressTextures(doc, 1024, 84);
   const bytes = await writeGLB(doc, path.join(PUBLIC_MODELS, "desert.glb"));
 
@@ -178,10 +192,10 @@ export async function importDesert() {
   const info: Record<string, PieceInfo> = {};
   for (const piece of scene.listChildren()) {
     const name = piece.getName();
-    const solid = !name.startsWith("Detail_") && name !== "Desert_Backdrop";
+    const solid = !name.startsWith("Detail_") && name !== "Desert_Backdrop" && name !== INSIDE;
     if (!solid) { info[name] = pieceBounds(piece); continue; }
     const walls = ROUTES.stairs.filter((st) => `Desert_${chunkAt((st.x[0] + st.x[1]) / 2, (st.z[0] + st.z[1]) / 2)}` === name).map(stairWalls);
-    collision.set(name, merge([withRamps(buildCollision(piece, NO_COLLIDE, COLLISION_ERROR), flights.filter((f) => `Desert_${f.chunk}` === name)), ...walls]));
+    collision.set(name, merge([withRamps(buildCollision(piece, NO_COLLIDE, COLLISION_ERROR, { keepShells: true }), flights.filter((f) => `Desert_${f.chunk}` === name)), ...walls]));
     info[name] = pieceBounds(piece);
   }
   // The town's outer edge had terrain hills between its buildings and rocks; without them the
@@ -201,7 +215,7 @@ export async function importDesert() {
   for (const r of ranges.values()) tris += r[3] / 3;
   let drawn = 0, prims = 0;
   for (const mesh of root.listMeshes()) for (const prim of mesh.listPrimitives()) { prims++; drawn += (prim.getIndices()?.getCount() ?? 0) / 3; }
-  console.log(`[desert] ${(bytes / 1e6).toFixed(2)} MB glb, ${pieces.size} pieces, ${flights.length} stair ramps, ${ROUTES.doors.length} doors (${doors.cut} tris cut, ${doors.caps} cap tris), ${prims} primitives, ${drawn} tris drawn, ${tris} collision tris, ${markers.clips.length} + ${seal.length} clip boxes, spawns ${layout.spawns.blue.length}/${layout.spawns.red.length}/${layout.spawns.ffa.length}, ${layout.footprints.length} footprints`);
+  console.log(`[desert] ${(bytes / 1e6).toFixed(2)} MB glb, ${pieces.size} pieces, ${flights.length} stair ramps, ${ROUTES.doors.length} doors (${doors.cut} tris cut, ${doors.caps} cap tris), ${inside?.tris ?? 0} inside tris, ${prims} primitives, ${drawn} tris drawn, ${tris} collision tris, ${markers.clips.length} + ${seal.length} clip boxes, spawns ${layout.spawns.blue.length}/${layout.spawns.red.length}/${layout.spawns.ffa.length}, ${layout.footprints.length} footprints`);
 }
 
 /** Merges the source's duplicate materials and sets them up for the game's renderer. */
@@ -323,7 +337,11 @@ function boxBounds(boxes: Box[]): PieceInfo {
 type Markers = ReturnType<typeof readMarkers>;
 
 /** A staircase's walking surface as a ramp: heights on a grid (NaN off the flight). */
-interface Flight { chunk: string; x0: number; z0: number; nx: number; nz: number; ramp: Float32Array }
+interface Flight {
+  chunk: string; x0: number; z0: number; nx: number; nz: number; ramp: Float32Array;
+  /** Our own solid stairs: everything under the ramp goes, their tall sides included (`stairWalls` replaces them). */
+  solid?: boolean;
+}
 const RAMP_GRID = 0.2;
 
 /**
@@ -389,7 +407,43 @@ function stairs(placed: { node: Node; matrix: number[]; tier: Tier; chunk: strin
       }
       return t / n;
     });
-    out.push({ chunk, x0, z0, nx, nz, ramp });
+    // Structures are whole buildings: only the stepped cells are the flight. Left in, its flat
+    // roofs would count as treads, and everything under them (walls, floors) as its steps.
+    const stepped = steppedCells(top, nx, nz);
+    out.push({ chunk, x0, z0, nx, nz, ramp: ramp.map((y, c) => (stepped[c] ? y : NaN)) });
+  }
+  return out;
+}
+
+/**
+ * Cells on a staircase: joined by step-sized rises into a patch of four or more levels, and within
+ * a step's reach of a change in height (so a flight keeps its landings' edges, not the floor beyond).
+ */
+function steppedCells(top: Float32Array, nx: number, nz: number) {
+  const REACH = 3;
+  const out = new Uint8Array(nx * nz), seen = new Uint8Array(nx * nz);
+  for (let start = 0; start < top.length; start++) {
+    if (seen[start] || Number.isNaN(top[start])) continue;
+    const patch = [start];
+    seen[start] = 1;
+    for (let q = 0; q < patch.length; q++) {
+      const c = patch[q], i = c % nx, k = (c - i) / nx;
+      for (const [a, b] of [[i - 1, k], [i + 1, k], [i, k - 1], [i, k + 1]]) {
+        if (a < 0 || b < 0 || a >= nx || b >= nz) continue;
+        const n = b * nx + a;
+        if (!seen[n] && Math.abs(top[n] - top[c]) <= 0.45) { seen[n] = 1; patch.push(n); }
+      }
+    }
+    if (new Set(patch.map((c) => Math.round(top[c] * 20))).size < 4) continue;
+    for (const c of patch) {
+      const i = c % nx, k = (c - i) / nx;
+      let lo = Infinity, hi = -Infinity;
+      for (let b = Math.max(0, k - REACH); b <= Math.min(nz - 1, k + REACH); b++) for (let a = Math.max(0, i - REACH); a <= Math.min(nx - 1, i + REACH); a++) {
+        const y = top[b * nx + a];
+        if (!Number.isNaN(y)) { lo = Math.min(lo, y); hi = Math.max(hi, y); }
+      }
+      if (hi - lo >= 0.1 && hi - lo <= 1.6) out[c] = 1;
+    }
   }
   return out;
 }
@@ -398,15 +452,21 @@ function stairs(placed: { node: Node; matrix: number[]; tier: Tier; chunk: strin
 function withRamps(mesh: CollisionMesh | null, flights: Flight[]): CollisionMesh | null {
   if (!mesh || !flights.length) return mesh;
   const { positions: p, indices } = mesh;
-  // Under a flight's ramp (with room for a riser's top edge): part of the steps.
-  const under = (v: number) => flights.some((f) => {
+  // Under a flight's ramp (with room for a riser's top edge, read on the ramp's 20 cm grid): part of the steps.
+  const under = (v: number, among = flights) => among.some((f) => {
     const i = Math.round((p[v * 3] - f.x0) / RAMP_GRID), k = Math.round((p[v * 3 + 2] - f.z0) / RAMP_GRID);
     if (i < 0 || k < 0 || i >= f.nx || k >= f.nz) return false;
     const r = f.ramp[k * f.nx + i];
-    return !Number.isNaN(r) && p[v * 3 + 1] <= r + 0.2;
+    return !Number.isNaN(r) && p[v * 3 + 1] <= r + 0.3;
   });
+  // A tread or riser is step-sized; anything taller under a ramp is a wall beside or below it.
+  const stepSized = (a: number, b: number, c: number) => Math.max(p[a * 3 + 1], p[b * 3 + 1], p[c * 3 + 1]) - Math.min(p[a * 3 + 1], p[b * 3 + 1], p[c * 3 + 1]) <= 0.6;
   const kept: number[] = [];
-  for (let t = 0; t < indices.length; t += 3) if (!(under(indices[t]) && under(indices[t + 1]) && under(indices[t + 2]))) kept.push(indices[t], indices[t + 1], indices[t + 2]);
+  for (let t = 0; t < indices.length; t += 3) {
+    const [a, b, c] = [indices[t], indices[t + 1], indices[t + 2]];
+    const ours = flights.filter((f) => f.solid);
+    if (!((stepSized(a, b, c) && under(a) && under(b) && under(c)) || (under(a, ours) && under(b, ours) && under(c, ours)))) kept.push(a, b, c);
+  }
   const pos = Array.from(p);
   for (const f of flights) {
     const grid = new Float32Array(f.nx * f.nz * 3), quads: number[] = [];

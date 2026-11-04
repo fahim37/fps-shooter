@@ -117,11 +117,13 @@ export interface CollisionMesh {
 /**
  * Gathers the triangles under `piece` (in the piece's local space) and simplifies them
  * to a collision mesh. Primitives whose material matches `skipMaterial` are left out.
+ * `keepShells` is for levels built from open, one-sided wall panels: permissive simplification
+ * collapses their open edges and takes walls and doors out of the collision.
  */
-export function buildCollision(piece: Node, skipMaterial: RegExp | null, maxError: number): CollisionMesh | null {
+export function buildCollision(piece: Node, skipMaterial: RegExp | null, maxError: number, { keepShells = false } = {}): CollisionMesh | null {
   const tris = pieceTriangles(piece, skipMaterial);
   if (!tris) return null;
-  return simplifyCollision(tris.positions, tris.indices, maxError);
+  return simplifyCollision(tris.positions, tris.indices, maxError, keepShells);
 }
 
 /**
@@ -163,11 +165,11 @@ export function buildBoxProxyCollision(piece: Node, skipMaterial: RegExp | null,
   };
 }
 
-function simplifyCollision(positions: Float32Array, indices: Uint32Array, maxError: number): CollisionMesh {
+function simplifyCollision(positions: Float32Array, indices: Uint32Array, maxError: number, keepShells = false): CollisionMesh {
   // Weld coincident vertices first so the simplifier sees connected surfaces.
   const welded = weldPositions(positions, indices);
   const [simplified] = MeshoptSimplifier.simplify(
-    welded.indices, welded.positions, 3, 0, maxError, ["ErrorAbsolute", "Permissive"],
+    welded.indices, welded.positions, 3, 0, maxError, keepShells ? ["ErrorAbsolute", "LockBorder"] : ["ErrorAbsolute", "Permissive"],
   );
   return compact(welded.positions, simplified.length >= 3 ? simplified : welded.indices);
 }

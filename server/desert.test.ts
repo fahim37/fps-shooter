@@ -27,6 +27,18 @@ describe("desert city", () => {
     for (const b of blue) for (const r of red) expect(lineOfSight(RAPIER, world, eye(b), eye(r)), `${b.x},${b.z} sees ${r.x},${r.z}`).toBe(false);
   });
 
+  it.each([
+    // Walls that importing once lost: stairs' ramps took everything under a roof with them.
+    ["a hall's outer wall", [-8, 5, -26], [1, 0, 0]],
+    // A thin metal panel that a coarse simplification flattened away.
+    ["a thin door panel", [62.3, 3.5, 32.5], [-1, 0, 0]],
+    // The hall's retaining wall, where the terrain used to heap a walkable sand bank.
+    ["the courtyard's retaining wall", [-16.5, 1.6, 16], [1, 0, 0]],
+  ] as const)("keeps %s solid", (_, [x, y, z], [dx, dy, dz]) => {
+    const hit = world.castRay(new RAPIER.Ray({ x, y, z }, { x: dx, y: dy, z: dz }), 7, true, undefined, QUERY_MOVE);
+    expect(hit).not.toBeNull();
+  });
+
   it("stops players at the source's player clips but lets bullets through them", () => {
     // The clip lid over the town (8.4 to 13.4 m) keeps players off the roofs.
     const { x, z } = map.spawns.find((s) => s.team === 1)!;

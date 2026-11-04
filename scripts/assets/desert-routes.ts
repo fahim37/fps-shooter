@@ -37,7 +37,19 @@ export interface FlatGround {
   y: number;
 }
 
-export const ROUTES: { stairs: RouteStair[]; doors: RouteDoor[]; flat: FlatGround[] } = {
+/** A box of the town that players walk through but the source only ever showed from outside. */
+export interface InsideZone {
+  min: V3;
+  max: V3;
+}
+
+/** A solid concrete mass, for ground the rebuilt terrain could only guess at. */
+export interface RouteBlock {
+  min: V3;
+  max: V3;
+}
+
+export const ROUTES: { stairs: RouteStair[]; doors: RouteDoor[]; flat: FlatGround[]; inside: InsideZone[]; blocks: RouteBlock[] } = {
   stairs: [
     // South: from the courtyard behind Blue's arcade up beside the hall, whose upper story
     // overhangs the courtyard at the hall's floor height; a passage through it leads in.
@@ -57,6 +69,23 @@ export const ROUTES: { stairs: RouteStair[]; doors: RouteDoor[]; flat: FlatGroun
   ],
   flat: [
     { x: [-18.2, -14.8], z: [10.3, 23.3], y: 0 },
+    // In front of the hall's retaining wall, and under it (where the terrain heaped a sand bank).
+    { x: [-15, -8], z: [10, 12.5], y: 0 },
+    { x: [-14.5, -9], z: [13, 23.5], y: 2 },
+  ],
+  // The hall's retaining wall along the courtyard, its top just under the hall's floor.
+  blocks: [
+    { min: [-14.8, -0.1, 12.5], max: [-8.8, 3.72, 24] },
+  ],
+  // The town's walls are one-sided shells. These stretches were closed off in the source, and the
+  // flank routes and the opened gate north of Red's spawn lead players in behind them.
+  inside: [
+    // Behind Blue's arcade: the courtyard, the hall and the buildings around them.
+    { min: [-41, -0.5, 8], max: [-4, 10, 36.5] },
+    // The passage into the hall, as far as mid's south side.
+    { min: [-4.5, 1.5, 23.5], max: [1, 3, 26.5] },
+    // North of Red's spawn, through the opened gate.
+    { min: [13, 3, -36.5], max: [44.5, 13.5, -10.5] },
   ],
 };
 
@@ -129,6 +158,28 @@ function stairFrame(s: RouteStair) {
   return { length: a1 - a0, w0, w1, at, dir };
 }
 
+/** A block as concrete faces, tiled so each stays inside the atlas's concrete tile. */
+export function blockMesh(doc: Document, k: RouteBlock, material: Material, name: string): Node {
+  const b = new Builder();
+  const TILE = 3.5;
+  const spans = (lo: number, hi: number) => {
+    const n = Math.ceil((hi - lo) / TILE), out: [number, number][] = [];
+    for (let i = 0; i < n; i++) out.push([lo + ((hi - lo) * i) / n, lo + ((hi - lo) * (i + 1)) / n]);
+    return out;
+  };
+  const [x0, y0, z0] = k.min, [x1, y1, z1] = k.max;
+  for (const [a, c] of spans(x0, x1)) for (const [p, q] of spans(z0, z1)) b.quad([[a, y1, p], [c, y1, p], [c, y1, q], [a, y1, q]], [0, 1, 0], 1);
+  for (const [p, q] of spans(z0, z1)) for (const [u, v] of spans(y0, y1)) {
+    b.quad([[x0, u, p], [x0, u, q], [x0, v, q], [x0, v, p]], [-1, 0, 0], 0.86);
+    b.quad([[x1, u, p], [x1, u, q], [x1, v, q], [x1, v, p]], [1, 0, 0], 0.86);
+  }
+  for (const [a, c] of spans(x0, x1)) for (const [u, v] of spans(y0, y1)) {
+    b.quad([[a, u, z0], [c, u, z0], [c, v, z0], [a, v, z0]], [0, 0, -1], 0.86);
+    b.quad([[a, u, z1], [c, u, z1], [c, v, z1], [a, v, z1]], [0, 0, 1], 0.86);
+  }
+  return doc.createNode(name).setMesh(doc.createMesh(name).addPrimitive(b.primitive(doc, material)));
+}
+
 /** A staircase as a solid mass: treads, risers, stepped sides and the landing. */
 export function stairMesh(doc: Document, s: RouteStair, material: Material, name: string): Node {
   const { length, w0, w1, at, dir } = stairFrame(s);
@@ -194,6 +245,57 @@ export function stairWalls(s: RouteStair): { positions: Float32Array; indices: U
 }
 
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+
+/**
+ * Finishes the inside of the shells in `zones`: every surface there gets a reversed twin with the
+ * same texture and shading, so walls and ceilings stay solid seen from behind. One primitive per
+ * material keeps it to a handful of draw calls. Returns null if nothing lies in the zones.
+ */
+export function insideFaces(doc: Document, pieces: Node[], zones: InsideZone[], name: string): { node: Node; tris: number } | null {
+  type Stream = { pos: number[]; nrm: number[]; uv: number[]; col: number[] };
+  const streams = new Map<Material, Stream>();
+  let tris = 0;
+  forEachPrimitive(pieces, (prim, m) => {
+    const material = prim.getMaterial()!;
+    const p = worldPositions(prim, m), idx = prim.getIndices()!;
+    const nrm = prim.getAttribute("NORMAL"), uv = prim.getAttribute("TEXCOORD_0"), col = prim.getAttribute("COLOR_0");
+    if (!nrm || !uv || !col) return;
+    const n = [0, 0, 0], t = [0, 0], c = [0, 0, 0, 0];
+    for (let i = 0; i < idx.getCount(); i += 3) {
+      const tri = [idx.getScalar(i), idx.getScalar(i + 1), idx.getScalar(i + 2)];
+      const inZone = zones.some((z) => [0, 1, 2].every((k) => {
+        const v = tri.map((q) => p[q * 3 + k]);
+        return Math.max(...v) >= z.min[k] && Math.min(...v) <= z.max[k];
+      }));
+      if (!inZone) continue;
+      let s = streams.get(material);
+      if (!s) streams.set(material, (s = { pos: [], nrm: [], uv: [], col: [] }));
+      for (const q of [tri[0], tri[2], tri[1]]) {
+        s.pos.push(p[q * 3], p[q * 3 + 1], p[q * 3 + 2]);
+        nrm.getElement(q, n);
+        const w = [0, 1, 2].map((k) => -(m[k] * n[0] + m[4 + k] * n[1] + m[8 + k] * n[2]));
+        const l = Math.hypot(...w) || 1;
+        s.nrm.push(w[0] / l, w[1] / l, w[2] / l);
+        s.uv.push(...uv.getElement(q, t));
+        s.col.push(...col.getElement(q, c));
+      }
+      tris++;
+    }
+  });
+  if (!tris) return null;
+  const buffer = doc.getRoot().listBuffers()[0];
+  const acc = (type: "VEC2" | "VEC3" | "VEC4", a: number[]) => doc.createAccessor().setType(type).setArray(new Float32Array(a)).setBuffer(buffer);
+  const mesh = doc.createMesh(name);
+  for (const [material, s] of streams) {
+    mesh.addPrimitive(doc.createPrimitive().setMaterial(material)
+      .setAttribute("POSITION", acc("VEC3", s.pos)).setAttribute("NORMAL", acc("VEC3", s.nrm))
+      .setAttribute("TEXCOORD_0", acc("VEC2", s.uv)).setAttribute("COLOR_0", acc("VEC4", s.col))
+      .setIndices(doc.createAccessor().setType("SCALAR").setArray(Uint32Array.from({ length: s.pos.length / 3 }, (_, i) => i)).setBuffer(buffer)));
+  }
+  const node = doc.createNode(name);
+  node.addChild(doc.createNode(`${name}_mesh`).setMesh(mesh));
+  return { node, tris };
+}
 
 /** Triangles of the given pieces near the doors, in world space, for the caps' inside test. */
 function nearbyTriangles(pieces: Node[], doors: RouteDoor[]) {
