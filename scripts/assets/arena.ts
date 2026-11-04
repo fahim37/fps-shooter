@@ -29,10 +29,12 @@ import {
  * - Textures are sized by what they cover (the source carries 4K bakes and 10 MB PNGs).
  *
  * For play:
- * - The crowd barriers are see-through railings: they stop players (`Clip_Arena`), not bullets.
+ * - The crowd barriers are see-through railings: a low clip (`Clip_Arena`) a player hops over,
+ *   which never stops bullets.
  * - A board runs around the event floor, with a clip above it, so nobody leaves for the open
  *   field.
- * - Team spawns are picked on the real collision at the two ends, out of sight of each other.
+ * - Team spawns are picked on the real collision at the two ends, out of sight of each other and
+ *   behind cover toward the fight; free-for-all spawns stand next to cover too.
  *
  * Put the downloaded pack at assets-raw/xgames-chiba (source/X_Games_Chiba_2023.fbx).
  */
@@ -74,25 +76,63 @@ const TEXTURE_SIZE: Record<string, number> = {
 const DARKEN: Record<string, number> = { concrete_ground1: 0.4, bleacher_tops: 0.6, cement2: 0.7 };
 const PAINT_MAX = 0.42;
 
+type CoverKind = "stack" | "wall" | "crate" | "screen" | "cornerW" | "cornerE";
+/** A piece of cover: [kind, x, z, rotation (degrees)]. */
+type Cover = [CoverKind, number, number, number];
+
 /**
- * Cover added to the open floor, for the north half (mirrored to the south): event road cases
- * and low staging walls in front of the course's ends, along the lanes beside the course and in
- * the corridors outside the barriers, so no lane is an open firing line end to end. [kind, x, z,
- * rotation (degrees)].
+ * Cover added to the open floor, for the north half (mirrored to the south). Event road cases and
+ * low staging walls in front of the course's ends, along the lanes beside it and in the corridors
+ * outside the barriers, so no lane is an open firing line end to end. The screens and corners at
+ * the two ends shelter the team spawns (see `playLayout`): they stand between the spawns and the
+ * fight, their faces toward the middle of the floor.
  */
-const COVER: ["stack" | "wall", number, number, number][] = [
-  ["wall", 1, -35, 0], ["stack", -17, -33, 0], ["stack", 19, -34, 0],
+const COVER: Cover[] = [
+  ["stack", -17, -33, 0], ["stack", 19, -34, 0], ["wall", 1, -35, 0],
   ["stack", -16, -22, 90], ["wall", -15.5, -6, 90], ["stack", 20.5, -19, 90], ["wall", 19.5, -6, 90],
   ["stack", -29.6, -28, 90], ["stack", 29.6, -28, 90],
+  // Inside the barrier ring, then outside it along the end, then its two far corners.
+  ["screen", -10, -35, 0], ["screen", 12, -35, 0],
+  ["cornerW", -16, -41.5, 0], ["screen", -5, -41.5, 0], ["screen", 6, -41.5, 0], ["cornerE", 17, -41.5, 0],
+  ["screen", -27, -38.5, 35], ["screen", 27, -38.5, -35],
+];
+/** Cover in the lanes around the course, which differ between the halves: not mirrored. */
+const LANE_COVER: Cover[] = [
+  ["wall", 2, -20.5, 0], ["crate", -6, -19.5, 15], ["crate", 10, -19, -10],
+  ["crate", 1, 0.5, 30], ["wall", -9, 1.5, 0], ["wall", 11, 1, 0],
+  ["crate", -18, -12, 0], ["crate", 19, -12, 20], ["crate", -20, -28, 20], ["crate", 21, -27, -15],
+  ["stack", -19, 13, 0], ["crate", 20, 12, -20], ["crate", -21, 30, 15], ["crate", 18.5, 29.5, 10], ["crate", 25, 22, 0],
 ];
 const CASE_COLOR: V3 = [0.022, 0.024, 0.028], WALL_COLOR: V3 = [0.16, 0.16, 0.15];
+const CRATE_COLOR: V3 = [0.2, 0.14, 0.08], SCREEN_COLOR: V3 = [0.05, 0.065, 0.08];
+/** Height of the screens and corners: over a standing player's head. */
+const SCREEN_H = 1.95;
+/** Boxes of each kind of cover: [x, z, size x, size z, y0, y1, color]. +Z faces the fight. */
+const COVER_BOXES: Record<CoverKind, [number, number, number, number, number, number, V3][]> = {
+  // A low wall: cover for a crouching player, a standing one shoots over it.
+  wall: [[0, 0, 4, 0.6, 0, 1.1, WALL_COLOR]],
+  // Road cases: a long one, a short one on top at one end (full cover, with a step).
+  stack: [[0, 0, 2.4, 1.2, 0, 1, CASE_COLOR], [-0.55, 0.02, 1.2, 1.1, 1, 2.05, CASE_COLOR]],
+  // Shipping crates: a tall one and a short one that's a step up to it.
+  crate: [[0, 0, 1.4, 1.4, 0, 1.35, CRATE_COLOR], [1.25, 0.15, 1.1, 1.1, 0, 0.85, CRATE_COLOR]],
+  // A staging screen: full cover, stepped around at either end.
+  screen: [[0, 0, 3.6, 0.5, 0, SCREEN_H, SCREEN_COLOR]],
+  // A screen with a wing back from its outer end, against fire down the end of the floor; the
+  // inner end stays open to step out of.
+  cornerW: [[0, 0, 3.6, 0.5, 0, SCREEN_H, SCREEN_COLOR], [-1.55, -0.85, 0.5, 1.2, 0, SCREEN_H, SCREEN_COLOR]],
+  cornerE: [[0, 0, 3.6, 0.5, 0, SCREEN_H, SCREEN_COLOR], [1.55, -0.85, 0.5, 1.2, 0, SCREEN_H, SCREEN_COLOR]],
+};
 
 /** Materials whose primitives never collide: the see-through crowd barriers (clipped instead). */
 const NO_COLLIDE = /^Arena_Barrier$/;
 /** Perimeter board: height and thickness (m), and the clip above it. */
 const BOARD_H = 1.05, BOARD_T = 0.12, CLIP_H = 7;
-/** Barrier clips: footprint cell (m) and height. */
-const BARRIER_CELL = 0.25, BARRIER_CLIP_H = 3;
+/**
+ * Barrier clips: footprint cell (m) and height. The rails stand 1.17 m but a jump lifts a player
+ * about 1 m, so the clip stops short of the top rail: anyone can hop the barriers, and their boots
+ * brush through the top rail on the way. `server/arena.test.ts` jumps one with the real movement.
+ */
+const BARRIER_CELL = 0.25, BARRIER_CLIP_H = 0.85;
 
 type V3 = [number, number, number];
 type Tier = "solid" | "detail" | "backdrop";
@@ -179,16 +219,16 @@ export async function importArena() {
   boardBatch.nrm.push(...board.nrm);
   for (let i = 0; i < board.pos.length / 3; i++) boardBatch.col.push(...BOARD_COLOR, 1);
   // Cover, into the chunk's paint primitive (no extra draw calls).
-  for (const [kind, x, z, deg] of COVER) for (const zz of [z, -z]) {
-    const b = batchFor(`Arena_${Math.floor(x / CHUNK + 0.5)}_${Math.floor(zz / CHUNK + 0.5)}`, paint);
+  const placed = [
+    ...COVER.flatMap(([kind, x, z, deg]) => [{ kind, x, z, deg, flip: 1 }, { kind, x, z: -z, deg: -deg, flip: -1 }]),
+    ...LANE_COVER.map(([kind, x, z, deg]) => ({ kind, x, z, deg, flip: 1 })),
+  ];
+  for (const { kind, x, z, deg, flip } of placed) {
+    const b = batchFor(`Arena_${Math.floor(x / CHUNK + 0.5)}_${Math.floor(z / CHUNK + 0.5)}`, paint);
     const ry = (deg * Math.PI) / 180;
-    const boxes: [number, number, number, number, number, number, V3][] = kind === "wall"
-      // A low wall: cover for a crouching player, a standing one shoots over it.
-      ? [[0, 0, 4, 0.6, 0, 1.1, WALL_COLOR]]
-      // Road cases: a long one, a short one on top at one end (full cover, with a step).
-      : [[0, 0, 2.4, 1.2, 0, 1, CASE_COLOR], [-0.55, 0.02, 1.2, 1.1, 1, 2.05, CASE_COLOR]];
-    for (const [ox, oz, sx, sz, y0, y1, color] of boxes) {
-      const g = boxGeometry(x + ox * Math.cos(ry) + oz * Math.sin(ry), zz - ox * Math.sin(ry) + oz * Math.cos(ry), sx, sz, y0, y1, ry);
+    for (const [ox, boxZ, sx, sz, y0, y1, color] of COVER_BOXES[kind]) {
+      const oz = boxZ * flip;
+      const g = boxGeometry(x + ox * Math.cos(ry) + oz * Math.sin(ry), z - ox * Math.sin(ry) + oz * Math.cos(ry), sx, sz, y0, y1, ry);
       b.pos.push(...g.pos);
       b.nrm.push(...g.nrm);
       for (let i = 0; i < g.pos.length / 3; i++) b.col.push(...color, 1);
@@ -555,6 +595,11 @@ class Surfaces {
     return true;
   }
 
+  /** True when something solid stands within `reach` of (x, z), at `y`, along `yaw` (0 faces -Z). */
+  shielded(x: number, z: number, y: number, yaw: number, reach: number) {
+    return !this.sees([x, y, z], [x - Math.sin(yaw) * reach, y, z - Math.cos(yaw) * reach]);
+  }
+
   /** True when nothing solid crosses the segment a → b. */
   sees(a: V3, b: V3) {
     const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
@@ -593,6 +638,12 @@ function hits(v: number[], o: V3, d: number[]) {
 
 type Spawn = [number, number, number];
 const EYE = 1.62;
+/** How close cover has to stand to a spawn (m). */
+const COVER_REACH = 3.5;
+/** A team spawn is shielded head high across this fan (radians either side) toward the fight. */
+const COVER_FAN = 0.5;
+/** A free-for-all spawn has cover at this height, along this many of 12 directions. */
+const FFA_COVER_Y = 1.2, FFA_COVER_DIRS = 3;
 
 /** Spawns placed on the real collision, and obstacle footprints for the minimap. */
 function playLayout(surfaces: Surfaces, clips: Box[], outline: [number, number][]) {
@@ -619,12 +670,14 @@ function playLayout(surfaces: Surfaces, clips: Box[], outline: [number, number][
   };
   const open = (x: number, z: number, floor: number) => insideFloor(x, z) && !inClip(x, z) && surfaces.clear(x, z, floor);
 
-  /** Open spots on the event floor's ground level in a band of z. */
+  /** Open spots on the event floor's ground level in a band of z, behind cover from the middle. */
   const zone = (z0: number, z1: number): Spawn[] => {
     const spots: Spawn[] = [];
-    for (let x = -31; x <= 31; x += 1.25) for (let z = z0; z <= z1; z += 1.25) {
+    for (let x = -31; x <= 31; x += 0.5) for (let z = z0; z <= z1; z += 0.5) {
       const floor = surfaces.floor(x, z, 0.5);
-      if (Math.abs(floor) < 0.3 && open(x, z, floor)) spots.push([round(x), round(floor), round(z)]);
+      if (Math.abs(floor) >= 0.3 || !open(x, z, floor)) continue;
+      const yaw = Math.atan2(x - x * 0.3, z);
+      if ([yaw - COVER_FAN, yaw, yaw + COVER_FAN].every((a) => surfaces.shielded(x, z, floor + EYE, a, COVER_REACH))) spots.push([round(x), round(floor), round(z)]);
     }
     return spots;
   };
@@ -644,11 +697,13 @@ function playLayout(surfaces: Surfaces, clips: Box[], outline: [number, number][
   blue = blue.filter((_, i) => alive.blue[i]);
   red = red.filter((_, j) => alive.red[j]);
 
-  // Free-for-all: open spots anywhere on the floor and the course (decks included).
+  // Free-for-all: open spots with cover anywhere on the floor and the course (decks included).
   const ffaSpots: Spawn[] = [];
-  for (let x = -30; x <= 30; x += 2) for (let z = -44; z <= 44; z += 2) {
+  const dirs = Array.from({ length: 12 }, (_, i) => (i * Math.PI) / 6);
+  for (let x = -30; x <= 30; x += 1) for (let z = -44; z <= 44; z += 1) {
     for (const h of new Set(surfaces.at(x, z).map((h) => round(h)))) {
-      if (h < 4 && open(x, z, h)) ffaSpots.push([x, h, z]);
+      if (h >= 4 || !open(x, z, h)) continue;
+      if (dirs.filter((a) => surfaces.shielded(x, z, h + FFA_COVER_Y, a, COVER_REACH)).length >= FFA_COVER_DIRS) ffaSpots.push([x, h, z]);
     }
   }
 

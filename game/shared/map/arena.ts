@@ -9,8 +9,8 @@ import arenaPieces from "../generated/arena-pieces.json";
  *
  * The geometry is split into merged chunks (`Arena_<i>_<j>`), clutter chunks that never collide
  * (`Detail_Arena_<i>_<j>`, skipped on Low), the perimeter board, the unlit stadium
- * (`Arena_Backdrop`), and `Clip_Arena`: the crowd barriers and the wall above the board, which
- * stop players but not bullets.
+ * (`Arena_Backdrop`), and `Clip_Arena`: the low crowd barriers, which players hop over, and the
+ * wall above the board. Neither stops bullets.
  */
 
 type Spawn = [number, number, number];
