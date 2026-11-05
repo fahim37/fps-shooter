@@ -260,7 +260,7 @@ export class RemotePlayer {
 
 /** Metres above the head for a name tag, and its height as a share of the view at distance 1. */
 const NAME_TAG_LIFT = 0.32;
-const NAME_TAG_SIZE = 0.03;
+const NAME_TAG_SIZE = 0.024;
 
 /** The tag's height in screen pixels, so its texture can be drawn 1:1 (a scaled-down one blurs). */
 function nameTagPixels(): number {
@@ -268,7 +268,7 @@ function nameTagPixels(): number {
 }
 
 /**
- * A teammate's name, ally blue with a dark outline: the same size on screen at any distance and
+ * A teammate's name, ally blue with a thin, see-through outline so it hides little behind it: the same size on screen at any distance and
  * drawn over walls, so you can always find your squad. Drawn at its on-screen pixel size, with no
  * mipmaps, fog or tone mapping, all of which washed it out.
  */
@@ -277,12 +277,12 @@ function createNameTag(name: string, px: number): THREE.Sprite {
   canvas.width = px * 6;
   canvas.height = px;
   const g = canvas.getContext("2d")!;
-  g.font = `700 ${Math.round(px * 0.6)}px system-ui, sans-serif`;
+  g.font = `700 ${Math.round(px * 0.64)}px system-ui, sans-serif`;
   g.textAlign = "center";
   g.textBaseline = "middle";
   g.lineJoin = "round";
-  g.lineWidth = Math.max(2, px * 0.14);
-  g.strokeStyle = "#08101a";
+  g.lineWidth = Math.max(1, px * 0.08);
+  g.strokeStyle = "rgb(8 16 26 / 0.55)";
   const text = name.length > 18 ? `${name.slice(0, 17)}…` : name;
   g.strokeText(text, canvas.width / 2, px * 0.54);
   g.fillStyle = "#b9ddff";

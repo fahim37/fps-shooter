@@ -42,6 +42,13 @@ describe("desert city", () => {
     expect(hit).not.toBeNull();
   });
 
+  it("has no hole at the top of the ramp up to site A", () => {
+    for (const [x, z] of [[-30, 30.6], [-29.5, 31], [-29, 31.5], [-28.5, 31], [-30, 30.2]]) {
+      const hit = world.castRay(new RAPIER.Ray({ x, y: 5, z }, { x: 0, y: -1, z: 0 }), 5, true, undefined, QUERY_MOVE);
+      expect(5 - hit!.timeOfImpact, `at ${x},${z}`).toBeGreaterThan(3);
+    }
+  });
+
   it("keeps the hall stair's landing under foot", () => {
     for (const z of [24.8, 25.5, 26.2]) {
       const hit = world.castRay(new RAPIER.Ray({ x: -3, y: 3, z }, { x: 0, y: -1, z: 0 }), 3, true, undefined, QUERY_MOVE);

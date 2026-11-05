@@ -136,7 +136,7 @@ function ChannelButton({ channel, session, live, pressed, label, title, children
 }
 
 /**
- * Voice bar: under the scores in a match, in the header of the waiting room. Each button says
+ * Voice bar: a rail beside the minimap in a match, in the header of the waiting room. Each button says
  * what it is: hold TEAM / ALL (or N / M) to talk on that channel, and MIC keeps the microphone
  * open on the selected channel instead. The gear opens a short settings panel.
  */

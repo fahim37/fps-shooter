@@ -49,7 +49,8 @@ Rebuild with `npx tsx scripts/import-assets.ts desert`.
 3. **Thin sand strips** remain along some streets (about 24% of walkable spots stand on sand, down from 30%). Left alone unless large or bumpy.
 4. **Play it.** Everything was checked by tests and rendered views, and the user finds things that those miss. Ask for photos of anything that looks off.
 
-5. **The low level under site A** is a rough sand crawlspace, reached down the ramp at about (-29, 31). It's original, and not yet finished or closed.
+5. **The low level under site A** is a rough sand crawlspace. The hole at the top of the ramp at (-29, 31) is paved over, so what's left is a small patch off the plaza's west edge near (-39, 33). Not yet finished or closed.
+6. **Rooftop route into the middle.** A chain of full-speed sprint jumps along the wall tops near (10-14, y 6, 1-4) can drop into unfinished sand around (6, 0). It's original and needs a running start on narrow tops, so it's unlikely in play. A flood only finds it in some runs, because each jump starts at full speed from whichever spot a cell was first reached.
 
 ## How to check a change
 

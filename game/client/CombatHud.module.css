@@ -24,7 +24,7 @@
 @media (max-width: 440px) { .details { flex-wrap: wrap; }.details>div { min-width: 40%; }.streak { display: none; }.respawn>span:last-child { display: none; } }
 @media (prefers-reduced-motion: reduce) { .entry, .recap { animation: none; }.entry, .progress>i { transition: none; } }
 
-@media (max-height: 550px) and (min-width: 641px) { .feed { top: var(--minimap-top); right: calc(max(12px, env(safe-area-inset-right)) + var(--minimap-size) + 12px); max-width: min(430px, calc(100vw - 320px)); }.entry:nth-child(n+4) { display: none; } }
+@media (max-height: 550px) and (min-width: 641px) { .feed { top: var(--minimap-top); right: calc(max(12px, env(safe-area-inset-right)) + var(--voice-rail, 0px) + var(--minimap-size) + 12px); max-width: min(430px, calc(100vw - 320px)); }.entry:nth-child(n+4) { display: none; } }
 /* Touch: the latest two kills under the timer, clear of the button clusters. */
 :global(.game-view[data-touch]) .feed { top: calc(max(8px, env(safe-area-inset-top)) + 52px); left: 50%; right: auto; transform: translateX(-50%); align-items: center; max-width: 46vw; }
 :global(.game-view[data-touch]) .entry:nth-child(n+3) { display: none; }

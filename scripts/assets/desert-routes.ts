@@ -37,6 +37,8 @@ export interface FlatGround {
   y: number;
   /** Height at the far end of `x`, for ground sloping along it. */
   to?: number;
+  /** Paving only: `to` is the height at the far end of `z` instead. */
+  alongZ?: boolean;
 }
 
 /** A box of the town that players walk through but the source only ever showed from outside. */
@@ -97,6 +99,10 @@ export const ROUTES: { stairs: RouteStair[]; doors: RouteDoor[]; flat: FlatGroun
     { x: [-14.6, -4.95], z: [10.2, 12.9], y: 0.06 },
     // Over the slit in the walkway above the sealed strip beside the hall stair (see `SEALED`).
     { x: [-6.85, -4.85], z: [18.5, 37.4], y: 3.82 },
+    // A hole at the top of the ramp up to site A, down to the sand under the site.
+    { x: [-30.45, -28.05], z: [30.45, 31.7], y: 3.22, to: 3.46, alongZ: true },
+    { x: [-30.45, -28.05], z: [31.7, 32.05], y: 3.46 },
+    { x: [-30.5, -29.85], z: [29.4, 30.45], y: 3.04, to: 3.23, alongZ: true },
     // The plaza's last strip, up to the southern wall.
     { x: [-7, 14], z: [36.4, 37.2], y: 3.82 },
   ],
@@ -146,7 +152,7 @@ export const ROUTES: { stairs: RouteStair[]; doors: RouteDoor[]; flat: FlatGroun
   // The town's walls are one-sided shells. These stretches were closed off in the source, and the
   // flank routes and the opened gate north of Red's spawn lead players in behind them.
   inside: [
-    // The low level under site A, down the ramp at (-29, 31): its ceiling is the site's floor.
+    // The low level under site A, still reachable off the plaza's west edge near (-39, 33).
     { min: [-41, -0.5, 18], max: [-21, 4.5, 36.5] },
     // The top of a wall seen from the plaza south of it.
     { min: [-17, 7.5, 30.5], max: [-13, 9.5, 32] },
@@ -306,14 +312,14 @@ export function pavingMesh(doc: Document, paving: FlatGround[], material: Materi
     for (let i = 0; i < n; i++) out.push([lo + ((hi - lo) * i) / n, lo + ((hi - lo) * (i + 1)) / n]);
     return out;
   };
-  for (const { x, z, y, to = y } of paving) {
-    const at = (px: number) => y + ((to - y) * (px - x[0])) / (x[1] - x[0]);
-    const n: V3 = [(y - to) / (x[1] - x[0]), 1, 0], l = Math.hypot(...n), up: V3 = [n[0] / l, n[1] / l, 0];
+  for (const { x, z, y, to = y, alongZ } of paving) {
+    const at = (px: number, pz: number) => y + (to - y) * (alongZ ? (pz - z[0]) / (z[1] - z[0]) : (px - x[0]) / (x[1] - x[0]));
+    const n: V3 = alongZ ? [0, 1, (y - to) / (z[1] - z[0])] : [(y - to) / (x[1] - x[0]), 1, 0], l = Math.hypot(...n), up: V3 = [n[0] / l, n[1] / l, n[2] / l];
     for (const [a, c] of spans(x[0], x[1])) {
-      for (const [p, q] of spans(z[0], z[1])) b.quad([[a, at(a), p], [c, at(c), p], [c, at(c), q], [a, at(a), q]], up, 1);
+      for (const [p, q] of spans(z[0], z[1])) b.quad([[a, at(a, p), p], [c, at(c, p), p], [c, at(c, q), q], [a, at(a, q), q]], up, 1);
       const floor = Math.min(y, to) - 2;
-      b.quad([[a, floor, z[0]], [c, floor, z[0]], [c, at(c), z[0]], [a, at(a), z[0]]], [0, 0, -1], 0.86);
-      b.quad([[a, floor, z[1]], [c, floor, z[1]], [c, at(c), z[1]], [a, at(a), z[1]]], [0, 0, 1], 0.86);
+      b.quad([[a, floor, z[0]], [c, floor, z[0]], [c, at(c, z[0]), z[0]], [a, at(a, z[0]), z[0]]], [0, 0, -1], 0.86);
+      b.quad([[a, floor, z[1]], [c, floor, z[1]], [c, at(c, z[1]), z[1]], [a, at(a, z[1]), z[1]]], [0, 0, 1], 0.86);
     }
   }
   return doc.createNode(name).setMesh(doc.createMesh(name).addPrimitive(b.primitive(doc, material)));

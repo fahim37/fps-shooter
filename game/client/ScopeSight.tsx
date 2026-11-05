@@ -30,11 +30,10 @@ const LADDER = [[615, 46, "4"], [665, 38, "5"], [715, 30, "6"], [765, 24, "7"], 
 function FourTimes({ glow }: { glow: string }) {
   return <>
     <Wire w={10} d="M0 500H180 M820 500H1000 M500 0V180 M500 880V1000" />
-    <Wire w={1.8} d={`M180 500H488 M512 500H820 M500 180V488 M500 512V880 ${[250, 350, 650, 750].map((x) => `M${x} 492v16`).join(" ")} M492 350h16 M492 250h16 ${LADDER.map(([y, w]) => `M${500 - w} ${y}h${w * 2}`).join(" ")}`} />
+    <Wire w={1.8} d={`M180 500H486 M514 500H820 M500 180V486 M500 514V880 ${[250, 350, 650, 750].map((x) => `M${x} 492v16`).join(" ")} M492 350h16 M492 250h16 ${LADDER.map(([y, w]) => `M${500 - w} ${y}h${w * 2}`).join(" ")}`} />
     {LADDER.map(([y, w, label]) => <Engraving key={label} x={500 - w - 12} y={y + 5} anchor="end">{label}</Engraving>)}
     <g className={styles.illum} filter={`url(#${glow})`}>
-      <circle data-reticle="4x-center" cx="500" cy="500" r="3.4" />
-      <path d="M500 476v10 M500 514v10 M476 500h10 M514 500h10" strokeWidth="2" fill="none" />
+      <circle data-reticle="4x-center" cx="500" cy="500" r="2.8" />
     </g>
   </>;
 }
@@ -43,11 +42,10 @@ function FourTimes({ glow }: { glow: string }) {
 function SixTimes({ glow }: { glow: string }) {
   return <>
     <Wire w={10} d="M0 500H220 M780 500H1000 M500 0V220 M500 780V1000" />
-    <Wire w={1.6} d="M220 500H490 M510 500H780 M500 220V490 M500 510V780 M240 712H404 M244 712V634 Q300 700 404 704" />
+    <Wire w={1.6} d="M220 500H486 M514 500H780 M500 220V486 M500 514V780 M240 712H404 M244 712V634 Q300 700 404 704" />
     {[[254, "2"], [298, "4"], [344, "6"], [392, "8"]].map(([x, label]) => <Engraving key={label} x={Number(x)} y={735}>{label}</Engraving>)}
     <g className={styles.illum} filter={`url(#${glow})`}>
-      <circle cx="500" cy="500" r="3.4" />
-      <path d="M500 478v10 M500 512v10 M478 500h10 M512 500h10" strokeWidth="2" fill="none" />
+      <circle cx="500" cy="500" r="2.8" />
     </g>
   </>;
 }

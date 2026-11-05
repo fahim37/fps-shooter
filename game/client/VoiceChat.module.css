@@ -64,3 +64,18 @@
 .room .speakers, .room .error { position: absolute; top: 100%; right: 0; width: max-content; }
 /* Touch: compact, so it fits between the score and the top-right tool buttons. */
 @media (pointer: coarse) { .voice { top: max(58px, calc(env(safe-area-inset-top) + 50px)); font-size: 10px; } .bar { gap: 2px; padding: 2px; } .bar button { min-width: 40px; height: 38px; } .bar .mic { min-width: 50px; } .bar .more { min-width: 28px; } .panel { max-height: calc(100dvh - 130px); } }
+
+/* In a match: a rail to the left of the minimap. What opens from it goes further left, leaving the map clear. */
+:global(.game-view:not([data-touch])) .voice:not(.room) { top: var(--minimap-top); left: auto; right: calc(max(26px, env(safe-area-inset-right)) + var(--minimap-size) + 6px); transform: none; max-width: none; }
+:global(.game-view:not([data-touch])) .voice:not(.room) .bar { flex-direction: column; }
+:global(.game-view:not([data-touch])) .voice:not(.room) .bar { gap: 2px; padding: 2px; border-radius: 7px; }
+:global(.game-view:not([data-touch])) .voice:not(.room) .bar button { width: 38px; min-width: 0; height: 30px; padding: 0; gap: 1px; border-radius: 5px; }
+:global(.game-view:not([data-touch])) .voice:not(.room) .bar button svg { width: 13px; height: 13px; }
+:global(.game-view:not([data-touch])) .voice:not(.room) .bar button span { font-size: 6.5px; letter-spacing: .03em; }
+:global(.game-view:not([data-touch])) .voice:not(.room) .bar .more { height: 22px; }
+:global(.game-view:not([data-touch])) .voice:not(.room) .panel,
+:global(.game-view:not([data-touch])) .voice:not(.room) .speakers,
+:global(.game-view:not([data-touch])) .voice:not(.room) .error { position: absolute; top: 0; right: calc(100% + 8px); width: max-content; margin: 0; }
+:global(.game-view:not([data-touch])) .voice:not(.room) .panel { width: min(300px, calc(100vw - var(--minimap-size) - 104px)); }
+:global(.game-view:not([data-touch])) .voice:not(.room) .panel .error { position: static; width: auto; }
+@media (max-width: 800px), (max-height: 550px) { :global(.game-view:not([data-touch])) .voice:not(.room) { right: calc(max(12px, env(safe-area-inset-right)) + var(--minimap-size) + 6px); } }
