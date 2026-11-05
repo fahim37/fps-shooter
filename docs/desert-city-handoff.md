@@ -29,7 +29,7 @@ Rebuild with `npx tsx scripts/import-assets.ts desert`.
 
 - Collision restored: walls, doors and thin panels had been lost by the stair handling and simplifier.
 - Map edge sealed. With real movement and sprint jumps, players stop 44.3 m from the centre.
-- South flank: one stair between plaster walls, sand bank replaced by a retaining wall.
+- South flank: closed on 2026-11-05 at the user's request. Its stair, street door and hall passage are gone, because it led players behind hollow walls and lagged on the office PC. The courtyard is unreachable. Don't reopen it.
 - North flank stair: fine as it was.
 - North-east shortcut (past the removed gate north of Red's spawn): paved ramp through a real doorway in the wall at x = 28.7.
 - Hall stair landing restored (an earlier fix had removed it from collision, so players fell in).
@@ -40,17 +40,16 @@ Rebuild with `npx tsx scripts/import-assets.ts desert`.
 - Southern edge: walled along z = 37.2 and x = -7, in front of the sand heaped against the cliff.
 - Flipped undersides no longer go in `Desert_Inside`: they showed as floating white shards above cornices.
 
-**Keep the shortcuts.** The user wants them finished with walls, not closed.
+**Keep the remaining shortcuts** (north stair, north-east ramp). The user wants those finished with walls, not closed.
 
 ## Still to check
 
-1. **FPS on an office PC on Low.** Not measured yet. The map went from about 163,000 to 215,000 triangles and from 6.3 MB to 7.9 MB. If it stutters, trim `ROUTES.inside` zones first (about 34,000 triangles) and then the plinths. Stable FPS on low-end PCs is the top graphics priority.
+1. **FPS on an office PC on Low.** Not measured yet. The map went from about 163,000 to 215,000 triangles, then back to about 198,000 (7.3 MB) when the south flank closed. If it still stutters, trim the remaining `ROUTES.inside` zones (about 17,000 triangles) and then the plinths. Stable FPS on low-end PCs is the top graphics priority.
 2. **Foundation strips look blocky** under some pillars, for example by the north-east street near (33, -10).
 3. **Thin sand strips** remain along some streets (about 24% of walkable spots stand on sand, down from 30%). Left alone unless large or bumpy.
 4. **Play it.** Everything was checked by tests and rendered views, and the user finds things that those miss. Ask for photos of anything that looks off.
 
-5. **A wall from the user's photo is still standing.** It looks like the corner of the original building at about (-18, 13), between the south stair and the shutter. Not confirmed. Removing it opens a hollow building, and the alley beside it is only 1.35 m wide, so check the bots' south stair route after any change. Confirm with the user first.
-6. **One white cornice slab remains** near (-15.5, 11), at about y 5. It's original geometry, not a flipped face.
+5. **The low level under site A** is a rough sand crawlspace, reached down the ramp at about (-29, 31). It's original, and not yet finished or closed.
 
 ## How to check a change
 

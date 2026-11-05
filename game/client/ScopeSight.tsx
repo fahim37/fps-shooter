@@ -17,10 +17,9 @@ function Engraving({ x, y, children, anchor = "middle" }: { x: number; y: number
 function TwoTimes({ glow }: { glow: string }) {
   return <>
     <Wire w={9} d="M0 500H330 M670 500H1000 M500 670V1000" />
-    <Wire w={2} d="M330 500H462 M538 500H670 M500 538V670 M500 330V462" />
+    <Wire w={2} d="M330 500H486 M514 500H670 M500 514V670 M500 330V486" />
     <g className={styles.illum} filter={`url(#${glow})`}>
-      <circle cx="500" cy="500" r="4.5" />
-      <circle cx="500" cy="500" r="26" fill="none" strokeWidth="2.4" />
+      <circle cx="500" cy="500" r="2.8" />
     </g>
   </>;
 }

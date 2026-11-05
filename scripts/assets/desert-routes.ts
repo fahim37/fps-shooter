@@ -63,11 +63,6 @@ export interface RouteWall {
 
 export const ROUTES: { stairs: RouteStair[]; doors: RouteDoor[]; flat: FlatGround[]; inside: InsideZone[]; blocks: RouteBlock[]; walls: RouteWall[]; paving: FlatGround[] } = {
   stairs: [
-    // South: from the courtyard behind Blue's arcade up beside the hall, whose upper story
-    // overhangs the courtyard at the hall's floor height; a passage through it leads in.
-    // Steep (45°) to start clear of the corner of the building west of the courtyard. It fills the
-    // alley between that building and the hall's retaining wall, with nothing beside it.
-    { x: [-18.05, -15.85], z: [14.4, 18.15], up: "+z", from: 0, to: 3.75, landing: 1.25 },
     // North: from the yard north of Blue's spawn up its retaining wall onto the B side's ledge,
     // where three of the yard's crates stood.
     { x: [-24.15, -21.85], z: [-16.2, -13.75], up: "+x", from: 1.5, to: 3.8, landing: 0.1 },
@@ -75,10 +70,6 @@ export const ROUTES: { stairs: RouteStair[]; doors: RouteDoor[]; flat: FlatGroun
   doors: [
     // The ledge's handrail where the north stair arrives.
     { min: [-21.95, 3.85, -16.2], max: [-21.3, 5.0, -13.75], through: 0 },
-    // Into the courtyard from the street west of mid, beside its window, facing the stair.
-    { min: [-17.4, 0.02, 8.4], max: [-15.8, 2.3, 9.4], through: 2 },
-    // Through the hall's overhanging upper story (its underside is a few cm above the floors).
-    { min: [-15.9, 3.85, 17.9], max: [-12.6, 5.95, 19.4], through: 0 },
     // Through the wall across the paved way north of Red's spawn, which stood clear of the old ground.
     { min: [28.62, 4.02, -23.2], max: [29, 6.4, -21], through: 0 },
   ],
@@ -123,7 +114,7 @@ export const ROUTES: { stairs: RouteStair[]; doors: RouteDoor[]; flat: FlatGroun
   ],
   // The sand past these lines is rebuilt terrain the source never showed.
   walls: [
-    // Behind the south stair's landing, and on around the sand south of the courtyard.
+    // Around the sand south of the courtyard behind Blue's arcade, which is closed off.
     { a: [-24.5, 19.6], b: [-14.5, 19.6], base: 0, top: 8 },
     { a: [-24.3, 19.4], b: [-24.3, 29.2], base: 0, top: 8 },
     { a: [-24.5, 29], b: [-13.8, 29], base: 3.4, top: 9.2 },
@@ -155,8 +146,10 @@ export const ROUTES: { stairs: RouteStair[]; doors: RouteDoor[]; flat: FlatGroun
   // The town's walls are one-sided shells. These stretches were closed off in the source, and the
   // flank routes and the opened gate north of Red's spawn lead players in behind them.
   inside: [
-    // Behind Blue's arcade: the courtyard, the hall and the buildings around them.
-    { min: [-41, -0.5, 8], max: [-4, 10, 36.5] },
+    // The low level under site A, down the ramp at (-29, 31): its ceiling is the site's floor.
+    { min: [-41, -0.5, 18], max: [-21, 4.5, 36.5] },
+    // The top of a wall seen from the plaza south of it.
+    { min: [-17, 7.5, 30.5], max: [-13, 9.5, 32] },
     // The passage into the hall, as far as mid's south side.
     { min: [-4.5, 1.5, 23.5], max: [1, 3, 26.5] },
     // The hall's upper parts, seen from its stair and the rooms around it.

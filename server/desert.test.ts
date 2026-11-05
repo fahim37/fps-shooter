@@ -34,6 +34,9 @@ describe("desert city", () => {
     ["a thin door panel", [62.3, 3.5, 32.5], [-1, 0, 0]],
     // The hall's retaining wall, where the terrain used to heap a walkable sand bank.
     ["the courtyard's retaining wall", [-16.5, 1.6, 16], [1, 0, 0]],
+    // The south flank is closed: its door off the street and its passage into the hall.
+    ["the wall where the courtyard door was", [-16.6, 1.2, 6], [0, 0, 1]],
+    ["the hall's wall where the passage was", [-11, 4.8, 18.65], [-1, 0, 0]],
   ] as const)("keeps %s solid", (_, [x, y, z], [dx, dy, dz]) => {
     const hit = world.castRay(new RAPIER.Ray({ x, y, z }, { x: dx, y: dy, z: dz }), 7, true, undefined, QUERY_MOVE);
     expect(hit).not.toBeNull();
@@ -47,6 +50,7 @@ describe("desert city", () => {
   });
 
   it.each([
+    ["the courtyard behind Blue's arcade", { x: -16.6, y: 0.1, z: 12 }],
     ["the western sand", { x: -45, y: 1, z: 24 }],
     ["the north-west corner", { x: -37, y: 3, z: -33 }],
     ["the sand behind the plaza", { x: 28, y: 2, z: -28 }],
@@ -72,8 +76,6 @@ describe("desert city", () => {
   });
 
   it.each([
-    // South: the courtyard door off the street west of mid, its stair, the passage into the hall.
-    ["south", [-16.6, 0.1, 6], [[-16.6, 9], [-16.5, 13.6], [-16.9, 15], [-16.9, 18.7], [-11, 18.65]], [-11, 3.75, 18.65]],
     // North: the yard north of Blue's spawn up onto the B side's ledge.
     ["north", [-27, 1.6, -15], [[-24.5, -15], [-21.5, -15], [-19.5, -15]], [-19.5, 3.8, -15]],
     // North of Red's spawn: the paved way from the street up to the plaza.
