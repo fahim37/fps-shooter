@@ -191,7 +191,7 @@ describe("ambient beds", () => {
     vi.useFakeTimers();
     try {
       const { audio, ctx, bed } = engine();
-      for (const id of ["village", "downtown", "industrial", "outpost", "arena"] as const) {
+      for (const id of ["village", "downtown", "industrial", "outpost", "arena", "blockade"] as const) {
         audio.setMap(id);
         expect(bed()!.key).toBe(id);
         vi.advanceTimersByTime(240_000);

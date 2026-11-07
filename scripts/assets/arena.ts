@@ -471,7 +471,7 @@ function boxGeometry(x: number, z: number, sx: number, sz: number, y0: number, y
 }
 
 /** A clip volume as its 8 corners (bit 0: +axis 1, bit 1: +axis 2, bit 2: +axis 3). */
-type Box = V3[];
+export type Box = V3[];
 
 /** Boxes from the board's inner face outward, from below the floor to well above a jump. */
 function perimeterClips(outline: [number, number][]): Box[] {
@@ -514,7 +514,7 @@ function barrierClips(src: Source, tris: number[]): Box[] {
 }
 
 /** Collision triangles for the clip boxes. */
-function boxesMesh(boxes: Box[]): CollisionMesh {
+export function boxesMesh(boxes: Box[]): CollisionMesh {
   const pos: number[] = [], idx: number[] = [];
   // Corner indices of each face (two triangles each).
   const faces = [0, 1, 3, 0, 3, 2, 4, 6, 7, 4, 7, 5, 0, 4, 5, 0, 5, 1, 2, 3, 7, 2, 7, 6, 0, 2, 6, 0, 6, 4, 1, 5, 7, 1, 7, 3];
@@ -526,14 +526,14 @@ function boxesMesh(boxes: Box[]): CollisionMesh {
   return { positions: new Float32Array(pos), indices: new Uint32Array(idx) };
 }
 
-function boxBounds(boxes: Box[]): PieceInfo {
+export function boxBounds(boxes: Box[]): PieceInfo {
   const min: V3 = [Infinity, Infinity, Infinity], max: V3 = [-Infinity, -Infinity, -Infinity];
   for (const v of boxes.flat()) for (let k = 0; k < 3; k++) { min[k] = Math.min(min[k], v[k]); max[k] = Math.max(max[k], v[k]); }
   return { min, max };
 }
 
 /** Collision triangles bucketed on a 2 m grid, for height queries and line-of-sight tests. */
-class Surfaces {
+export class Surfaces {
   private readonly tris: number[][] = [];
   private readonly grid = new Map<string, number[]>();
 
@@ -720,7 +720,7 @@ function playLayout(surfaces: Surfaces, clips: Box[], outline: [number, number][
 }
 
 /** `count` spots spread out (farthest-point sampling), starting nearest `from`. */
-function spread(spots: Spawn[], count: number, from: Spawn): Spawn[] {
+export function spread(spots: Spawn[], count: number, from: Spawn): Spawn[] {
   if (spots.length <= count) return spots;
   const d2 = (a: Spawn, b: Spawn) => (a[0] - b[0]) ** 2 + (a[2] - b[2]) ** 2;
   const out = [spots.reduce((best, s) => (d2(s, from) < d2(best, from) ? s : best))];
@@ -734,7 +734,7 @@ function spread(spots: Spawn[], count: number, from: Spawn): Spawn[] {
 }
 
 /** Greedy merge of set grid cells into rectangles {x, z, sx, sz} (in cells), at least `min` cells. */
-function rectangles(cells: Float32Array, n: number, min: number) {
+export function rectangles(cells: Float32Array, n: number, min: number) {
   const used = new Uint8Array(n * n), out: { x: number; z: number; sx: number; sz: number }[] = [];
   for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
     if (!cells[j * n + i] || used[j * n + i]) continue;

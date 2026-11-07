@@ -10,7 +10,7 @@ import { TeamPill } from "./LiveView";
 
 type M = Wire<MatchDoc>;
 
-const MAPS = ["village", "downtown", "industrial", "outpost", "arena"];
+const MAPS = ["village", "downtown", "industrial", "outpost", "arena", "blockade"];
 
 export function matchResult(m: Pick<M, "mode" | "winner" | "team1" | "team2" | "endReason">) {
   if (m.endReason === "abandoned") {

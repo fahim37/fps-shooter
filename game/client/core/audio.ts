@@ -613,6 +613,8 @@ export class AudioEngine {
       case "outpost": this.outpostBed(bed); break;
       // Chiba Arena: an event floor's generators, radios and TV helicopters.
       case "arena": this.outpostBed(bed); break;
+      // Blockade: an open depot, the same far generator and radios as the outpost.
+      case "blockade": this.outpostBed(bed); break;
       case "desert": this.desertBed(bed); break;
       default: this.villageBed(bed);
     }
