@@ -2,6 +2,7 @@ import { Client, type Room } from "@colyseus/sdk";
 import type { MatchState } from "../../game/shared/schema";
 import type { AmmoEvent, HitConfirm, SpawnEvent } from "../../game/shared/messages";
 import assert from "node:assert/strict";
+import { WEAPONS } from "../../game/shared/weapons";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function until(check: () => boolean, timeout = 5000) {
@@ -35,6 +36,24 @@ async function main() {
     assert.equal(a.state.players.size, 2);
     // Let the rewind history fill at these positions; use the replicated server clock.
     await sleep(400);
+    await until(() => a.state.players.get(b.sessionId)!.protectedUntil < a.state.serverTime, 6000);
+    // Claimed hits: the server takes what the shooter saw only where its rewind agrees.
+    const n = Math.hypot(0.5, 3);
+    const chest: [number, number, number] = [0, -0.5 / n, -3 / n];
+    const claimShot = async (shot: number, dir: [number, number, number], claim: object | null) => {
+      const before = hits.length;
+      a.send("fire", { weapon: "ar", shot, origin: [0, 9.64, 0], dirs: [dir], claims: [claim], viewTime: a.state.serverTime });
+      await until(() => ammunition.some((ev) => ev.shot === shot));
+      await sleep(150);
+      return hits.slice(before);
+    };
+    const forged = await claimShot(50, chest, { id: b.sessionId, part: "head", dist: n });
+    assert.deepEqual(forged.map((h) => h.part), ["body"], "A headshot claimed on the chest must score as the body");
+    const seenMiss = await claimShot(51, [0, 0, -1], null);
+    assert.equal(seenMiss.length, 0, "A miss on the shooter's screen stays a miss");
+    const fair = await claimShot(52, [0, 0, -1], { id: b.sessionId, part: "head", dist: 2.9 });
+    assert.deepEqual(fair.map((h) => h.part), ["head"], "A fair head claim counts");
+    hits.length = 0;
     for (let i = 0; i < 12 && !hits.some((h) => h.killed); i++) {
       a.send("fire", { weapon: "ar", shot: i + 1, origin: [0, 9.64, 0], dirs: [[0, 0, -1]], viewTime: a.state.serverTime });
       await sleep(180);
@@ -43,7 +62,7 @@ async function main() {
     assert.ok(hits.some((h) => h.killed), "Server should confirm lethal damage");
     assert.ok(hits.every((h) => h.part === "head"), "Head-center shots must not be intercepted by the torso capsule");
     assert.ok(hits.every((h) => h.point?.every(Number.isFinite) && h.dir?.[2] === -1), "Confirmed blood must have an authoritative impact point and direction");
-    assert.ok(ammunition.length > 0 && ammunition.at(-1)!.mag < 30, "Server must acknowledge actual ammunition");
+    assert.ok(ammunition.length > 0 && ammunition.at(-1)!.mag < WEAPONS.ar.mag - 3, "Server must acknowledge actual ammunition");
     assert.equal(a.state.players.get(b.sessionId)?.alive, false);
     const magazine = ammunition.at(-1)!.mag;
     for (const shot of [100, 101]) a.send("fire", { weapon: "ar", shot, origin: [0, 9.64, 0], dirs: [[0, 0, -1]], viewTime: a.state.serverTime });
@@ -52,7 +71,7 @@ async function main() {
     const before = spawns;
     await until(() => spawns > before && b.state.players.get(b.sessionId)?.alive === true, 6000);
     assert.equal(b.state.players.get(b.sessionId)?.hp, 100);
-    console.log(JSON.stringify({ passed: true, players: 2, hitConfirmations: hits.length, checks: ["join by code", "replicated poses", "authoritative headshots", "ammunition acknowledgments", "fire rate rejection", "kill score", "death", "respawn"] }));
+    console.log(JSON.stringify({ passed: true, players: 2, hitConfirmations: hits.length, checks: ["join by code", "replicated poses", "claimed hits checked against the rewind", "authoritative headshots", "ammunition acknowledgments", "fire rate rejection", "kill score", "death", "respawn"] }));
   } finally { await Promise.all(rooms.map((r) => r.leave())); }
 }
 main().catch((e) => { console.error(e); process.exitCode = 1; });

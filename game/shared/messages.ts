@@ -88,6 +88,19 @@ export interface FireMsg {
   origin: [number, number, number];
   /** One unit direction per pellet. */
   dirs: [number, number, number][];
+  /**
+   * Per pellet, who the shooter saw it hit on screen (the hit shapes on the drawn skeleton), or
+   * null for a miss. The server takes a claim only where its own rewound hitboxes agree within a
+   * tolerance (see shared/hitclaim.ts). Absent: the server's hitboxes decide alone.
+   */
+  claims?: (FireClaim | null)[];
+}
+
+export interface FireClaim {
+  id: string;
+  part: HitPart;
+  /** Distance (m) from the origin along the pellet. */
+  dist: number;
 }
 
 export interface AmmoEvent {

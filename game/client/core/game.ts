@@ -347,17 +347,16 @@ export class Game {
     const { distance, target, part } = enemyAlongRay(origin, dir, wall?.distance ?? range,
       players ? this.remotes.values() : [], hud().mode === "tdm", hud().myTeam, this.clock.now());
     const point: V3 = [origin[0] + dir[0] * distance, origin[1] + dir[1] * distance, origin[2] + dir[2] * distance];
-    return { point, target, part, wall: target ? null : wall };
+    return { point, distance, target, part, wall: target ? null : wall };
   }
 
-  onLocalShot(weapon: WeaponId, origin: V3, dirs: V3[]) {
+  onLocalShot(weapon: WeaponId, origin: V3, dirs: V3[], traces = dirs.map((dir) => this.traceFrom(origin, dir, WEAPONS[weapon].range))) {
     const rig = this.local?.thirdPerson && !this.local.throughSight ? this.tpp : this.fpp;
     // The scoped viewmodel is hidden and not animated; its old muzzle is stale.
     const muzzle = this.local?.scoped ? new THREE.Vector3(...origin) : rig?.muzzle ?? new THREE.Vector3(...origin);
     if (!this.local?.scoped) this.effects.muzzleFlash(muzzle, new THREE.Vector3(...dirs[0]), FLASH_SIZE[weapon] ?? 1);
     audio.shot(weapon, undefined, true);
-    for (const dir of dirs) {
-      const hit = this.traceFrom(origin, dir, WEAPONS[weapon].range);
+    for (const hit of traces) {
       const point = new THREE.Vector3(...hit.point);
       this.effects.tracer(muzzle, point, "local");
       if (hit.target) {

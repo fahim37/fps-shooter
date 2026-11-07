@@ -1,8 +1,11 @@
 import { leanOffset } from "./lean";
 
 /**
- * Player hitboxes and ray tests, shared by the server (authoritative hits) and the client
- * (instant hit feedback). Pose position is the feet.
+ * Player hitboxes and ray tests, shared by the server (authoritative hits, and the check on a
+ * shooter's claimed hits) and the client (for characters not drawn this frame). Pose position
+ * is the feet. Clients test what they draw with hit shapes on the animated skeleton
+ * (client/player/hitShapes.ts); these follow it as closely as position, stance, aim and lean
+ * allow. scripts/dev/hit-accuracy.ts measures both against the skinned mesh.
  */
 
 export interface Pose {
@@ -13,6 +16,10 @@ export interface Pose {
   /** Facing and peek (-1 left .. 1 right); the upper body tilts out from behind cover. */
   yaw?: number;
   lean?: number;
+  /** Aim pitch (rad, + up): the upper body bends over a low aim and leans back for a high one. */
+  pitch?: number;
+  /** 0 standing still .. 1 moving: the rifle carry puts the head further forward. */
+  moving?: number;
 }
 
 export type HitPart = "head" | "body" | "legs";
@@ -22,26 +29,65 @@ export interface PoseHit {
   part: HitPart;
 }
 
+/** Ground speed (m/s) from which a player counts as moving for the hitboxes. */
+export const MOVING_SPEED = 0.6;
+
 type V3 = [number, number, number];
+
+/**
+ * Where the drawn head sits, in metres from the feet: forward along the facing and up, at the
+ * aim pitches of PITCH_KNOTS. Measured on both bodies across weapons and animation phases.
+ */
+const PITCH_KNOTS = [-1.4, -0.7, 0, 0.7, 1.4];
+const HEAD_AT = {
+  still: { fwd: [0.36, 0.29, 0.07, -0.19, -0.33], up: [1.35, 1.47, 1.61, 1.62, 1.56], right: 0.05 },
+  moving: { fwd: [0.18, 0.18, 0.17, 0.11, 0.07], up: [1.49, 1.52, 1.58, 1.60, 1.58], right: 0.01 },
+  crouch: { fwd: [0.31, 0.29, 0.16, -0.09, -0.23], up: [0.72, 0.86, 1.07, 1.19, 1.19], right: -0.07 },
+};
+/** The drawn peek swings the head this share of the camera's lean offset. */
+const HEAD_LEAN = 0.8;
+const HEAD_R = 0.15;
+/** Hips, where the torso starts, and how far below the head centre it ends (m). */
+const HIP = 0.95, CROUCH_HIP = 0.6, NECK_GAP = 0.32;
+
+function knot(values: number[], pitch: number) {
+  const p = Math.max(PITCH_KNOTS[0], Math.min(PITCH_KNOTS[PITCH_KNOTS.length - 1], pitch));
+  let i = 0;
+  while (i < PITCH_KNOTS.length - 2 && p > PITCH_KNOTS[i + 1]) i++;
+  const k = (p - PITCH_KNOTS[i]) / (PITCH_KNOTS[i + 1] - PITCH_KNOTS[i]);
+  return values[i] + (values[i + 1] - values[i]) * k;
+}
 
 export function hitboxes(p: Pose) {
   const c = p.crouch;
-  const at = (height: number): V3 => {
-    const o = leanOffset(p.lean ?? 0, p.yaw ?? 0, c ? 1 : 0, height);
-    return [p.x + o[0], p.y + height + o[1], p.z + o[2]];
-  };
+  const yaw = p.yaw ?? 0, pitch = p.pitch ?? 0, moving = c ? 0 : Math.max(0, Math.min(1, p.moving ?? 0));
+  const fx = -Math.sin(yaw), fz = -Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw);
+  const table = c ? [HEAD_AT.crouch] : [HEAD_AT.still, HEAD_AT.moving];
+  const blend = (get: (t: typeof HEAD_AT.still) => number) => table.length === 1 ? get(table[0]) : get(table[0]) + (get(table[1]) - get(table[0])) * moving;
+  const fwd = blend((t) => knot(t.fwd, pitch)), up = blend((t) => knot(t.up, pitch)), right = blend((t) => t.right);
+  const lean = leanOffset(p.lean ?? 0, yaw, c ? 1 : 0, up);
+  const head: V3 = [
+    p.x + fx * fwd + rx * right + lean[0] * HEAD_LEAN,
+    p.y + up + lean[1] * HEAD_LEAN,
+    p.z + fz * fwd + rz * right + lean[2] * HEAD_LEAN,
+  ];
+  // The torso runs from the hips toward the head, ending below it so its rounded cap cannot
+  // swallow headshots.
+  const hip: V3 = [p.x, p.y + (c ? CROUCH_HIP : HIP), p.z];
+  const spine: V3 = [head[0] - hip[0], head[1] - hip[1], head[2] - hip[2]];
+  const len = Math.hypot(...spine);
+  const k = Math.max(0, (len - NECK_GAP) / len);
   return {
-    head: { c: at(c ? 1.15 : 1.64), r: 0.16 },
-    // End the torso below the head center so its rounded cap cannot swallow headshots.
-    body: { a: at(c ? 0.62 : 1.0), b: at(c ? 0.82 : 1.32), r: 0.29 },
-    legs: { a: [p.x, p.y + 0.12, p.z] as V3, b: [p.x, p.y + (c ? 0.6 : 0.98), p.z] as V3, r: 0.22 },
+    head: { c: head, r: HEAD_R },
+    body: { a: [hip[0], hip[1] + 0.05, hip[2]] as V3, b: [hip[0] + spine[0] * k, hip[1] + spine[1] * k, hip[2] + spine[2] * k] as V3, r: 0.27 },
+    legs: { a: [p.x, p.y + 0.12, p.z] as V3, b: [p.x, p.y + (c ? 0.55 : 0.9), p.z] as V3, r: 0.2 },
   };
 }
 
 /** Nearest hit of a ray (unit `dir`) against a player's hitboxes, within `maxDist`. */
 export function rayVsPose(o: V3, dir: V3, maxDist: number, pose: Pose): PoseHit | null {
-  // Cheap reject: bounding capsule around the whole body.
-  const cheap = rayCapsule(o, dir, [pose.x, pose.y, pose.z], [pose.x, pose.y + 1.85, pose.z], 0.5 + Math.abs(pose.lean ?? 0) * 0.4);
+  // Cheap reject: bounding capsule around the whole body (the head reaches 0.5 m out, bent or peeking).
+  const cheap = rayCapsule(o, dir, [pose.x, pose.y, pose.z], [pose.x, pose.y + 1.85, pose.z], 0.75);
   if (cheap === null || cheap > maxDist) return null;
   const hb = hitboxes(pose);
   let best: PoseHit | null = null;

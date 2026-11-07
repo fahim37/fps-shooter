@@ -9,7 +9,10 @@ import {
 import { WEAPONS, PRIMARIES, GRENADE, damageAt, fireIntervalMs, type WeaponId } from "../game/shared/weapons";
 import { GRENADE_STEP_HZ, blastDistance, createGrenadeBody, grenadeVelocity, impactSpeed } from "../game/shared/grenade";
 import { PoseHistory } from "../game/shared/lagcomp";
-import { rayVsPose, type HitPart, type Pose } from "../game/shared/hitboxes";
+import { MOVING_SPEED, rayVsPose, type HitPart, type Pose } from "../game/shared/hitboxes";
+import { claimFits } from "../game/shared/hitclaim";
+
+const HIT_PARTS: HitPart[] = ["head", "body", "legs"];
 import { clampLean, leanOffset } from "../game/shared/lean";
 import { raycastWorld, lineOfSight, type World } from "../game/shared/physics";
 import {
@@ -354,7 +357,21 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     this.updateMeta();
   }
 
+  /**
+   * Claimed hits this match: taken, and refused (the shot then falls to our own hitboxes).
+   * A refusal rate above a few percent means CLAIM_SLACK is too tight for real latency.
+   */
+  private claimStats = { taken: 0, refused: 0, headTaken: 0, headRefused: 0 };
+
+  private logClaims() {
+    const s = this.claimStats;
+    if (s.taken + s.refused === 0) return;
+    console.log(`[hits] room ${this.roomId}: ${s.taken} claimed hits taken, ${s.refused} refused (head ${s.headTaken} taken, ${s.headRefused} refused)`);
+    this.claimStats = { taken: 0, refused: 0, headTaken: 0, headRefused: 0 };
+  }
+
   onDispose() {
+    this.logClaims();
     this.analytics?.dispose();
     this.world.free();
   }
@@ -450,6 +467,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
 
   private startPhase(phase: "waiting" | "warmup" | "live" | "ended") {
     const t = now();
+    if (phase === "ended") this.logClaims();
     this.state.phase = phase;
     for (const p of this.players.values()) { p.st.emote = "idle"; p.lastEmoteAt = 0; }
     if (phase === "waiting") {
@@ -595,7 +613,8 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   }
 
   livePose(p: ServerPlayer): Pose {
-    return { x: p.st.x, y: p.st.y, z: p.st.z, crouch: (p.st.flags & F_CROUCH) !== 0, yaw: p.st.yaw, lean: p.st.lean };
+    return { x: p.st.x, y: p.st.y, z: p.st.z, crouch: (p.st.flags & F_CROUCH) !== 0, yaw: p.st.yaw, lean: p.st.lean,
+      pitch: p.st.pitch, moving: p.vel && Math.hypot(p.vel[0], p.vel[2]) > MOVING_SPEED ? 1 : 0 };
   }
 
   // ---------------------------------------------------------------- combat
@@ -642,20 +661,39 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     const impacts: boolean[] = [];
     const hits: (HitPart | null)[] = [];
 
-    for (const raw of m.dirs) {
+    const claims = Array.isArray(m.claims) && m.claims.length === m.dirs.length ? m.claims : null;
+    const poseOf = (o: ServerPlayer) => p.bot ? this.livePose(o) : o.history.sample(viewTime);
+    m.dirs.forEach((raw, i) => {
       const len = Math.hypot(raw[0], raw[1], raw[2]);
-      if (!finite(...raw) || len < 0.5) continue;
+      if (!finite(...raw) || len < 0.5) return;
       const dir: V3 = [raw[0] / len, raw[1] / len, raw[2] / len];
       const wall = raycastWorld(RAPIER, this.world, m.origin, dir, def.range);
       const maxDist = wall ? wall.distance : def.range;
       let bestT = maxDist, bestTarget: ServerPlayer | null = null, bestPart: HitPart = "body";
-      for (const o of this.players.values()) {
-        if (o === p || !o.st.alive || !this.canDamage(p, o)) continue;
-        const pose = p.bot ? this.livePose(o) : o.history.sample(viewTime);
-        if (!pose) continue;
-        const hit = rayVsPose(m.origin, dir, bestT, pose);
-        if (hit && hit.distance < bestT) {
-          bestT = hit.distance; bestTarget = o; bestPart = hit.part;
+      // The shooter's client tested the character as drawn; take its claim where the rewound
+      // hitboxes agree, its miss as a miss, and our own test when the claim does not fit.
+      const claim = claims?.[i];
+      const claimed = claim && typeof claim.id === "string" ? this.players.get(claim.id) : undefined;
+      const pose = claimed && claimed !== p && claimed.st.alive && this.canDamage(p, claimed) ? poseOf(claimed) : null;
+      const fits = !!pose && HIT_PARTS.includes(claim!.part) && claimFits(m.origin, dir, claim!.dist, claim!.part, pose, wall?.distance ?? null, def.range);
+      if (claim) {
+        const head = claim.part === "head";
+        if (fits) { this.claimStats.taken++; if (head) this.claimStats.headTaken++; }
+        else { this.claimStats.refused++; if (head) this.claimStats.headRefused++; }
+      }
+      if (fits) {
+        bestT = Math.min(claim!.dist, maxDist); bestTarget = claimed!; bestPart = claim!.part;
+      } else if (claims && claim === null) {
+        // A miss on the shooter's screen.
+      } else {
+        for (const o of this.players.values()) {
+          if (o === p || !o.st.alive || !this.canDamage(p, o)) continue;
+          const pose = poseOf(o);
+          if (!pose) continue;
+          const hit = rayVsPose(m.origin, dir, bestT, pose);
+          if (hit && hit.distance < bestT) {
+            bestT = hit.distance; bestTarget = o; bestPart = hit.part;
+          }
         }
       }
       const point: V3 = [m.origin[0] + dir[0] * bestT, m.origin[1] + dir[1] * bestT, m.origin[2] + dir[2] * bestT];
@@ -670,7 +708,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
         if (bestPart === "head") { acc.part = "head"; acc.point = point; acc.dir = dir; }
         damages.set(bestTarget.id, acc);
       }
-    }
+    });
 
     this.analytics?.shot(p, damages.size > 0);
     this.broadcast("shot", { id: p.id, weapon: m.weapon, origin: m.origin, ends, impacts, hits } satisfies ShotEvent, { except: p.client });

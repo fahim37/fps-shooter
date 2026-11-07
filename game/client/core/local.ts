@@ -551,11 +551,14 @@ export class LocalPlayer {
     }
     const cone = this.spread;
     const dirs = Array.from({ length: def.pellets }, () => spreadDir(aim, cone));
+    // What each pellet meets on screen: the server checks these claims against its own rewind.
+    const traces = dirs.map((dir) => this.game.traceFrom(eye, dir, def.range));
+    const claims = traces.map((t) => t.target ? { id: t.target.id, part: t.part, dist: Math.round(t.distance * 1000) / 1000 } : null);
     this.sendPose();
     const shot = ++this.shotSeq;
     this.pendingShots.push({ shot, weapon: this.weapon });
-    this.game.send("fire", { weapon: this.weapon, shot, viewTime: this.game.clock.now() - INTERP_DELAY_MS, origin: eye, dirs });
-    this.game.onLocalShot(this.weapon, eye, dirs);
+    this.game.send("fire", { weapon: this.weapon, shot, viewTime: this.game.clock.now() - INTERP_DELAY_MS, origin: eye, dirs, claims });
+    this.game.onLocalShot(this.weapon, eye, dirs, traces);
     // The last round goes straight into a reload, whose own pump chambers the next.
     if (a.mag > 0) audio.cycle(this.weapon);
 

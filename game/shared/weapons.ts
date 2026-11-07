@@ -67,7 +67,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     adsFov: 18, adsMs: 170, moveMult: 0.9, scope: true,
   }),
   pistol: W({
-    id: "pistol", name: "Peacemaker", slot: 1, auto: false, rpm: 190, damage: 44, headMult: 1.8, limbMult: 0.9, pellets: 1,
+    id: "pistol", name: "Peacemaker", slot: 1, auto: false, rpm: 190, damage: 44, headMult: 4.55, limbMult: 0.9, pellets: 1,
     falloffStart: 18, falloffEnd: 40, minMult: 0.6, range: 120, mag: 6, reserve: 36, reloadMs: 2600, equipMs: 250,
     spreadHip: 0.18, spreadAds: 0.16, spreadMove: 0.2, spreadAir: 3, recoilUp: 1.5, recoilSide: 0.2,
     adsFov: 66, adsMs: 150, moveMult: 1.05,

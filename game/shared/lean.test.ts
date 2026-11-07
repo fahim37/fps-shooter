@@ -21,7 +21,10 @@ describe("peeking", () => {
   it("moves the head hitbox out from behind cover", () => {
     const upright = { x: 0, y: 0, z: 0, crouch: false };
     const peeking = { ...upright, yaw: 0, lean: 1 };
-    expect(hitboxes(peeking).head.c[0]).toBeCloseTo(hitboxes(upright).head.c[0] + leanOffset(1, 0, 0, 1.64)[0]);
+    // The drawn peek swings the head about 0.34 m out (scripts/dev/hit-accuracy.ts).
+    const shift = hitboxes(peeking).head.c[0] - hitboxes(upright).head.c[0];
+    expect(shift).toBeGreaterThan(0.3);
+    expect(shift).toBeLessThan(0.4);
     expect(hitboxes(peeking).legs).toEqual(hitboxes(upright).legs);
     // A shot down the line beside the player only connects while they peek.
     const x = hitboxes(peeking).head.c[0], y = hitboxes(peeking).head.c[1];

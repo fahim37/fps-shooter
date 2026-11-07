@@ -45,6 +45,13 @@ describe("shield", () => {
     expect(damageAt(sniper, 5)).toBeLessThan(MAX_HEALTH + MAX_SHIELD);
     for (const range of [5, 120, 300]) expect(damageAt(sniper, range) * sniper.headMult).toBeGreaterThanOrEqual(MAX_HEALTH + MAX_SHIELD);
   });
+  it("a pistol headshot goes through a full shield up close; far away it kills only an unshielded player", () => {
+    const { pistol } = WEAPONS;
+    for (const range of [2, 18, 35]) expect(damageAt(pistol, range) * pistol.headMult).toBeGreaterThanOrEqual(MAX_HEALTH + MAX_SHIELD);
+    // Far away a headshot does about 120: lethal unshielded, a full shield survives on ~15.
+    for (const range of [40, 120]) expect(Math.round(damageAt(pistol, range) * pistol.headMult)).toBe(120);
+    expect(damageAt(pistol, 5)).toBeLessThan(MAX_HEALTH);
+  });
 });
 
 describe("authoritative health regeneration", () => {

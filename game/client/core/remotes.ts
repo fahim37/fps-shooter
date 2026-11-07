@@ -6,7 +6,8 @@ import type { WeaponId } from "../../shared/weapons";
 import { WEAPONS } from "../../shared/weapons";
 import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_SPRINT } from "../../shared/messages";
 import type { PlayerState } from "../../shared/schema";
-import type { Pose } from "../../shared/hitboxes";
+import { MOVING_SPEED, rayVsPose, type Pose, type PoseHit } from "../../shared/hitboxes";
+import { HitShapes } from "../player/hitShapes";
 import { audio } from "./audio";
 import { setEnemyReadability } from "../assets/readability";
 import { isEmote } from "../../shared/showcase";
@@ -81,6 +82,9 @@ export class RemotePlayer {
     this.tint = tint;
     this.char = char;
     this.rig = new CharacterRig(templates[char === 1 ? 1 : 0], weapons, tint, char === 0 && hash(this.id) % 2 === 0, "tpp");
+    this.hitShapes = null;
+    // Not posed until the next `animate`: a ray meanwhile would meet the bind pose at the origin.
+    this.posed = false;
     this.readable = false;
     this.rig.setWeapon(this.weapon);
     scene.add(this.rig.object);
@@ -111,10 +115,24 @@ export class RemotePlayer {
   /** Direction of travel (player yaw convention). */
   get moveYaw() { return Math.atan2(-this.vel.x, -this.vel.z); }
 
-  /** Pose used for local hit prediction (what we see on screen). */
+  /** Pose of the shared hitboxes, for a character not drawn this frame. */
   pose(): Pose {
-    return { x: this.pos.x, y: this.pos.y, z: this.pos.z, crouch: (this.flags & F_CROUCH) !== 0, yaw: this.yaw, lean: this.lean };
+    return { x: this.pos.x, y: this.pos.y, z: this.pos.z, crouch: (this.flags & F_CROUCH) !== 0, yaw: this.yaw, lean: this.lean,
+      pitch: this.pitch, moving: this.speed > MOVING_SPEED ? 1 : 0 };
   }
+
+  /**
+   * A ray against this player as drawn: the hit shapes on the animated skeleton, posed by the
+   * last `animate` (what is on screen when the trigger is pulled). Off-screen, the shared hitboxes.
+   */
+  hitTest(origin: [number, number, number], dir: [number, number, number], maxDist: number): PoseHit | null {
+    if (this.posed && this.rig && this.alive) {
+      this.hitShapes ??= new HitShapes(this.rig.inst.bones);
+      return this.hitShapes.raycast(origin, dir, maxDist);
+    }
+    return rayVsPose(origin, dir, maxDist, this.pose());
+  }
+  private hitShapes: HitShapes | null = null;
 
   /** Interpolates the network pose and plays footsteps; `animate` then poses the character. */
   update(dt: number, renderTime: number, listener: THREE.Vector3) {
