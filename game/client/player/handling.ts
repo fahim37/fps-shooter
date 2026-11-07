@@ -161,8 +161,8 @@ interface Cycle { clip: Clip; seconds: number; strokes: readonly [number, number
 const CLIPS: Record<WeaponId, { reload: Clip; cycle?: Cycle }> = {
   ar: { reload: magReload(true) },
   smg: { reload: magReload(false) },
-  shotgun: { reload: SHOTGUN_RELOAD, cycle: { clip: SHOTGUN_PUMP, seconds: 0.52, strokes: [0.5, 0.75] } },
-  sniper: { reload: SNIPER_RELOAD, cycle: { clip: SNIPER_BOLT, seconds: 0.78, strokes: [0.5, 0.64] } },
+  shotgun: { reload: SHOTGUN_RELOAD, cycle: { clip: SHOTGUN_PUMP, seconds: 0.36, strokes: [0.5, 0.75] } },
+  sniper: { reload: SNIPER_RELOAD, cycle: { clip: SNIPER_BOLT, seconds: 0.64, strokes: [0.5, 0.64] } },
   pistol: { reload: PISTOL_RELOAD },
 };
 

@@ -55,13 +55,13 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     adsFov: 62, adsMs: 170, moveMult: 1.05,
   }),
   shotgun: W({
-    id: "shotgun", name: "Pump Shotgun", slot: 0, auto: false, rpm: 100, damage: 15, headMult: 1.4, limbMult: 0.9, pellets: 9,
+    id: "shotgun", name: "Pump Shotgun", slot: 0, auto: false, rpm: 150, damage: 15, headMult: 1.4, limbMult: 0.9, pellets: 9,
     falloffStart: 9, falloffEnd: 22, minMult: 0.25, range: 60, mag: 6, reserve: 30, reloadMs: 2250, equipMs: 450,
     spreadHip: 5.5, spreadAds: 4.2, spreadMove: 1, spreadAir: 2, recoilUp: 2.2, recoilSide: 0.35,
     adsFov: 65, adsMs: 200, moveMult: 0.97,
   }),
   sniper: W({
-    id: "sniper", name: "Hunter Sniper", slot: 0, auto: false, rpm: 75, damage: 100, headMult: 1.2, limbMult: 0.8, pellets: 1,
+    id: "sniper", name: "Hunter Sniper", slot: 0, auto: false, rpm: 90, damage: 100, headMult: 1.2, limbMult: 0.8, pellets: 1,
     falloffStart: 80, falloffEnd: 200, minMult: 1, range: 300, mag: 5, reserve: 25, reloadMs: 2500, equipMs: 600,
     spreadHip: 7, spreadAds: 0.02, spreadMove: 3, spreadAir: 9, recoilUp: 2.4, recoilSide: 0.2,
     adsFov: 18, adsMs: 170, moveMult: 0.9, scope: true,
