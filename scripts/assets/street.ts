@@ -47,7 +47,11 @@ import { PLAYER_HEIGHT, PLAYER_RADIUS } from "../../game/shared/constants";
  *   palace. `noGoClips` stands clips on every thick footprint that rises past the terraces, so
  *   nobody climbs them, and everything behind the palace's front line is shut. Clips never stop
  *   bullets, so sight lines stay as they are.
- * - `COVER` breaks up the road, which is otherwise one 130 m sight line.
+ * - The flags on poles become billboards (`BILLBOARD_W` wide, down to the floor) that stop
+ *   bullets: cover along the terraces, where the source only had a 0.5 m strip of cloth.
+ * - The terrace stairs are 7 cm risers by the dozen, and the step-up stalls a runner on every one.
+ *   `stairRamps` lays a player-only ramp over each flight, so running up them glides; bullets
+ *   and grenades still meet the real steps.
  *
  * Put the source's model.dae and its model/ folder in assets-raw/street/source.
  */
@@ -144,17 +148,15 @@ const NO_GO_CELL = 0.5, NO_GO_THIN = 2;
 /** Gatehouse: pier and lintel over the road, dark door between them. */
 const GATE_H = 15, GATE_W = 7.5, PIER_W = 3.5;
 const DOOR_COLOR = "#25262a", BANNER_COLOR = "#2f4a44", TRIM_COLOR = "#b08f5a";
-/** Cover on the road: [x, z, size x, size z, height]. Low for a crouch, tall for a whole player. */
-const COVER: [number, number, number, number, number][] = [
-  // Tall pairs overlap across the road's center, so no straight line runs its length; the side
-  // gaps stay wide enough to walk through.
-  [-1.3, -14, 2.6, 1.2, 2.1], [1.3, -3, 2.6, 1.2, 2.1], [-1.3, 37, 2.6, 1.2, 2.1], [1.3, 47, 2.6, 1.2, 2.1],
-  [1.6, -22, 2.4, 1.2, 1.15], [-1.6, 8, 2.4, 1.2, 1.15], [1.6, 14, 2.4, 1.2, 1.15], [-1.6, 56, 2.4, 1.2, 1.15], [1.6, 64, 2.4, 1.2, 1.15],
-  // The mouth of the plaza.
-  [-7, -31, 4, 0.9, 2.1], [7, -31, 4, 0.9, 2.1], [0, -36, 4, 0.9, 1.15],
-  [-13, -44, 0.9, 4, 1.15], [13, -44, 0.9, 4, 1.15],
-];
-const COVER_COLOR = "#9a8f7f";
+/** Flags on poles: their cloth (source material), and the billboards they become (m). */
+const CLOTH = /^__Color_A01_1$/;
+const BILLBOARD_W = 1.3, BILLBOARD_T = 0.14, BILLBOARD_FRAME = 0.07;
+/** Stair ramps: grid cell, how many cells a flight is read along each way, a riser's range (m). */
+const RAMP_CELL = 0.1, RAMP_SPAN = 5, RISER_MIN = 0.02, RISER_MAX = 0.16;
+/** Smoothing window (cells each way), and how much of the stairs' nosings a ramp may clear (m). */
+const RAMP_SMOOTH = 4, RAMP_LIFT = 0.1;
+/** Most a ramp may move when simplified (m): flights are near-planar, so most of a grid merges. */
+const RAMP_ERROR = 0.025;
 
 type V3 = [number, number, number];
 /** `back`: the far side of a sheet whose near side is kept too. */
@@ -192,9 +194,13 @@ export async function importStreet() {
     list.push(f);
   }
   const bounds = objectBounds(raw);
+  const billboards: Billboard[] = [];
   let drawn = 0, detail = 0, plants = 0;
-  for (const [object, list] of objects) {
+  for (const [object, all] of objects) {
     const box = bounds.get(object)!;
+    const board = billboardOf(all, box);
+    if (board) billboards.push(board);
+    const list = board ? all.filter((f) => !CLOTH.test(f.material)) : all;
     if (list.every((f) => PLANT.test(f.material))) {
       plants += addCone(batchFor("Street_Plants", "paint"), box, tint(PAINT[list[0].material][1], "paint"));
       drawn += 12;
@@ -231,13 +237,22 @@ export async function importStreet() {
     }
   }
 
-  // Walls, the gatehouse and cover.
-  for (const box of [...wallBoxes(), ...gateBoxes(), ...coverBoxes()]) {
+  // Walls, the gatehouse and the billboards.
+  for (const box of [...wallBoxes(), ...gateBoxes()]) {
     const slot: Slot = box.slot ?? "stone";
     const piece = `Street_${chunkOf((box.x0 + box.x1) / 2, (box.z0 + box.z1) / 2)}`;
     const b = batchFor(piece, slot), start = b.pos.length;
     addBox(b, slot, box, tint(box.color, slot));
     solidFor(piece).push(...b.pos.slice(start));
+  }
+  for (const board of billboards) {
+    const piece = `Street_${chunkOf(board.x, board.z)}`, b = batchFor(piece, "paint"), start = b.pos.length;
+    const F = BILLBOARD_FRAME;
+    // A gold frame, and the cloth standing proud of it on both faces.
+    addPanel(b, board, BILLBOARD_W / 2, BILLBOARD_T / 2 - 0.03, board.y0, board.y1, tint(TRIM_COLOR, "paint"));
+    addPanel(b, board, BILLBOARD_W / 2 - F, BILLBOARD_T / 2, board.y0 + F, board.y1 - F, tint(BANNER_COLOR, "paint"));
+    solidFor(piece).push(...b.pos.slice(start));
+    drawn += (b.pos.length - start) / 9;
   }
 
   // Build the document: one node per piece, one primitive per slot.
@@ -273,16 +288,18 @@ export async function importStreet() {
   const surfaces = new Surfaces([...collision].filter(([, m]) => m).map(([, m]) => m!));
   const noGo = noGoClips(surfaces);
   const clips = perimeterClips(noGo);
-  collision.set("Clip_Street", boxesMesh(clips));
+  const world = await solidWorld(collision);
+  const ramps = stairRamps(world, noGo);
+  collision.set("Clip_Street", joinMeshes(boxesMesh(clips), ramps.mesh));
   const { ranges, positionsByteLength } = writeCollisionBin(path.join(PUBLIC_MODELS, "street.collision.bin"), collision);
   for (const [name, range] of ranges) (info[name] ??= boxBounds(clips)).col = range;
 
-  const layout = playLayout(surfaces, noGo, await capsuleCheck(collision));
+  const layout = playLayout(surfaces, noGo, capsuleCheck(world));
   writeJSON(path.join(GENERATED, "street-pieces.json"), { positionsByteLength, pieces: info, ...layout });
 
   let colTris = 0;
   for (const r of ranges.values()) colTris += r[3] / 3;
-  console.log(`[street] ${(bytes / 1e6).toFixed(2)} MB glb, ${batches.size} pieces, ${raw.length} source tris, ${faces.length} visible (${bothSided} both sides), ${drawn} drawn (${detail} detail, ${plants} plants), ${colTris} collision tris, spawns ${layout.spawns.blue.length}/${layout.spawns.red.length}/${layout.spawns.ffa.length}, ${layout.footprints.length} footprints`);
+  console.log(`[street] ${(bytes / 1e6).toFixed(2)} MB glb, ${batches.size} pieces, ${raw.length} source tris, ${faces.length} visible (${bothSided} both sides), ${drawn} drawn (${detail} detail, ${plants} plants), ${colTris} collision tris, spawns ${layout.spawns.blue.length}/${layout.spawns.red.length}/${layout.spawns.ffa.length}, ${layout.footprints.length} footprints, ${billboards.length} billboards, ${ramps.flights} stair flights ramped (${ramps.mesh.indices.length / 3} tris)`);
 }
 
 /** Every source triangle in game space: X along the avenue becomes Z, Y across it X, Z up Y. */
@@ -568,8 +585,53 @@ function gateBoxes(): Block[] {
   ];
 }
 
-function coverBoxes(): Block[] {
-  return COVER.map(([x, z, sx, sz, h]) => ({ x0: x - sx / 2, x1: x + sx / 2, z0: z - sz / 2, z1: z + sz / 2, y1: h, color: COVER_COLOR }));
+/** A billboard: its center, the way its face points, and its height. */
+interface Billboard { x: number; z: number; nx: number; nz: number; y0: number; y1: number }
+
+/** A flag on a pole: a small upright object with cloth in it. Its billboard stands where the cloth hangs. */
+function billboardOf(faces: Face[], box: number[]): Billboard | null {
+  const cloth = faces.filter((f) => CLOTH.test(f.material));
+  const h = box[4] - box[1], footprint = Math.hypot(box[3] - box[0], box[5] - box[2]);
+  if (!cloth.length || h < 2 || h > 3.2 || footprint > 1) return null;
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity, y1 = -Infinity, nx = 0, nz = 0;
+  for (const f of cloth) {
+    for (let k = 0; k < 9; k += 3) {
+      x0 = Math.min(x0, f.p[k]); x1 = Math.max(x1, f.p[k]);
+      z0 = Math.min(z0, f.p[k + 2]); z1 = Math.max(z1, f.p[k + 2]);
+      y1 = Math.max(y1, f.p[k + 1]);
+    }
+    // The cloth's two sides point opposite ways: line them up before summing.
+    const s = nx === 0 && nz === 0 ? 1 : f.n[0] * nx + f.n[2] * nz >= 0 ? 1 : -1;
+    nx += f.n[0] * s; nz += f.n[2] * s;
+  }
+  const len = Math.hypot(nx, nz) || 1;
+  return { x: (x0 + x1) / 2, z: (z0 + z1) / 2, nx: nx / len, nz: nz / len, y0: box[1], y1 };
+}
+
+/** An upright panel on a billboard's line: `halfW` across its face, `halfT` through it. */
+function addPanel(b: Batch, { x, z, nx, nz }: Billboard, halfW: number, halfT: number, y0: number, y1: number, color: V3) {
+  const ux = -nz, uz = nx;
+  const at = (w: number, t: number, y: number): V3 => [x + ux * w * halfW + nx * t * halfT, y, z + uz * w * halfW + nz * t * halfT];
+  const quads: V3[][] = [
+    [at(-1, -1, y1), at(-1, 1, y1), at(1, 1, y1), at(1, -1, y1)],
+    [at(-1, 1, y0), at(1, 1, y0), at(1, 1, y1), at(-1, 1, y1)],
+    [at(1, -1, y0), at(-1, -1, y0), at(-1, -1, y1), at(1, -1, y1)],
+    [at(1, 1, y0), at(1, -1, y0), at(1, -1, y1), at(1, 1, y1)],
+    [at(-1, -1, y0), at(-1, 1, y0), at(-1, 1, y1), at(-1, -1, y1)],
+  ];
+  for (const [p0, p1, p2, p3] of quads) for (const tri of [[p0, p1, p2], [p0, p2, p3]]) {
+    // Whichever way the corners wind, face outward from the panel's middle.
+    let n = faceNormal(tri.flat());
+    if (!n) continue;
+    const cx = (tri[0][0] + tri[1][0] + tri[2][0]) / 3 - x, cy = (tri[0][1] + tri[1][1] + tri[2][1]) / 3 - (y0 + y1) / 2, cz = (tri[0][2] + tri[1][2] + tri[2][2]) / 3 - z;
+    let corners = tri;
+    if (n[0] * cx + n[1] * cy + n[2] * cz < 0) { corners = [tri[0], tri[2], tri[1]]; n = [-n[0], -n[1], -n[2]]; }
+    for (const p of corners) {
+      b.pos.push(...p);
+      b.nrm.push(...n);
+      b.col.push(color[0], color[1], color[2], 1);
+    }
+  }
 }
 
 /** An upright box, flat shaded (the ground closes the bottom). */
@@ -629,18 +691,133 @@ function perimeterClips(noGo: Rect[]): Box[] {
     .map(({ x0, x1, z0, z1 }): Box => [0, 1, 2, 3, 4, 5, 6, 7].map((k) => [k & 1 ? x1 : x0, k & 4 ? CLIP_H : -1, k & 2 ? z1 : z0] as V3));
 }
 
-/**
- * Whether a player's capsule fits at a spot, by the physics the game itself uses: the fins and
- * rods along the terraces are thin enough for any sampling to miss.
- */
-async function capsuleCheck(collision: Map<string, CollisionMesh | null>) {
+/** The solid collision in the physics the game itself uses, for the importer's own queries. */
+async function solidWorld(collision: Map<string, CollisionMesh | null>) {
   await RAPIER.init();
   const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
   for (const [name, m] of collision) if (m && !name.startsWith("Clip_")) world.createCollider(RAPIER.ColliderDesc.trimesh(m.positions, m.indices));
   world.step();
+  return world;
+}
+
+/**
+ * Whether a player's capsule fits at a spot: the fins and rods along the terraces are thin
+ * enough for any sampling to miss.
+ */
+function capsuleCheck(world: RAPIER.World) {
   const radius = PLAYER_RADIUS + ROOM, capsule = new RAPIER.Capsule(PLAYER_HEIGHT / 2 - radius, radius);
   return (x: number, z: number, floor: number) =>
     !world.intersectionWithShape({ x, y: floor + 0.15 + PLAYER_HEIGHT / 2, z }, { x: 0, y: 0, z: 0, w: 1 }, capsule);
+}
+
+function joinMeshes(a: CollisionMesh, b: CollisionMesh): CollisionMesh {
+  const base = a.positions.length / 3;
+  return { positions: Float32Array.from([...a.positions, ...b.positions]), indices: Uint32Array.from([...a.indices, ...Array.from(b.indices, (i) => i + base)]) };
+}
+
+/**
+ * Player-only ramps over the stair flights. The floor is read on a fine grid; a cell is on a
+ * flight when, along x or along z, it climbs through at least three small risers and no wall.
+ * Each flight's cells, and a short rim onto its landings, get the floor's local average, lifted
+ * just clear of the nosings, the lift fading out across the rim.
+ */
+function stairRamps(world: RAPIER.World, noGo: Rect[]): { mesh: CollisionMesh; flights: number } {
+  const C = RAMP_CELL, X0 = -EDGE_X, Z0 = PLINTH_Z;
+  const nx = Math.round((2 * EDGE_X) / C), nz = Math.round((EDGE_Z - PLINTH_Z) / C);
+  const idx = (i: number, j: number) => (i < 0 || j < 0 || i >= nx || j >= nz ? -1 : j * nx + i);
+  const h = new Float32Array(nx * nz).fill(NaN);
+  const ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+    const x = X0 + (i + 0.5) * C, z = Z0 + (j + 0.5) * C;
+    if (noGo.some((r) => x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1)) continue;
+    ray.origin = { x, y: MAX_FLOOR + 0.3, z };
+    const hit = world.castRay(ray, MAX_FLOOR + 1, true);
+    if (hit) h[j * nx + i] = MAX_FLOOR + 0.3 - hit.timeOfImpact;
+  }
+  const at = (i: number, j: number) => { const k = idx(i, j); return k < 0 ? NaN : h[k]; };
+  const climbs = (i: number, j: number, di: number, dj: number) => {
+    let rises = 0, prev = at(i - RAMP_SPAN * di, j - RAMP_SPAN * dj);
+    for (let k = -RAMP_SPAN + 1; k <= RAMP_SPAN; k++) {
+      const cur = at(i + k * di, j + k * dj), d = Math.abs(cur - prev);
+      if (!(d < RISER_MAX)) return false; // a wall, or no floor
+      if (d > RISER_MIN) rises++;
+      prev = cur;
+    }
+    return rises >= 3;
+  };
+  // Flights, each with its own label, and the axis each cell climbs along (1: x, 2: z).
+  const label = new Int32Array(nx * nz).fill(-1);
+  const core = new Uint8Array(nx * nz), axis = new Uint8Array(nx * nz);
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+    const k = j * nx + i;
+    axis[k] = climbs(i, j, 1, 0) ? 1 : climbs(i, j, 0, 1) ? 2 : 0;
+    core[k] = axis[k] ? 1 : 0;
+  }
+  let flights = 0;
+  for (let k = 0; k < core.length; k++) {
+    if (!core[k] || label[k] >= 0) continue;
+    const cells = [k];
+    label[k] = flights;
+    for (let q = 0; q < cells.length; q++) {
+      const c = cells[q], i = c % nx, j = (c - i) / nx;
+      for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const n = idx(i + a, j + b);
+        if (n >= 0 && core[n] && label[n] < 0) { label[n] = flights; cells.push(n); }
+      }
+    }
+    if (cells.length < 40) for (const c of cells) { label[c] = -1; core[c] = 0; } // a lone curb
+    else flights++;
+  }
+  // The rim: a few cells onto the landings, each within a riser of the cell it grows from.
+  const RIM = 3, ring = new Uint8Array(nx * nz);
+  for (let step = 1; step <= RIM; step++) {
+    const add: [number, number][] = [];
+    for (let k = 0; k < label.length; k++) {
+      if (label[k] >= 0 || Number.isNaN(h[k])) continue;
+      const i = k % nx, j = (k - i) / nx;
+      for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const n = idx(i + a, j + b);
+        if (n >= 0 && label[n] >= 0 && (core[n] || ring[n] === step - 1) && Math.abs(h[n] - h[k]) < RISER_MAX) { add.push([k, n]); break; }
+      }
+    }
+    for (const [k, n] of add) { label[k] = label[n]; axis[k] = axis[n]; ring[k] = step; }
+  }
+  // The ramp's height: the floor's average along the way the flight climbs, then lifted clear
+  // of its nosings. Averaged across as well, a wall or billboard beside a flight would tilt the
+  // ramp toward it, and a runner wedged between the two stops dead.
+  const ramp = new Float32Array(nx * nz).fill(NaN);
+  for (let k = 0; k < label.length; k++) {
+    if (label[k] < 0) continue;
+    const i = k % nx, j = (k - i) / nx, [di, dj] = axis[k] === 2 ? [0, 1] : [1, 0];
+    let sum = 0, n = 0;
+    for (let a = -RAMP_SMOOTH; a <= RAMP_SMOOTH; a++) {
+      const v = at(i + a * di, j + a * dj);
+      if (Math.abs(v - h[k]) < 0.35) { sum += v; n++; }
+    }
+    ramp[k] = sum / n;
+  }
+  const lift = new Float32Array(flights);
+  for (let k = 0; k < label.length; k++) if (core[k]) lift[label[k]] = Math.max(lift[label[k]], Math.min(RAMP_LIFT, h[k] - ramp[k]));
+  for (let k = 0; k < label.length; k++) if (label[k] >= 0) ramp[k] += lift[label[k]] * (1 - ring[k] / (RIM + 1));
+
+  const pos: number[] = [], tri: number[] = [];
+  const vertex = new Int32Array(nx * nz).fill(-1);
+  const v = (k: number) => {
+    if (vertex[k] < 0) {
+      const i = k % nx, j = (k - i) / nx;
+      vertex[k] = pos.length / 3;
+      pos.push(X0 + (i + 0.5) * C, ramp[k], Z0 + (j + 0.5) * C);
+    }
+    return vertex[k];
+  };
+  for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    const a = j * nx + i, b = a + 1, c = a + nx, d = c + 1;
+    if (label[a] < 0 || label[b] < 0 || label[c] < 0 || label[d] < 0) continue;
+    tri.push(v(a), v(c), v(b), v(b), v(c), v(d)); // counterclockwise from above
+  }
+  const part = { pos: new Float32Array(pos), idx: new Uint32Array(tri) };
+  if (tri.length) simplify(part, RAMP_ERROR);
+  return { mesh: { positions: part.pos, indices: part.idx }, flights };
 }
 
 type Spawn = [number, number, number];

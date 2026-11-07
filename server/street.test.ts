@@ -4,7 +4,7 @@ import { getMap } from "../game/shared/map/maps";
 import { buildStreet } from "../game/shared/map/street";
 import { lineOfSight, PIECES, QUERY_MOVE, raycastWorld, type World } from "../game/shared/physics";
 import { Mover, newMoveState, type MoveInput } from "../game/shared/movement";
-import { EYE_HEIGHT } from "../game/shared/constants";
+import { EYE_HEIGHT, SPRINT_SPEED } from "../game/shared/constants";
 
 const map = getMap("street");
 let world: World;
@@ -48,14 +48,36 @@ describe("boulevard", () => {
     expect(world.castRay(ray, 40, true, undefined, QUERY_MOVE)?.timeOfImpact ?? Infinity).toBeLessThan(33);
   });
 
-  it("leaves no eye-level line down the length of the road", () => {
-    for (let x = -2.4; x <= 2.4; x += 0.4) {
-      const shot = raycastWorld(RAPIER, world, [x, EYE_HEIGHT, -24], [0, 0, 1], 100)?.distance ?? Infinity;
-      expect(shot, `open along x ${x}`).toBeLessThan(75);
+  // The stairs are dozens of 7 cm risers, and the step-up used to stall a runner on nearly every
+  // one: on the flight at z 16.5, 18 ticks of 40 ran under 85% of sprint speed.
+  it.each([[16.5], [-35]])("lets a runner glide up the terrace stairs at z %d", (z) => {
+    const mover = new Mover(RAPIER, world), s = newMoveState(0, 0, 0);
+    mover.teleport(s, -2, 0.05, z);
+    const input: MoveInput = { forward: 1, right: 0, yaw: Math.PI / 2, jump: false, sprint: true, crouch: false, ads: 0, speedMult: 1 };
+    for (let i = 0; i < 40; i++) mover.step(s, input, 1 / 60);
+    const y0 = s.y;
+    let slow = 0, ticks = 0;
+    while (s.x > -11 && ticks < 120) {
+      const x = s.x;
+      mover.step(s, input, 1 / 60);
+      ticks++;
+      // Along a 30-degree ramp, full sprint is 87% of it level.
+      if (Math.abs(s.x - x) * 60 < SPRINT_SPEED * 0.8) slow++;
+    }
+    expect(s.y - y0, "climbed the flight").toBeGreaterThan(0.4);
+    expect(slow, `ticks stalled of ${ticks}`).toBeLessThanOrEqual(2);
+  });
+
+  it("stands each flag as a billboard, floor to top, that stops bullets", () => {
+    // The flag at x -6.4, z -10.4 hung its cloth from 1.2 m above its foot; the billboard reaches
+    // the floor, and is 1.3 m wide where the cloth was 0.5.
+    for (const x of [-5.9, -6.4, -6.9]) for (const y of [1.15, 1.6, 2.5]) {
+      const shot = raycastWorld(RAPIER, world, [x, y, -6], [0, 0, -1], 10)?.distance ?? Infinity;
+      expect(Math.abs(-6 - shot + 10.4), `open at x ${x}, y ${y}`).toBeLessThan(0.2);
     }
   });
 
-  it("keeps cover walkable: a player passes every road block on one side or the other", () => {
+  it("lets bots walk the length of the road", () => {
     const nav = getNav("street");
     const res = nav.computePath({ x: 0, y: 0, z: -24 }, { x: 0, y: 0, z: 68 }, { halfExtents: { x: 2, y: 3, z: 2 } });
     expect(res.success).toBe(true);
@@ -77,7 +99,7 @@ describe("boulevard", () => {
   it.each([
     ["the palace front", 8, 0.1, -48, 0.1, -1],
     ["the plinth corner", 15, 0.1, -50, 0.5, -1],
-    ["a terrace bank", -5, 0.1, -10, -1, 0.1],
+    ["a terrace bank", -2, 0.05, -10, -1, 0.1],
     ["a building front", -9, 2.5, 0, -1, 0.2],
     ["the gate wall", 12, 2.6, 70, 0.2, 1],
     ["the long wall", 21.8, 0.1, -40, 0.15, 1],
