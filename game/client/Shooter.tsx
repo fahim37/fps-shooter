@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
 import { assetUrl } from "./assets/url";
+import { useUpdateCheck } from "./updateCheck";
 import { createRoom, joinByCode, joinErrorMessage, leaveCurrentRoom, listRooms, quickPlay, type GameRoom, type PublicRoom } from "./net/session";
 import { useSettings } from "./settings";
 import { MAX_PLAYERS, MODE_INFO, ROOM_SIZES, SCORE_LIMITS, scoreLimitFor, type GameMode } from "../shared/constants";
@@ -99,6 +100,8 @@ export default function Shooter() {
   const joining = useRef(false);
   const [help, setHelp] = useState(false);
   const [settings, setSettings] = useState(false);
+
+  useUpdateCheck(!room && !busy && !help && !settings);
 
   useEffect(() => {
     if (room) return;
