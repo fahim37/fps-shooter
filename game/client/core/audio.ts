@@ -615,6 +615,8 @@ export class AudioEngine {
       case "arena": this.outpostBed(bed); break;
       // Blockade: an open depot, the same far generator and radios as the outpost.
       case "blockade": this.outpostBed(bed); break;
+      // Boulevard: a capital's avenue, the same low city rumble as downtown.
+      case "street": this.downtownBed(bed); break;
       case "desert": this.desertBed(bed); break;
       default: this.villageBed(bed);
     }

@@ -11,7 +11,7 @@
 .selected .name { color: var(--accent); }
 .credit { display: block; margin-top: 5px; font-size: 8px; color: #8c9682; letter-spacing: .02em; }
 
-/* Thumbnail row for the room bar: a little wider, so all four names fit. */
+/* Thumbnails for the room bar: the room's own rules set how many to a row. */
 .compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .compact .preview { aspect-ratio: 16 / 7; }
 

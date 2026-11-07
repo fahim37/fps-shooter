@@ -45,7 +45,7 @@ export function Ground({ map }: { map: MapId }) {
   // Chiba Arena brings its own: the event floor is at y = 0, the ballpark's field below it.
   if (map === "arena") return null;
   if (map === "desert") return <Suspense fallback={null}><SandGround /></Suspense>;
-  if (map === "downtown" || map === "outpost" || map === "blockade") return <mesh rotation-x={-Math.PI / 2} position-y={-0.06} receiveShadow>
+  if (map === "downtown" || map === "outpost" || map === "blockade" || map === "street") return <mesh rotation-x={-Math.PI / 2} position-y={-0.06} receiveShadow>
     <planeGeometry args={[SIZE, SIZE]} />
     <meshStandardMaterial color="#3d4044" roughness={1} />
   </mesh>;

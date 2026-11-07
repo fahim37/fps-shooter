@@ -6,6 +6,7 @@ import { getOutpost } from "./outpost";
 import { getDesert } from "./desert";
 import { getArena } from "./arena";
 import { getBlockade } from "./blockade";
+import { getStreet } from "./street";
 
 export interface MapInfo {
   id: MapId;
@@ -29,6 +30,7 @@ export const MAPS: Record<MapId, MapInfo> = {
   desert: { id: "desert", name: "Desert City", tagline: "Sun-baked streets, raised plazas and two sites between walled bases.", style: "Two sites · Mid-range lanes" },
   arena: { id: "arena", name: "Chiba Arena", tagline: "A stadium skate course: ramps, decks and rails ringed by crowd barriers.", style: "Vertical center · Flanking lanes" },
   blockade: { id: "blockade", name: "Blockade", tagline: "A barricaded depot: container rows, truck yards and a scaffolded hall between two watchtowers.", style: "Long lanes · Container cover", credit: "\"LOWPOLY | MAP | ASSET\" by ResoForge · CC BY 4.0 · modified" },
+  street: { id: "street", name: "Boulevard", tagline: "A ceremonial avenue: a sunken road between stepped terraces, from a palace plaza to a sealed gate.", style: "Long avenue · Terraced flanks" },
 };
 
 export const MAP_IDS = Object.keys(MAPS) as MapId[];
@@ -46,5 +48,5 @@ export function mapId(value: unknown): MapId {
 /** The deterministic map for an id (built once, then cached). */
 export function getMap(id?: unknown): MapData {
   const map = mapId(id);
-  return map === "downtown" ? getCity() : map === "industrial" ? getIndustrial() : map === "outpost" ? getOutpost() : map === "desert" ? getDesert() : map === "arena" ? getArena() : map === "blockade" ? getBlockade() : getVillage();
+  return map === "downtown" ? getCity() : map === "industrial" ? getIndustrial() : map === "outpost" ? getOutpost() : map === "desert" ? getDesert() : map === "arena" ? getArena() : map === "blockade" ? getBlockade() : map === "street" ? getStreet() : getVillage();
 }
