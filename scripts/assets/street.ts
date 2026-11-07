@@ -478,8 +478,13 @@ function simplify(part: { pos: Float32Array; idx: Uint32Array }, error: number) 
   }
   const positions = new Float32Array(welded);
   const [out] = MeshoptSimplifier.simplify(Uint32Array.from(kept), positions, 3, 0, error, ["ErrorAbsolute", "LockBorder"]);
-  part.pos = positions;
-  part.idx = out;
+  // Only the corners the simplified triangles still use: the rest would ship in the collision file.
+  const remapUsed = new Int32Array(positions.length / 3).fill(-1), used: number[] = [];
+  part.idx = out.map((i) => {
+    if (remapUsed[i] < 0) { remapUsed[i] = used.length / 3; used.push(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]); }
+    return remapUsed[i];
+  });
+  part.pos = new Float32Array(used);
 }
 
 /** Faces as a triangle list, for `simplify`. */
