@@ -94,6 +94,15 @@ const PISTOL_RELOAD: Clip = (() => {
   };
 })();
 
+/** When each shell starts its trip from the belt, and how long until it seats in the port. */
+const SHELLS = [0.1, 0.28, 0.46, 0.64];
+const SHELL_SEAT = 0.12;
+/** Where the reload's closing pump reaches the back and front of its travel. */
+const RELOAD_RACK = [0.94, 0.98] as const;
+
+/** Sound cues in the shotgun's reload, as fractions of it: each shell seating, then the pump. */
+export const SHOTGUN_RELOAD_CUES = { shells: SHELLS.map((s) => s + SHELL_SEAT), rack: RELOAD_RACK };
+
 const SHOTGUN_RELOAD: Clip = (() => {
   const tilt: GunOffset = [-0.08, 0.09, 0.04, 0.28, 0.25, -0.55];
   const gun: Keys<GunOffset> = [[0, REST], [0.1, tilt]];
@@ -101,16 +110,16 @@ const SHOTGUN_RELOAD: Clip = (() => {
   const shell: Keys<number> = [];
   const shellHeld: Keys<boolean> = [[0, false]];
   // Four shells, each fetched from the belt and thumbed up into the loading port.
-  for (const s of [0.1, 0.28, 0.46, 0.64]) {
-    left.push([s, SHELL_POUCH], [s + 0.07, SHELL], [s + 0.12, SHELL]);
-    shell.push([s, 0.06], [s + 0.07, 0.06], [s + 0.12, 0]);
-    shellHeld.push([s, true], [s + 0.125, false]);
-    gun.push([s + 0.12, nudge(tilt, 0, 0.006, 0, 0.025)], [s + 0.15, tilt]);
+  for (const s of SHELLS) {
+    left.push([s, SHELL_POUCH], [s + 0.07, SHELL], [s + SHELL_SEAT, SHELL]);
+    shell.push([s, 0.06], [s + 0.07, 0.06], [s + SHELL_SEAT, 0]);
+    shellHeld.push([s, true], [s + SHELL_SEAT + 0.005, false]);
+    gun.push([s + SHELL_SEAT, nudge(tilt, 0, 0.006, 0, 0.025)], [s + 0.15, tilt]);
   }
   left.push([0.82, SHELL_POUCH], [0.9, SUPPORT]);
   shell.push([0.82, 0.06]);
   gun.push([0.84, tilt], [0.9, [0, 0, 0, 0, 0, -0.1]], [0.94, [0, 0, 0.015, 0.03, 0, -0.06]], [1, REST]);
-  return { gun, left, shell, shellHeld, pump: [[0.9, 0], [0.94, 0.085], [0.98, 0]] };
+  return { gun, left, shell, shellHeld, pump: [[0.9, 0], [RELOAD_RACK[0], 0.085], [RELOAD_RACK[1], 0]] };
 })();
 
 const SHOTGUN_PUMP: Clip = {
@@ -146,13 +155,27 @@ const SNIPER_BOLT: Clip = (() => {
 /** Gun raised from below the frame (weapon switch, spawn). */
 const DRAW: Keys<GunOffset> = [[0, [0.03, -0.16, 0.06, -0.8, 0.25, 0.45]], [1, REST]];
 
-const CLIPS: Record<WeaponId, { reload: Clip; cycle?: { clip: Clip; seconds: number } }> = {
+/** A pump or bolt cycle: `strokes` are where the action hits the back and front of its travel (0..1). */
+interface Cycle { clip: Clip; seconds: number; strokes: readonly [number, number] }
+
+const CLIPS: Record<WeaponId, { reload: Clip; cycle?: Cycle }> = {
   ar: { reload: magReload(true) },
   smg: { reload: magReload(false) },
-  shotgun: { reload: SHOTGUN_RELOAD, cycle: { clip: SHOTGUN_PUMP, seconds: 0.62 } },
-  sniper: { reload: SNIPER_RELOAD, cycle: { clip: SNIPER_BOLT, seconds: 1.15 } },
+  shotgun: { reload: SHOTGUN_RELOAD, cycle: { clip: SHOTGUN_PUMP, seconds: 0.52, strokes: [0.5, 0.75] } },
+  sniper: { reload: SNIPER_RELOAD, cycle: { clip: SNIPER_BOLT, seconds: 0.78, strokes: [0.5, 0.64] } },
   pistol: { reload: PISTOL_RELOAD },
 };
+
+/** How long a pump or bolt gun takes to work its action after a shot (s), or null for other guns. */
+export function cycleSeconds(weapon: WeaponId) {
+  return CLIPS[weapon].cycle?.seconds ?? null;
+}
+
+/** Seconds after a shot that the action opens and closes, or null for guns without one. */
+export function cycleStrokes(weapon: WeaponId): readonly [number, number] | null {
+  const cycle = CLIPS[weapon].cycle;
+  return cycle ? [cycle.strokes[0] * cycle.seconds, cycle.strokes[1] * cycle.seconds] : null;
+}
 
 export function createHandling(): Handling {
   return {

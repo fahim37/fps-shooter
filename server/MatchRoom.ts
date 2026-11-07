@@ -2,7 +2,7 @@ import { CloseCode, Room, ServerError, type Client } from "colyseus";
 import type RAPIER_NS from "@dimforge/rapier3d-compat";
 import { MatchState, PlayerState, GrenadeState } from "../game/shared/schema";
 import {
-  TICK_MS, MAX_REWIND_MS, MAX_HEALTH, REGEN_DELAY_MS, REGEN_PER_SEC, RESPAWN_MS, SPAWN_PROTECTION_MS,
+  TICK_MS, MAX_REWIND_MS, MAX_HEALTH, MAX_SHIELD, SHIELD_STREAK, REGEN_DELAY_MS, REGEN_PER_SEC, RESPAWN_MS, SPAWN_PROTECTION_MS,
   GRENADES_PER_LIFE, FALL_DAMAGE_MIN_SPEED, MAX_PLAYERS, MODE_INFO, scoreLimitFor, matchMinutes, WARMUP_MS, END_SCREEN_MS, EYE_HEIGHT,
   CROUCH_EYE_HEIGHT, SPRINT_SPEED, ROOM_SIZES, SCORE_LIMITS, type GameMode,
 } from "../game/shared/constants";
@@ -700,8 +700,10 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   /** Applies damage; returns true if it killed. `attacker` null = environment. */
   damage(target: ServerPlayer, amount: number, attacker: ServerPlayer | null, weapon: KillEvent["weapon"], part: HitPart, from: V3): boolean {
     if (!target.st.alive || amount <= 0 || this.state.phase === "ended") return false;
-    const hp = Math.max(0, target.st.hp - amount);
-    this.analytics?.damage(attacker, target, target.st.hp - hp);
+    const absorbed = Math.min(target.st.shield, amount);
+    const hp = Math.max(0, target.st.hp - (amount - absorbed));
+    this.analytics?.damage(attacker, target, absorbed + target.st.hp - hp);
+    target.st.shield = Math.round(target.st.shield - absorbed);
     target.st.hp = Math.round(hp);
     target.lastDamageAt = now();
     if (attacker && attacker !== target) {
@@ -733,6 +735,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       killer.st.kills++;
       killer.st.streak++;
       killer.st.score += part === "head" ? 150 : 100;
+      if (killer.st.alive && killer.st.streak % SHIELD_STREAK === 0) killer.st.shield = MAX_SHIELD;
       // Scavenge: a kill tops up the killer's reserve ammo.
       const a = killer.ammo[killer.st.weapon as WeaponId];
       if (a) a.reserve = Math.min(WEAPONS[killer.st.weapon as WeaponId].reserve * 2, a.reserve + WEAPONS[killer.st.weapon as WeaponId].mag);
@@ -798,6 +801,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     p.pose = [sp.x, sp.y, sp.z];
     p.vel = [0, 0, 0];
     p.st.hp = MAX_HEALTH;
+    p.st.shield = MAX_SHIELD;
     p.st.alive = true;
     p.st.emote = "idle";
     p.st.flags = 0;

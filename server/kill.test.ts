@@ -6,7 +6,7 @@ vi.mock("./world", () => ({ map: {}, RAPIER: {} }));
 vi.mock("./bot", () => ({ Bot: class {}, BOT_NAMES: [] }));
 
 function player(id: string, x: number) {
-  return { id, st: { name: id, team: 1, hp: 40, alive: true, x, y: 0, z: 0, weapon: "ar", kills: 0, deaths: 0, assists: 0, score: 0, streak: 0 },
+  return { id, st: { name: id, team: 1, hp: 40, shield: 0, alive: true, x, y: 0, z: 0, weapon: "ar", kills: 0, deaths: 0, assists: 0, score: 0, streak: 0 },
     client: { send: vi.fn() }, ammo: {}, lastAttacker: "", damagedBy: new Map(), reloadingUntil: 0 } as unknown as ServerPlayer;
 }
 
@@ -27,6 +27,21 @@ describe("elimination snapshots", () => {
     MatchRoom.prototype.damage.call(room as unknown as MatchRoom, victim, 100, null, "fall", "body", [0, 0, 0]);
     expect(broadcast.mock.calls[0][1]).toMatchObject({ killer: "Victim", victim: "Victim" });
     expect(broadcast.mock.calls[0][1].killerInfo).toBeUndefined();
+  });
+
+  it("refills the killer's shield every third kill in a row, unless the killer has died", () => {
+    const killer = player("Killer", 30), room = { state: { phase: "live", mode: "ffa" }, players: new Map([[killer.id, killer]]), broadcast: vi.fn(), checkScoreLimit: vi.fn() };
+    const kill = () => MatchRoom.prototype.damage.call(room as unknown as MatchRoom, player("Victim", 0), 100, killer, "ar", "body", [0, 0, 0]);
+    kill(); kill();
+    expect(killer.st.shield).toBe(0);
+    kill();
+    expect(killer.st.shield).toBe(20);
+    killer.st.shield = 5;
+    kill(); kill();
+    expect(killer.st.shield).toBe(5);
+    killer.st.alive = false;
+    kill();
+    expect(killer.st.shield).toBe(5);
   });
 
   it("credits an assist to everyone else who hurt the victim recently, but not the killer", () => {

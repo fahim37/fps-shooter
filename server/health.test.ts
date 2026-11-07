@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MatchRoom, type ServerPlayer } from "./MatchRoom";
 import { MatchState, PlayerState } from "../game/shared/schema";
-import { MAX_HEALTH, REGEN_DELAY_MS, REGEN_PER_SEC, TICK_MS } from "../game/shared/constants";
+import { MAX_HEALTH, MAX_SHIELD, REGEN_DELAY_MS, REGEN_PER_SEC, TICK_MS } from "../game/shared/constants";
+import { WEAPONS, damageAt } from "../game/shared/weapons";
 
 vi.mock("./world", () => ({ map: {}, RAPIER: {} }));
 vi.mock("./bot", () => ({ Bot: class {}, BOT_NAMES: [] }));
@@ -15,6 +16,36 @@ function fixture() {
   room.state.phase = "live"; room.state.phaseEndsAt = 1_000_000;
   return { room, player, st };
 }
+
+describe("shield", () => {
+  function full() {
+    const f = fixture();
+    f.st.hp = MAX_HEALTH; f.st.shield = MAX_SHIELD;
+    return f;
+  }
+  it("takes damage before health, and the rest carries through", () => {
+    const { room, player, st } = full();
+    room.damage(player, 12, null, "fall", "body", [0, 0, 0]);
+    expect([st.shield, st.hp]).toEqual([8, 100]);
+    room.damage(player, 18, null, "fall", "body", [0, 0, 0]);
+    expect([st.shield, st.hp]).toEqual([0, 90]);
+  });
+  it("still falls to eight of a close shotgun blast's nine pellets", () => {
+    expect(damageAt(WEAPONS.shotgun, 5) * 8).toBeGreaterThanOrEqual(MAX_HEALTH + MAX_SHIELD);
+  });
+  it("never regenerates: health heals back to 100 and stops", () => {
+    const { room, player, st } = full();
+    room.damage(player, 50, null, "fall", "body", [0, 0, 0]);
+    for (let tick = 1; tick <= 300; tick++) { vi.setSystemTime(16_000 + tick * TICK_MS); room.tick(); }
+    expect([st.shield, st.hp]).toEqual([0, MAX_HEALTH]);
+  });
+  it("a sniper body shot leaves a full player alive, a headshot kills at any range", () => {
+    const { sniper } = WEAPONS;
+    expect(damageAt(sniper, 5)).toBe(MAX_HEALTH);
+    expect(damageAt(sniper, 5)).toBeLessThan(MAX_HEALTH + MAX_SHIELD);
+    for (const range of [5, 120, 300]) expect(damageAt(sniper, range) * sniper.headMult).toBeGreaterThanOrEqual(MAX_HEALTH + MAX_SHIELD);
+  });
+});
 
 describe("authoritative health regeneration", () => {
   it("waits five seconds, then heals at 20 HP/sec and caps at 100", () => {

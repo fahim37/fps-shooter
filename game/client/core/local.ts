@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { Mover, newMoveState, type MoveState } from "../../shared/movement";
 import { raycastWorld, type Rapier, type World } from "../../shared/physics";
 import { aimDir, spreadDir, zoomSensitivity } from "../../shared/aim";
-import { WEAPONS, GRENADE, currentSpread, fireIntervalMs, type WeaponId } from "../../shared/weapons";
+import { WEAPONS, GRENADE, SCOPE_UP, currentSpread, fireIntervalMs, type WeaponId } from "../../shared/weapons";
 import { grenadeVelocity } from "../../shared/grenade";
 import { EYE_HEIGHT, CROUCH_EYE_HEIGHT, GRENADES_PER_LIFE, INTERP_DELAY_MS } from "../../shared/constants";
 import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_SPRINT, type AmmoEvent, type GrenadeMsg, type LoadoutEvent, type PoseMsg, type SpawnEvent } from "../../shared/messages";
@@ -195,6 +195,7 @@ export class LocalPlayer {
     this.reloadEnd = 0;
     this.grenadeAt = this.fuseAt = 0;
     this.releasing = false;
+    audio.stopWorking();
   }
 
   cancelActions() {
@@ -444,7 +445,7 @@ export class LocalPlayer {
   }
 
   get scoped() {
-    return OPTICS[this.optic].zoom > 1 && this.ads > 0.7 && this.alive;
+    return OPTICS[this.optic].zoom > 1 && this.ads > SCOPE_UP && this.alive;
   }
 
   /**
@@ -500,6 +501,7 @@ export class LocalPlayer {
     this.kickPitch = this.kickYaw = this.burst = 0;
     this.cadence.reset();
     this.sendPose();
+    audio.stopWorking();
     audio.switchWeapon();
   }
 
@@ -511,7 +513,8 @@ export class LocalPlayer {
     this.reloadEnd = now + this.def.reloadMs;
     this.sendPose();
     this.game.send("reload", {});
-    audio.reload(this.def.reloadMs / 1000);
+    audio.stopWorking();
+    audio.reload(this.weapon, this.def.reloadMs / 1000);
   }
 
   private tryFire(now: number) {
@@ -553,6 +556,8 @@ export class LocalPlayer {
     this.pendingShots.push({ shot, weapon: this.weapon });
     this.game.send("fire", { weapon: this.weapon, shot, viewTime: this.game.clock.now() - INTERP_DELAY_MS, origin: eye, dirs });
     this.game.onLocalShot(this.weapon, eye, dirs);
+    // The last round goes straight into a reload, whose own pump chambers the next.
+    if (a.mag > 0) audio.cycle(this.weapon);
 
     // Recoil: part of the kick stays (the gun climbs), the rest recovers.
     const damp = (1 - this.ads * 0.45) * (this.crouchT > 0.5 ? 0.85 : 1);

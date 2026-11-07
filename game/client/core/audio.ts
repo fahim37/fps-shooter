@@ -1,6 +1,7 @@
 import type { WeaponId } from "../../shared/weapons";
 import type { MapId } from "../../shared/map/types";
 import { assetUrl } from "../assets/url";
+import { SHOTGUN_RELOAD_CUES, cycleStrokes } from "../player/handling";
 
 type V3 = { x: number; y: number; z: number };
 
@@ -33,7 +34,21 @@ interface ShotVoice {
   pitch: number; // filter frequency multiplier
   length: number; // seconds of the body burst
   tail: number; // reverb send
+  boom?: number; // level of a low blast rolling off under the shot
 }
+
+/** Seconds a shot's boom takes to roll off. */
+const BOOM_SECONDS = 0.65;
+
+/** One metal part meeting another: its ring (Hz), level and the thud through the gun (Hz). */
+type Clack = [freq: number, level: number, thud: number];
+/** How a gun's action sounds opening and closing. */
+const ACTIONS: Partial<Record<WeaponId, [open: Clack, close: Clack]>> = {
+  shotgun: [[1150, 0.34, 170], [1750, 0.5, 230]],
+  sniper: [[2100, 0.22, 300], [2900, 0.3, 360]],
+};
+/** A shell thumbed into the shotgun's loading port. */
+const SHELL_IN: Clack = [1900, 0.26, 210];
 
 /** Sounds nearer than this (m) use HRTF; farther ones use the far cheaper equal-power panning. */
 const HRTF_RANGE = 20;
@@ -48,7 +63,7 @@ interface Voice { end: number; nodes: AudioNode[]; spatial: boolean; hrtf: boole
 const SHOTS: Record<WeaponId, ShotVoice> = {
   ar: { crack: 0.9, body: 1, thump: 0.9, pitch: 1, length: 0.16, tail: 0.55 },
   smg: { crack: 0.8, body: 0.8, thump: 0.6, pitch: 1.3, length: 0.11, tail: 0.4 },
-  shotgun: { crack: 0.7, body: 1.3, thump: 1.3, pitch: 0.7, length: 0.3, tail: 0.8 },
+  shotgun: { crack: 0.85, body: 1.2, thump: 1.3, pitch: 0.7, length: 0.24, tail: 0.9, boom: 0.8 },
   sniper: { crack: 1.2, body: 1.2, thump: 1.4, pitch: 0.85, length: 0.35, tail: 1 },
   pistol: { crack: 0.9, body: 0.7, thump: 0.55, pitch: 1.2, length: 0.12, tail: 0.45 },
 };
@@ -74,6 +89,8 @@ export class AudioEngine {
   private forward = { x: 0, y: 0, z: -1 };
   private listenerSynced = false;
   private voices: Voice[] = [];
+  /** The local gun's pump, bolt or shell-loading sounds still to play. */
+  private working: Voice | null = null;
   /** The menu theme: its bytes fetched as soon as the lobby wants it, decoded once audio is unlocked. */
   private themeBytes: Promise<ArrayBuffer> | null = null;
   private theme: Promise<AudioBuffer> | null = null;
@@ -293,7 +310,7 @@ export class AudioEngine {
     if (!ctx) return;
     const v = SHOTS[weapon];
     const t = ctx.currentTime + 0.001;
-    const route = this.spatial(pos, Math.max(0.2, v.length) + 0.05);
+    const route = this.spatial(pos, Math.max(0.2, v.length, v.boom ? BOOM_SECONDS : 0) + 0.05);
     if (!route) return;
     const [out, dist, voice] = route;
     const ally = !local && side === "ally";
@@ -332,6 +349,23 @@ export class AudioEngine {
     osc.start(t);
     osc.stop(t + 0.2);
 
+    // Boom: a low blast closing down from the muzzle, with a sub drop under it.
+    if (v.boom) {
+      const roar = this.noiseSource(t, BOOM_SECONDS);
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.setValueAtTime(1500 * jitter * tone, t);
+      lp.frequency.exponentialRampToValueAtTime(170, t + BOOM_SECONDS * 0.8);
+      const rg = ctx.createGain();
+      this.env(rg, t, v.boom * gainMul, 0.003, BOOM_SECONDS - 0.02);
+      roar.connect(lp).connect(rg).connect(out);
+      const roll = ctx.createGain();
+      roll.gain.value = v.tail * 0.6;
+      rg.connect(roll).connect(this.reverb);
+      voice.nodes.push(roll);
+      this.blip(out, "sine", 96, t, 0.75 * v.boom * gainMul, 0.003, BOOM_SECONDS - 0.1, 30);
+    }
+
     // Echo off the village walls.
     const send = ctx.createGain();
     send.gain.value = v.tail * (0.5 + Math.min(1, dist / 60));
@@ -360,7 +394,46 @@ export class AudioEngine {
     n.connect(bp).connect(g).connect(out);
   }
 
-  reload(durationS: number, pos?: V3) {
+  /** Metal parts meeting: a bright clack, the ring above it and a short thud through the gun. */
+  private clack(out: AudioNode, t: number, [freq, level, thud]: Clack) {
+    this.burst(out, "bandpass", freq, 2.5, t, level, 0.001, 0.035);
+    this.burst(out, "bandpass", freq * 2.3, 5, t + 0.004, level * 0.5, 0.001, 0.02);
+    this.blip(out, "triangle", thud, t, level * 0.6, 0.002, 0.05, thud * 0.6);
+  }
+
+  /** The pump or bolt worked after a shot, in time with the hands. Other guns make no sound here. */
+  cycle(weapon: WeaponId, pos?: V3) {
+    const ctx = this.ctx;
+    const action = ACTIONS[weapon], strokes = cycleStrokes(weapon);
+    if (!ctx || !action || !strokes) return;
+    const route = this.spatial(pos, strokes[1] + 0.1);
+    if (!route) return;
+    const [out, , voice] = route;
+    if (!pos) this.working = voice;
+    this.clack(out, ctx.currentTime + strokes[0], action[0]);
+    this.clack(out, ctx.currentTime + strokes[1], action[1]);
+  }
+
+  /** The gun left the hands (swapped, reloading, dead): nothing still scheduled on it plays. */
+  stopWorking() {
+    for (const n of this.working?.nodes ?? []) n.disconnect();
+    this.working = null;
+  }
+
+  /** Each shell seating in the port, then the pump chambering the first. */
+  private shotgunReload(durationS: number) {
+    const ctx = this.ctx;
+    const action = ACTIONS.shotgun;
+    if (!ctx || !action) return;
+    const [out, , voice] = this.spatial(undefined, durationS + 0.1)!;
+    this.working = voice;
+    const t = ctx.currentTime;
+    for (const at of SHOTGUN_RELOAD_CUES.shells) this.clack(out, t + durationS * at, SHELL_IN);
+    SHOTGUN_RELOAD_CUES.rack.forEach((at, i) => this.clack(out, t + durationS * at, action[i]));
+  }
+
+  reload(weapon: WeaponId, durationS: number, pos?: V3) {
+    if (weapon === "shotgun") return this.shotgunReload(durationS);
     // Mag out, mag in, charging handle.
     this.click(1500, 0.35, pos, durationS * 0.2);
     this.click(900, 0.4, pos, durationS * 0.55);
@@ -415,6 +488,17 @@ export class AudioEngine {
     o.connect(g).connect(this.spatial(undefined, 0.1)![0]);
     o.start(t);
     o.stop(t + 0.08);
+  }
+
+  /** A kill streak refilled the shield: a bright charge rising to a held fifth. */
+  shieldUp() {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime + 0.01;
+    const [bus] = this.eventBus(this.sfx, 0.6, 0, 0.3);
+    this.blip(bus, "triangle", 520, t, 0.12, 0.01, 0.16, 1040);
+    this.blip(bus, "sine", 1040, t + 0.13, 0.1, 0.006, 0.38);
+    this.blip(bus, "sine", 1560, t + 0.13, 0.06, 0.006, 0.3);
   }
 
   /** Dry metallic attack and a short resolved interval, reserved for confirmed kills. */

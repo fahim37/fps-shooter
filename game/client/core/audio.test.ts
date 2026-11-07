@@ -20,7 +20,7 @@ function fakeContext() {
     currentTime: 0, listener: listener(),
     createGain: () => node(), createBiquadFilter: () => node({ type: "" }),
     createPanner: () => { const n = node({ panningModel: "", positionX: p(), positionY: p(), positionZ: p() }); panners.push(n as unknown as { panningModel: string }); return n; },
-    createBufferSource: () => node({ start: vi.fn() }),
+    createBufferSource: () => node({ start: vi.fn(), stop: vi.fn(), playbackRate: p() }),
     createOscillator: () => node({ start: vi.fn(), stop: vi.fn(), type: "" }),
   };
   return { ctx, disconnected, panners };
@@ -35,6 +35,35 @@ describe("audio voices", () => {
     return { audio, ...fake };
   }
   const voices = (audio: AudioEngine) => (audio as unknown as { voices: unknown[] }).voices.length;
+
+  it("works a pump or bolt after a shot, and only on those guns", () => {
+    const { audio } = engine();
+    audio.cycle("ar");
+    audio.cycle("pistol", { x: 4, y: 0, z: 0 });
+    expect(voices(audio)).toBe(0);
+    audio.cycle("shotgun");
+    audio.cycle("sniper", { x: 4, y: 0, z: 0 });
+    expect(voices(audio)).toBe(2);
+  });
+
+  it("cuts the local gun's scheduled handling sounds when it leaves the hands", () => {
+    const { audio, disconnected } = engine();
+    audio.cycle("shotgun");
+    audio.stopWorking();
+    expect(disconnected).toHaveLength(1);
+    audio.reload("shotgun", 2.25);
+    audio.stopWorking();
+    expect(disconnected).toHaveLength(2);
+    audio.stopWorking();
+    expect(disconnected).toHaveLength(2);
+  });
+
+  it("leaves an enemy's pump alone when the local gun is put away", () => {
+    const { audio, disconnected } = engine();
+    audio.cycle("shotgun", { x: 4, y: 0, z: 0 });
+    audio.stopWorking();
+    expect(disconnected).toHaveLength(0);
+  });
 
   it("disconnects every finished sound so the audio thread stops processing it", () => {
     const { audio, ctx, disconnected } = engine();

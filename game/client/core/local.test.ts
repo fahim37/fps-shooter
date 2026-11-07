@@ -6,7 +6,7 @@ import { useLoadout } from "../loadout";
 import { DEFAULT_OPTICS } from "../../shared/optics";
 import { useSettings } from "../settings";
 
-vi.mock("./audio", () => ({ audio: { switchWeapon: vi.fn() } }));
+vi.mock("./audio", () => ({ audio: { switchWeapon: vi.fn(), stopWorking: vi.fn() } }));
 vi.mock("../../shared/physics", () => ({ raycastWorld: () => null }));
 
 beforeEach(() => {

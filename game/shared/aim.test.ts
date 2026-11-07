@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { spreadDir, spreadRadius, zoomSensitivity } from "./aim";
-import { currentSpread, WEAPONS } from "./weapons";
+import { SCOPE_UP, currentSpread, WEAPONS } from "./weapons";
 
 describe("aim presentation and handling", () => {
+  it("lets a sniper quick-scope: dead on once the scope is up, wild before it", () => {
+    const { sniper } = WEAPONS;
+    expect(currentSpread(sniper, SCOPE_UP, 0, false, false)).toBeCloseTo(sniper.spreadAds);
+    expect(currentSpread(sniper, SCOPE_UP / 2, 0, false, false)).toBeGreaterThan(3);
+    expect(currentSpread(WEAPONS.ar, SCOPE_UP, 0, false, false)).toBeGreaterThan(WEAPONS.ar.spreadAds);
+  });
+
   it("preserves hip sensitivity and smoothly scales through the ADS midpoint", () => {
     expect(zoomSensitivity(78, 78, 0, 0.8)).toBe(1);
     const before = zoomSensitivity(78, 66, 0.499, 0.8);

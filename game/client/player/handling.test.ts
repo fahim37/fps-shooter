@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { sampleHandling } from "./handling";
-import { PRIMARIES, WEAPONS, type WeaponId } from "../../shared/weapons";
+import { cycleSeconds, cycleStrokes, sampleHandling } from "./handling";
+import { PRIMARIES, WEAPONS, fireIntervalMs, type WeaponId } from "../../shared/weapons";
 
 const ALL: WeaponId[] = [...PRIMARIES, "pistol"];
 
@@ -45,13 +45,23 @@ describe("weapon handling", () => {
   });
 
   it("cycles the pump and bolt after a shot, but only on those guns", () => {
-    expect(sampleHandling("shotgun", -1, 0.31, Infinity).pump).toBeGreaterThan(0.07);
-    const bolt = sampleHandling("sniper", -1, 0.62, Infinity);
+    expect(sampleHandling("shotgun", -1, cycleStrokes("shotgun")![0], Infinity).pump).toBeGreaterThan(0.07);
+    const bolt = sampleHandling("sniper", -1, cycleStrokes("sniper")![0], Infinity);
     expect(bolt.boltPull).toBeGreaterThan(0.9);
     expect(bolt.right.a.pose).toBe("bolt");
     for (const w of ["ar", "smg", "pistol"] as WeaponId[]) expect(sampleHandling(w, -1, 0.3, Infinity).gun.every((v) => v === 0)).toBe(true);
     // Reloading overrides a cycle that is still playing.
-    expect(sampleHandling("sniper", 0, 0.62, Infinity).boltPull).toBe(0);
+    expect(sampleHandling("sniper", 0, cycleStrokes("sniper")![0], Infinity).boltPull).toBe(0);
+  });
+
+  it("finishes working the action before the gun can fire again", () => {
+    for (const w of ["shotgun", "sniper"] as WeaponId[]) {
+      expect(cycleSeconds(w)! * 1000).toBeLessThanOrEqual(fireIntervalMs(WEAPONS[w]));
+      const [open, close] = cycleStrokes(w)!;
+      expect(open).toBeLessThan(close);
+      expect(close).toBeLessThan(cycleSeconds(w)!);
+    }
+    for (const w of ["ar", "smg", "pistol"] as WeaponId[]) expect(cycleStrokes(w)).toBeNull();
   });
 
   it("raises the gun from below while drawing it", () => {

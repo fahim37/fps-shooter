@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { WeaponId } from "../../shared/weapons";
-import type { GameMode } from "../../shared/constants";
+import { MAX_SHIELD, type GameMode } from "../../shared/constants";
 import type { MapMark, MapPlayer, Threat } from "./minimap";
 import type { SquadMember } from "./squad";
 
@@ -45,6 +45,9 @@ export interface HudState {
   myTeam: number;
   alive: boolean;
   hp: number;
+  shield: number;
+  /** When a kill streak last refilled the shield (performance.now), or 0. */
+  shieldAt: number;
   regenerating: boolean;
   weapon: WeaponId;
   primary: WeaponId;
@@ -123,6 +126,8 @@ export const useHud = create<HudState>((set, get) => ({
   myTeam: 0,
   alive: false,
   hp: 100,
+  shield: MAX_SHIELD,
+  shieldAt: 0,
   regenerating: false,
   weapon: "ar",
   primary: "ar",

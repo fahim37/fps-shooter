@@ -7,7 +7,7 @@ import { CharacterRig, type RigState } from "../player/CharacterRig";
 import { gripPose } from "../player/grip";
 import { getMap } from "../../shared/map/maps";
 import { lineOfSight, raycastWorld, type Rapier, type World } from "../../shared/physics";
-import { INTERP_DELAY_MS, RESPAWN_MS, type GameMode } from "../../shared/constants";
+import { INTERP_DELAY_MS, MAX_SHIELD, RESPAWN_MS, type GameMode } from "../../shared/constants";
 import { GRENADE, WEAPONS, type WeaponId } from "../../shared/weapons";
 import { GRENADE_BODY, grenadeFlight } from "../../shared/grenade";
 import { spreadRadius } from "../../shared/aim";
@@ -257,7 +257,7 @@ export class Game {
     this.local.spawn(ev);
     this.local.updateView();
     this.deathCamera.start(this.local.eye, null);
-    hud().set({ alive: true, hp: 100, regenerating: false, hurtAt: 0, threats: [], killedBy: null, respawnAt: 0, killerMarker: null, deathCam: "environment" });
+    hud().set({ alive: true, hp: 100, shield: MAX_SHIELD, shieldAt: 0, regenerating: false, hurtAt: 0, threats: [], killedBy: null, respawnAt: 0, killerMarker: null, deathCam: "environment" });
   }
 
   private syncLife(alive: boolean) {
@@ -301,8 +301,12 @@ export class Game {
         if (!state.players.has(id)) { remote.dispose(); this.remotes.delete(id); }
       }
     }
+    // Only a streak raises the shield mid-life; the refill at spawn comes with a streak of 0.
+    const shieldBack = !!me && me.shield > hud().shield && me.streak > 0;
+    if (shieldBack) audio.shieldUp();
     hud().set({
       myTeam: me?.team ?? 0, hp: me?.hp ?? 100, protectedUntil: me?.protectedUntil ?? 0,
+      shield: me?.shield ?? MAX_SHIELD, shieldAt: shieldBack ? performance.now() : hud().shieldAt,
       regenerating: !!me?.alive && me.hp < 100 && me.hp >= hud().hp && (hud().regenerating || me.hp > hud().hp),
       mode: state.mode as GameMode, phase: state.phase, phaseEndsAt: state.phaseEndsAt,
       team1: state.team1, team2: state.team2, scoreLimit: state.scoreLimit, winner: state.winner,
@@ -380,6 +384,7 @@ export class Game {
     // A character skipped this frame (off-screen) has a stale muzzle; its eye is close enough.
     const from = remote?.posed && remote.rig ? remote.rig.muzzle : new THREE.Vector3(...ev.origin);
     audio.shot(ev.weapon, from, false, friendly ? "ally" : "enemy");
+    audio.cycle(ev.weapon, from);
     // Like PUBG, enemy gunfire gives the shooter's position away on the minimap.
     if (!friendly) this.mark({ key: ev.id, kind: "shot", x: ev.origin[0], z: ev.origin[2], yaw: remote?.yaw ?? 0, at: performance.now() });
     if (ev.ends[0]) this.effects.muzzleFlash(from, new THREE.Vector3(...ev.ends[0]).sub(from).normalize(), 1, false);

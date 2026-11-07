@@ -32,8 +32,12 @@ export interface WeaponDef {
   adsFov: number;
   adsMs: number;
   moveMult: number;
+  /** A sniper's optic: fully accurate from the moment the scope is up (see SCOPE_UP), for quick-scoping. */
   scope?: boolean;
 }
+
+/** How far into aiming (0..1) a magnified scope is up. */
+export const SCOPE_UP = 0.7;
 
 const W = (d: WeaponDef) => d;
 
@@ -46,21 +50,21 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   }),
   smg: W({
     id: "smg", name: "Vector SMG", slot: 0, auto: true, rpm: 880, damage: 19, headMult: 1.6, limbMult: 0.9, pellets: 1,
-    falloffStart: 14, falloffEnd: 35, minMult: 0.6, range: 150, mag: 32, reserve: 160, reloadMs: 1650, equipMs: 350,
+    falloffStart: 14, falloffEnd: 35, minMult: 0.6, range: 150, mag: 35, reserve: 160, reloadMs: 1650, equipMs: 350,
     spreadHip: 1.6, spreadAds: 0.22, spreadMove: 0.9, spreadAir: 3.5, recoilUp: 0.26, recoilSide: 0.15,
     adsFov: 62, adsMs: 170, moveMult: 1.05,
   }),
   shotgun: W({
-    id: "shotgun", name: "Pump Shotgun", slot: 0, auto: false, rpm: 72, damage: 13, headMult: 1.4, limbMult: 0.9, pellets: 9,
-    falloffStart: 7, falloffEnd: 22, minMult: 0.25, range: 60, mag: 6, reserve: 30, reloadMs: 2250, equipMs: 450,
+    id: "shotgun", name: "Pump Shotgun", slot: 0, auto: false, rpm: 100, damage: 15, headMult: 1.4, limbMult: 0.9, pellets: 9,
+    falloffStart: 9, falloffEnd: 22, minMult: 0.25, range: 60, mag: 6, reserve: 30, reloadMs: 2250, equipMs: 450,
     spreadHip: 5.5, spreadAds: 4.2, spreadMove: 1, spreadAir: 2, recoilUp: 2.2, recoilSide: 0.35,
     adsFov: 65, adsMs: 200, moveMult: 0.97,
   }),
   sniper: W({
-    id: "sniper", name: "Hunter Sniper", slot: 0, auto: false, rpm: 52, damage: 92, headMult: 2.5, limbMult: 0.8, pellets: 1,
-    falloffStart: 80, falloffEnd: 200, minMult: 0.9, range: 300, mag: 5, reserve: 25, reloadMs: 2500, equipMs: 600,
-    spreadHip: 7, spreadAds: 0.02, spreadMove: 5, spreadAir: 9, recoilUp: 2.4, recoilSide: 0.2,
-    adsFov: 18, adsMs: 320, moveMult: 0.9, scope: true,
+    id: "sniper", name: "Hunter Sniper", slot: 0, auto: false, rpm: 75, damage: 100, headMult: 1.2, limbMult: 0.8, pellets: 1,
+    falloffStart: 80, falloffEnd: 200, minMult: 1, range: 300, mag: 5, reserve: 25, reloadMs: 2500, equipMs: 600,
+    spreadHip: 7, spreadAds: 0.02, spreadMove: 3, spreadAir: 9, recoilUp: 2.4, recoilSide: 0.2,
+    adsFov: 18, adsMs: 170, moveMult: 0.9, scope: true,
   }),
   pistol: W({
     id: "pistol", name: "Sidearm", slot: 1, auto: false, rpm: 380, damage: 30, headMult: 1.8, limbMult: 0.9, pellets: 1,
@@ -76,7 +80,7 @@ export const GRENADE = {
   /** An underhand lob (right mouse while aiming) leaves the hand at this fraction of a full throw. */
   lobPower: 0.5,
   radius: 8,
-  /** At the blast; lethal out to about 3.7 m, around 45 damage at 6 m. */
+  /** At the blast; lethal through a full shield out to about 3 m, around 45 damage at 6 m. */
   damage: 220,
   /** Minimum damage at the edge of the radius, as a fraction. */
   edgeMult: 0.1,
@@ -99,8 +103,9 @@ export function fireIntervalMs(def: WeaponDef) {
 
 /** Current spread cone half-angle in degrees. */
 export function currentSpread(def: WeaponDef, ads: number, moving: number, airborne: boolean, crouched: boolean) {
-  let s = def.spreadHip + (def.spreadAds - def.spreadHip) * ads;
-  s += def.spreadMove * Math.min(1, Math.max(0, moving)) * (1 - ads * 0.8);
+  const aim = def.scope ? Math.min(1, ads / SCOPE_UP) : ads;
+  let s = def.spreadHip + (def.spreadAds - def.spreadHip) * aim;
+  s += def.spreadMove * Math.min(1, Math.max(0, moving)) * (1 - aim * 0.8);
   if (airborne) s += def.spreadAir;
   if (crouched) s *= 0.8;
   return s;

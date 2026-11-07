@@ -28,7 +28,7 @@ async function main() {
     room.onMessage<ShotEvent>("shot", (ev) => shots.push(ev));
     await page.addInitScript(() => localStorage.setItem("hollowmere.settings.v1", JSON.stringify({ quality: "low", adaptiveResolution: false })));
     await page.goto(`${base}/?room=${room.roomId}`);
-    await page.getByRole("button", { name: /JOIN THIS ROOM/ }).click();
+    await page.getByRole("button", { name: /JOIN (THIS )?ROOM/ }).click();
     await page.getByRole("button", { name: "PLAY IN A WINDOW" }).waitFor({ timeout: 90000 });
     await page.getByLabel("NEXT SPAWN LOADOUT").selectOption("sniper");
     await until(() => room!.state.phase === "live" && [...room!.state.players.values()].some((p) => p.primary === "sniper"));
