@@ -35,14 +35,7 @@ interface ShotVoice {
   length: number; // seconds of the body burst
   tail: number; // reverb send
   boom?: number; // level of a low blast rolling off under the shot
-  boomOpen?: number; // Hz the boom's lowpass opens at (default 1500): higher is a brighter blast
-  snap?: number; // level of a supersonic snap: a hard, very short, very bright transient
-  bark?: number; // level of an upper-mid bark that gives the report presence
-  echo?: number; // level of the report slapping back off far walls
 }
-
-/** Seconds after the shot that the report comes back off far walls, and how loud each return is. */
-const ECHOES: [at: number, level: number][] = [[0.14, 0.4], [0.31, 0.22], [0.52, 0.1]];
 
 /** Seconds a shot's boom takes to roll off. */
 const BOOM_SECONDS = 0.65;
@@ -73,12 +66,8 @@ const SHOTS: Record<WeaponId, ShotVoice> = {
   ar: { crack: 0.9, body: 1, thump: 0.9, pitch: 1, length: 0.16, tail: 0.55 },
   smg: { crack: 0.8, body: 0.8, thump: 0.6, pitch: 1.3, length: 0.11, tail: 0.4 },
   shotgun: { crack: 0.85, body: 1.2, thump: 1.3, pitch: 0.7, length: 0.24, tail: 0.9, boom: 0.8 },
-  // An anti-materiel round: a supersonic snap, a hard bark, a bright blast and the report rolling
-  // back off the walls. Kept light on low end, which only muddied it and ducked the compressor.
-  sniper: {
-    crack: 1.5, body: 1, thump: 1.1, pitch: 1.05, length: 0.2, tail: 1.3,
-    boom: 0.75, boomOpen: 3400, snap: 1.2, bark: 0.9, echo: 0.8,
-  },
+  // An anti-materiel round: the heaviest crack, and a blast rolling off long after it.
+  sniper: { crack: 1.3, body: 1.3, thump: 1.6, pitch: 0.75, length: 0.38, tail: 1.2, boom: 1 },
   pistol: { crack: 1, body: 1.15, thump: 1.2, pitch: 0.8, length: 0.2, tail: 0.85, boom: 0.45 },
 };
 
@@ -324,8 +313,7 @@ export class AudioEngine {
     if (!ctx) return;
     const v = SHOTS[weapon];
     const t = ctx.currentTime + 0.001;
-    const echoEnd = v.echo ? ECHOES[ECHOES.length - 1][0] + 0.12 : 0;
-    const route = this.spatial(pos, Math.max(0.2, v.length, v.boom ? BOOM_SECONDS : 0, echoEnd) + 0.05);
+    const route = this.spatial(pos, Math.max(0.2, v.length, v.boom ? BOOM_SECONDS : 0) + 0.05);
     if (!route) return;
     const [out, dist, voice] = route;
     const ally = !local && side === "ally";
@@ -342,16 +330,6 @@ export class AudioEngine {
     const cg = ctx.createGain();
     this.env(cg, t, 0.9 * v.crack * gainMul * crackMul, 0.001, 0.045);
     crack.connect(hp).connect(cg).connect(out);
-
-    // Snap: the bullet breaking the sound barrier, a near-instant bright transient with a click in it.
-    if (v.snap) {
-      const level = v.snap * gainMul * crackMul;
-      this.burst(out, "highpass", 4800 * jitter * tone, 0.7, t, 1.1 * level, 0.0005, 0.014);
-      this.burst(out, "bandpass", 3200 * jitter * tone, 1.2, t, 0.7 * level, 0.0005, 0.028);
-    }
-
-    // Bark: upper-mids that make the report cut through instead of thudding.
-    if (v.bark) this.burst(out, "bandpass", 1900 * v.pitch * jitter * tone, 1, t, 0.9 * v.bark * gainMul, 0.001, v.length * 0.6);
 
     // Body: band-limited noise burst.
     const body = this.noiseSource(t, v.length);
@@ -379,7 +357,7 @@ export class AudioEngine {
       const roar = this.noiseSource(t, BOOM_SECONDS);
       const lp = ctx.createBiquadFilter();
       lp.type = "lowpass";
-      lp.frequency.setValueAtTime((v.boomOpen ?? 1500) * jitter * tone, t);
+      lp.frequency.setValueAtTime(1500 * jitter * tone, t);
       lp.frequency.exponentialRampToValueAtTime(170, t + BOOM_SECONDS * 0.8);
       const rg = ctx.createGain();
       this.env(rg, t, v.boom * gainMul, 0.003, BOOM_SECONDS - 0.02);
@@ -396,13 +374,6 @@ export class AudioEngine {
     send.gain.value = v.tail * (0.5 + Math.min(1, dist / 60));
     bg.connect(send).connect(this.reverb);
     voice.nodes.push(send);
-
-    // The report slapping back off far walls: each return darker and quieter than the last.
-    if (v.echo) {
-      for (const [i, [at, level]] of ECHOES.entries()) {
-        this.burst(out, "bandpass", (1600 - i * 350) * jitter * tone, 0.8, t + at, v.echo * level * gainMul, 0.004, 0.09);
-      }
-    }
   }
 
   dryFire() {
