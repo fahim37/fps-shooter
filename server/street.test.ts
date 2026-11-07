@@ -69,11 +69,11 @@ describe("boulevard", () => {
   });
 
   it("hangs the flags down to the floor, as cover that stops bullets", () => {
-    // The row at x -6.4 had four flags, z -16.9 to -10.4, with cloth from 1.2 m above the foot.
-    // The last one is gone; the one at z -12.55 now hangs to the floor.
+    // The row at x -6.4 has four flags, z -16.9 to -10.4, with cloth from 1.2 m above the foot.
+    // The one at z -10.4 now hangs to the floor.
     for (const x of [-6.3, -6.4, -6.5]) for (const y of [1.1, 1.6, 2.5]) {
       const shot = raycastWorld(RAPIER, world, [x, y, -6], [0, 0, -1], 10)?.distance ?? Infinity;
-      expect(Math.abs(-6 - shot + 12.55), `open at x ${x}, y ${y}`).toBeLessThan(0.2);
+      expect(Math.abs(-6 - shot + 10.4), `open at x ${x}, y ${y}`).toBeLessThan(0.2);
     }
   });
 

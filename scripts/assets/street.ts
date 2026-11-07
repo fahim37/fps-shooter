@@ -47,8 +47,12 @@ import { PLAYER_HEIGHT, PLAYER_RADIUS } from "../../game/shared/constants";
  *   palace. `noGoClips` stands clips on every thick footprint that rises past the terraces, so
  *   nobody climbs them, and everything behind the palace's front line is shut. Clips never stop
  *   bullets, so sight lines stay as they are.
+ * - `COVER` breaks up the road, which is otherwise one 130 m sight line.
  * - The flags on poles hang down to the floor (their cloth was 1.2 m clear of it), as cover along
- *   the terraces that stops bullets. Each row or arc of them loses one (`thinFlags`).
+ *   the terraces that stops bullets.
+ * - Small things on the floor go (`isLitter`, `withoutPosts`): posts, rods and lamps around the
+ *   plazas and terraces that snag players, ankle-high stones along the road's edges, stubs, chips and raised drain tiles
+ *   on the terraces.
  * - The terrace stairs are 7 cm risers by the dozen, and the step-up stalls a runner on every one.
  *   `stairRamps` lays a player-only ramp over each flight, so running up them glides; bullets
  *   and grenades still meet the real steps.
@@ -148,15 +152,47 @@ const NO_GO_CELL = 0.5, NO_GO_THIN = 2;
 /** Gatehouse: pier and lintel over the road, dark door between them. */
 const GATE_H = 15, GATE_W = 7.5, PIER_W = 3.5;
 const DOOR_COLOR = "#25262a", BANNER_COLOR = "#2f4a44", TRIM_COLOR = "#b08f5a";
+/** Cover on the road: [x, z, size x, size z, height]. Low for a crouch, tall for a whole player. */
+const COVER: [number, number, number, number, number][] = [
+  // Tall pairs overlap across the road's center, so no straight line runs its length; the side
+  // gaps stay wide enough to walk through.
+  [-1.3, -14, 2.6, 1.2, 2.1], [1.3, -3, 2.6, 1.2, 2.1], [-1.3, 37, 2.6, 1.2, 2.1], [1.3, 47, 2.6, 1.2, 2.1],
+  [1.6, -22, 2.4, 1.2, 1.15], [-1.6, 8, 2.4, 1.2, 1.15], [1.6, 14, 2.4, 1.2, 1.15], [-1.6, 56, 2.4, 1.2, 1.15], [1.6, 64, 2.4, 1.2, 1.15],
+  // The mouth of the plaza.
+  [-7, -31, 4, 0.9, 2.1], [7, -31, 4, 0.9, 2.1], [0, -36, 4, 0.9, 1.15],
+  [-13, -44, 0.9, 4, 1.15], [13, -44, 0.9, 4, 1.15],
+];
+const COVER_COLOR = "#9a8f7f";
+/** Floor litter, by paint: the road's edge stones, the terraces' stubs and chips, drain tiles, and the plaza's rods. */
+const LITTER_LOW = /^(Stone_Brushed_Khaki|Color_008|__Color_004_2|Brick_Rough_Dark|__Color_A01_1)$/;
+const DRAIN = /^Water_Sparkling$/;
+const ROD = /^Brick_Rough_Dark$/;
+/**
+ * Posts and lamps, by paint: [paint, narrowest and widest across (m), lowest and highest (m)].
+ * Dark rods, the white posts by the facades, and the tall lamp posts.
+ */
+const POSTS: [RegExp, number, number, number, number][] = [
+  [/^Brick_Rough_Dark$/, 0, 0.12, 0.8, 1.5],
+  [/^Cladding_Stucco_White$/, 0, 0.12, 1, 2],
+  [/^__Brick_Pavers_Modular_1$/, 0, 0.3, 2, 3.5],
+];
+/**
+ * Whole objects that go wherever they stand: the black urn lamps on their pedestals (wider than
+ * the black fittings on the walls), and the tall dark poles before the palace.
+ */
+const LAMPS: [RegExp, number, number, number, number][] = [
+  [/^(__Brick_Pavers_Modular_1|__Brick_Pavers_Modular_4|__Charcoal_)$/, 0.4, 0.8, 0.3, 1],
+  [/^Brick_Rough_Dark$/, 0, 0.15, 3, 5.5],
+];
 /** Flags on poles: their cloth (source material), how thick the long flag is, and its gap to the floor (m). */
 const CLOTH = /^__Color_A01_1$/;
 const FLAG_T = 0.04, FLAG_GAP = 0.04;
-/** Flags this close (m) stand in one row or arc. */
-const FLAG_ROW = 5.5;
+/** How much wider the long flag is than the source's cloth; it grows away from its pole. */
+const FLAG_WIDEN = 1.3;
 /** Stair ramps: grid cell, how many cells a flight is read along each way, a riser's range (m). */
 const RAMP_CELL = 0.1, RAMP_SPAN = 5, RISER_MIN = 0.02, RISER_MAX = 0.16;
-/** Smoothing window (cells each way), and how much of the stairs' nosings a ramp may clear (m). */
-const RAMP_SMOOTH = 4, RAMP_LIFT = 0.1;
+/** Smoothing window (cells each way): the ramp is the average, over this window, of the floor's highest point over it again. */
+const RAMP_SMOOTH = 5;
 /** Most a ramp may move when simplified (m): flights are near-planar, so most of a grid merges. */
 const RAMP_ERROR = 0.025;
 
@@ -201,15 +237,15 @@ export async function importStreet() {
     const board = billboardOf(all, bounds.get(object)!);
     if (board) flags.set(object, board);
   }
-  const dropped = thinFlags(flags);
   const billboards: Billboard[] = [];
   let drawn = 0, detail = 0, plants = 0;
   for (const [object, all] of objects) {
-    if (dropped.has(object)) continue;
     const box = bounds.get(object)!;
     const board = flags.get(object);
+    if (!board && isLitter(all, box)) continue;
     if (board) billboards.push(board);
-    const list = board ? all.filter((f) => !CLOTH.test(f.material)) : all;
+    const list = withoutPosts(board ? all.filter((f) => !CLOTH.test(f.material)) : all);
+    if (!list.length) continue;
     if (list.every((f) => PLANT.test(f.material))) {
       plants += addCone(batchFor("Street_Plants", "paint"), box, tint(PAINT[list[0].material][1], "paint"));
       drawn += 12;
@@ -246,8 +282,8 @@ export async function importStreet() {
     }
   }
 
-  // Walls, the gatehouse and the billboards.
-  for (const box of [...wallBoxes(), ...gateBoxes()]) {
+  // Walls, the gatehouse, cover and the flags.
+  for (const box of [...wallBoxes(), ...gateBoxes(), ...coverBoxes()]) {
     const slot: Slot = box.slot ?? "stone";
     const piece = `Street_${chunkOf((box.x0 + box.x1) / 2, (box.z0 + box.z1) / 2)}`;
     const b = batchFor(piece, slot), start = b.pos.length;
@@ -596,10 +632,70 @@ function gateBoxes(): Block[] {
   ];
 }
 
+function coverBoxes(): Block[] {
+  return COVER.map(([x, z, sx, sz, h]) => ({ x0: x - sx / 2, x1: x + sx / 2, z0: z - sz / 2, z1: z + sz / 2, y1: h, color: COVER_COLOR }));
+}
+
+/**
+ * Small things on the floor that only trip players up: anything in `LITTER_LOW`'s paints under
+ * 0.4 m tall and 1 m across, raised drain tiles, and the rows of rods (under 1.5 m, from the
+ * ground) in the plaza.
+ */
+function isLitter(faces: Face[], box: number[]) {
+  const h = box[4] - box[1], across = Math.max(box[3] - box[0], box[5] - box[2]), thin = Math.min(box[3] - box[0], box[5] - box[2]);
+  if (faces.every((f) => ROD.test(f.material))) return box[1] < 0.05 && h < 1.5 && thin < 0.1;
+  if (faces.some((f) => DRAIN.test(f.material))) return h < 0.1 && across < 1;
+  return h > 0.02 && h < 0.4 && across < 1 && faces.every((f) => LITTER_LOW.test(f.material));
+}
+
+/**
+ * An object's faces without its posts and lamps (`POSTS`): dark rods knee-to-waist high in rows
+ * around the statue court, the plaza mouth and the terraces, white posts, lamp posts and urn
+ * lamps, all catching players running by. Each is a piece of its object in one paint, sharing
+ * no corner with the rest of that paint: a post often stands on corners of the stone below it.
+ */
+function withoutPosts(faces: Face[]): Face[] {
+  const isPost = (list: number[], rules = POSTS, anywhere = false) => {
+    const b = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+    for (const i of list) for (let k = 0; k < 9; k += 3) for (let d = 0; d < 3; d++) {
+      b[d] = Math.min(b[d], faces[i].p[k + d]);
+      b[d + 3] = Math.max(b[d + 3], faces[i].p[k + d]);
+    }
+    const h = b[4] - b[1], across = Math.max(b[3] - b[0], b[5] - b[2]);
+    // Only where players go: on the floors, in front of the palace (its balusters stay).
+    if (b[1] > MAX_FLOOR + 0.3 || (!anywhere && (b[2] + b[5]) / 2 < PLINTH_Z)) return false;
+    return rules.some(([paint, narrow, wide, low, high]) => across > narrow && across < wide && h > low && h < high && list.every((i) => paint.test(faces[i].material)));
+  };
+  // An urn lamp is in parts (bowl, stem, pedestal), so it goes whole.
+  if (isPost(faces.map((_, i) => i), LAMPS, true)) return [];
+  if (!faces.some((f) => POSTS.some(([paint]) => paint.test(f.material)))) return faces;
+  const parent = faces.map((_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  const corner = new Map<string, number>();
+  faces.forEach((f, i) => {
+    for (let k = 0; k < 9; k += 3) {
+      const key = `${f.material}|${f.p[k].toFixed(3)},${f.p[k + 1].toFixed(3)},${f.p[k + 2].toFixed(3)}`;
+      const j = corner.get(key);
+      if (j === undefined) corner.set(key, i);
+      else parent[find(i)] = find(j);
+    }
+  });
+  const pieces = new Map<number, number[]>();
+  faces.forEach((_, i) => {
+    const r = find(i);
+    let list = pieces.get(r);
+    if (!list) pieces.set(r, (list = []));
+    list.push(i);
+  });
+  const drop = new Set<number>();
+  for (const list of pieces.values()) if (isPost(list)) for (const i of list) drop.add(i);
+  return drop.size ? faces.filter((_, i) => !drop.has(i)) : faces;
+}
+
 /** A long flag: its center, the way its face points, half its width, and its height. */
 interface Billboard { x: number; z: number; nx: number; nz: number; halfW: number; y0: number; y1: number }
 
-/** A flag on a pole: a small upright object with cloth in it. The long flag hangs where the cloth did, as wide. */
+/** A flag on a pole: a small upright object with cloth in it. The long flag hangs where the cloth did, a little wider. */
 function billboardOf(faces: Face[], box: number[]): Billboard | null {
   const cloth = faces.filter((f) => CLOTH.test(f.material));
   const h = box[4] - box[1], footprint = Math.hypot(box[3] - box[0], box[5] - box[2]);
@@ -617,37 +713,12 @@ function billboardOf(faces: Face[], box: number[]): Billboard | null {
   }
   const len = Math.hypot(nx, nz) || 1;
   const x = (x0 + x1) / 2, z = (z0 + z1) / 2, ux = -nz / len, uz = nx / len;
-  let halfW = 0;
+  let halfW = 0, pole = 0, n = 0;
   for (const f of cloth) for (let k = 0; k < 9; k += 3) halfW = Math.max(halfW, Math.abs((f.p[k] - x) * ux + (f.p[k + 2] - z) * uz));
-  return { x, z, nx: nx / len, nz: nz / len, halfW, y0: box[1], y1 };
-}
-
-/**
- * One flag fewer in each row or arc: flags within `FLAG_ROW` of each other chain into one. An odd
- * group loses its middle flag, so it stays symmetric; an even one loses its last, so the rest stay
- * evenly spaced. A flag on its own stays.
- */
-function thinFlags(flags: Map<number, Billboard>): Set<number> {
-  const ids = [...flags.keys()], seen = new Set<number>(), dropped = new Set<number>();
-  for (const start of ids) {
-    if (seen.has(start)) continue;
-    const group = [start];
-    seen.add(start);
-    for (let q = 0; q < group.length; q++) {
-      const a = flags.get(group[q])!;
-      for (const id of ids) {
-        const b = flags.get(id)!;
-        if (!seen.has(id) && Math.hypot(a.x - b.x, a.z - b.z) < FLAG_ROW) { seen.add(id); group.push(id); }
-      }
-    }
-    if (group.length < 2) continue;
-    // In order along the row: by whichever axis it spreads along most.
-    const xs = group.map((id) => flags.get(id)!.x), zs = group.map((id) => flags.get(id)!.z);
-    const alongX = Math.max(...xs) - Math.min(...xs) > Math.max(...zs) - Math.min(...zs);
-    group.sort((a, b) => (alongX ? flags.get(a)!.x - flags.get(b)!.x : flags.get(a)!.z - flags.get(b)!.z));
-    dropped.add(group[group.length % 2 ? (group.length - 1) / 2 : group.length - 1]);
-  }
-  return dropped;
+  for (const f of faces) if (!CLOTH.test(f.material)) for (let k = 0; k < 9; k += 3) { pole += (f.p[k] - x) * ux + (f.p[k + 2] - z) * uz; n++; }
+  // Keep the edge on the pole and let the other one out.
+  const grow = halfW * (FLAG_WIDEN - 1), away = n && pole < 0 ? 1 : -1;
+  return { x: x + ux * grow * away, z: z + uz * grow * away, nx: nx / len, nz: nz / len, halfW: halfW + grow, y0: box[1], y1 };
 }
 
 /** An upright panel on a billboard's line: `halfW` across its face, `halfT` through it. */
@@ -760,8 +831,8 @@ function joinMeshes(a: CollisionMesh, b: CollisionMesh): CollisionMesh {
 /**
  * Player-only ramps over the stair flights. The floor is read on a fine grid; a cell is on a
  * flight when, along x or along z, it climbs through at least three small risers and no wall.
- * Each flight's cells, and a short rim onto its landings, get the floor's local average, lifted
- * just clear of the nosings, the lift fading out across the rim.
+ * Each flight's cells, and a rim onto its landings, take the average of the floor's local highest
+ * point, which sits on the nosings and meets the landings at the rim's outer edge.
  */
 function stairRamps(world: RAPIER.World, noGo: Rect[]): { mesh: CollisionMesh; flights: number } {
   const C = RAMP_CELL, X0 = -EDGE_X, Z0 = PLINTH_Z;
@@ -811,7 +882,8 @@ function stairRamps(world: RAPIER.World, noGo: Rect[]): { mesh: CollisionMesh; f
     else flights++;
   }
   // The rim: a few cells onto the landings, each within a riser of the cell it grows from.
-  const RIM = 3, ring = new Uint8Array(nx * nz);
+  // Past twice the window, the ramp meets the floor, so it ends without a ledge.
+  const RIM = 2 * RAMP_SMOOTH + 1, ring = new Uint8Array(nx * nz);
   for (let step = 1; step <= RIM; step++) {
     const add: [number, number][] = [];
     for (let k = 0; k < label.length; k++) {
@@ -824,23 +896,29 @@ function stairRamps(world: RAPIER.World, noGo: Rect[]): { mesh: CollisionMesh; f
     }
     for (const [k, n] of add) { label[k] = label[n]; axis[k] = axis[n]; ring[k] = step; }
   }
-  // The ramp's height: the floor's average along the way the flight climbs, then lifted clear
-  // of its nosings. Averaged across as well, a wall or billboard beside a flight would tilt the
-  // ramp toward it, and a runner wedged between the two stops dead.
+  // The ramp's height, along the way the flight climbs only: averaged across as well, a wall or
+  // billboard beside a flight would tilt the ramp toward it, and a runner wedged between the two
+  // stops dead. The floor's highest point near each cell, averaged near it again, never dips
+  // under a nosing, and rolls over a short landing between two flights instead of sagging onto
+  // it, so a runner rises at an even rate.
   const ramp = new Float32Array(nx * nz).fill(NaN);
+  const R = RAMP_SMOOTH, NEAR = 0.35;
   for (let k = 0; k < label.length; k++) {
     if (label[k] < 0) continue;
     const i = k % nx, j = (k - i) / nx, [di, dj] = axis[k] === 2 ? [0, 1] : [1, 0];
-    let sum = 0, n = 0;
-    for (let a = -RAMP_SMOOTH; a <= RAMP_SMOOTH; a++) {
+    const line: number[] = [];
+    for (let a = -2 * R; a <= 2 * R; a++) {
       const v = at(i + a * di, j + a * dj);
-      if (Math.abs(v - h[k]) < 0.35) { sum += v; n++; }
+      line.push(Math.abs(v - h[k]) < NEAR ? v : NaN);
     }
-    ramp[k] = sum / n;
+    let sum = 0, n = 0;
+    for (let a = 0; a <= 2 * R; a++) {
+      let top = -Infinity;
+      for (let b = a; b <= a + 2 * R; b++) if (line[b] > top) top = line[b];
+      if (top > -Infinity) { sum += top; n++; }
+    }
+    ramp[k] = Math.max(h[k], sum / n);
   }
-  const lift = new Float32Array(flights);
-  for (let k = 0; k < label.length; k++) if (core[k]) lift[label[k]] = Math.max(lift[label[k]], Math.min(RAMP_LIFT, h[k] - ramp[k]));
-  for (let k = 0; k < label.length; k++) if (label[k] >= 0) ramp[k] += lift[label[k]] * (1 - ring[k] / (RIM + 1));
 
   const pos: number[] = [], tri: number[] = [];
   const vertex = new Int32Array(nx * nz).fill(-1);
