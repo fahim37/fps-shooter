@@ -68,12 +68,12 @@ describe("boulevard", () => {
     expect(slow, `ticks stalled of ${ticks}`).toBeLessThanOrEqual(2);
   });
 
-  it("stands each flag as a billboard, floor to top, that stops bullets", () => {
-    // The flag at x -6.4, z -10.4 hung its cloth from 1.2 m above its foot; the billboard reaches
-    // the floor, and is 1.3 m wide where the cloth was 0.5.
-    for (const x of [-5.9, -6.4, -6.9]) for (const y of [1.15, 1.6, 2.5]) {
+  it("hangs the flags down to the floor, as cover that stops bullets", () => {
+    // The row at x -6.4 had four flags, z -16.9 to -10.4, with cloth from 1.2 m above the foot.
+    // The last one is gone; the one at z -12.55 now hangs to the floor.
+    for (const x of [-6.3, -6.4, -6.5]) for (const y of [1.1, 1.6, 2.5]) {
       const shot = raycastWorld(RAPIER, world, [x, y, -6], [0, 0, -1], 10)?.distance ?? Infinity;
-      expect(Math.abs(-6 - shot + 10.4), `open at x ${x}, y ${y}`).toBeLessThan(0.2);
+      expect(Math.abs(-6 - shot + 12.55), `open at x ${x}, y ${y}`).toBeLessThan(0.2);
     }
   });
 

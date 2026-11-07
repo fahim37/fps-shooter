@@ -47,8 +47,8 @@ import { PLAYER_HEIGHT, PLAYER_RADIUS } from "../../game/shared/constants";
  *   palace. `noGoClips` stands clips on every thick footprint that rises past the terraces, so
  *   nobody climbs them, and everything behind the palace's front line is shut. Clips never stop
  *   bullets, so sight lines stay as they are.
- * - The flags on poles become billboards (`BILLBOARD_W` wide, down to the floor) that stop
- *   bullets: cover along the terraces, where the source only had a 0.5 m strip of cloth.
+ * - The flags on poles hang down to the floor (their cloth was 1.2 m clear of it), as cover along
+ *   the terraces that stops bullets. Each row or arc of them loses one (`thinFlags`).
  * - The terrace stairs are 7 cm risers by the dozen, and the step-up stalls a runner on every one.
  *   `stairRamps` lays a player-only ramp over each flight, so running up them glides; bullets
  *   and grenades still meet the real steps.
@@ -148,9 +148,11 @@ const NO_GO_CELL = 0.5, NO_GO_THIN = 2;
 /** Gatehouse: pier and lintel over the road, dark door between them. */
 const GATE_H = 15, GATE_W = 7.5, PIER_W = 3.5;
 const DOOR_COLOR = "#25262a", BANNER_COLOR = "#2f4a44", TRIM_COLOR = "#b08f5a";
-/** Flags on poles: their cloth (source material), and the billboards they become (m). */
+/** Flags on poles: their cloth (source material), how thick the long flag is, and its gap to the floor (m). */
 const CLOTH = /^__Color_A01_1$/;
-const BILLBOARD_W = 1.3, BILLBOARD_T = 0.14, BILLBOARD_FRAME = 0.07;
+const FLAG_T = 0.04, FLAG_GAP = 0.04;
+/** Flags this close (m) stand in one row or arc. */
+const FLAG_ROW = 5.5;
 /** Stair ramps: grid cell, how many cells a flight is read along each way, a riser's range (m). */
 const RAMP_CELL = 0.1, RAMP_SPAN = 5, RISER_MIN = 0.02, RISER_MAX = 0.16;
 /** Smoothing window (cells each way), and how much of the stairs' nosings a ramp may clear (m). */
@@ -194,11 +196,18 @@ export async function importStreet() {
     list.push(f);
   }
   const bounds = objectBounds(raw);
+  const flags = new Map<number, Billboard>();
+  for (const [object, all] of objects) {
+    const board = billboardOf(all, bounds.get(object)!);
+    if (board) flags.set(object, board);
+  }
+  const dropped = thinFlags(flags);
   const billboards: Billboard[] = [];
   let drawn = 0, detail = 0, plants = 0;
   for (const [object, all] of objects) {
+    if (dropped.has(object)) continue;
     const box = bounds.get(object)!;
-    const board = billboardOf(all, box);
+    const board = flags.get(object);
     if (board) billboards.push(board);
     const list = board ? all.filter((f) => !CLOTH.test(f.material)) : all;
     if (list.every((f) => PLANT.test(f.material))) {
@@ -247,10 +256,7 @@ export async function importStreet() {
   }
   for (const board of billboards) {
     const piece = `Street_${chunkOf(board.x, board.z)}`, b = batchFor(piece, "paint"), start = b.pos.length;
-    const F = BILLBOARD_FRAME;
-    // A gold frame, and the cloth standing proud of it on both faces.
-    addPanel(b, board, BILLBOARD_W / 2, BILLBOARD_T / 2 - 0.03, board.y0, board.y1, tint(TRIM_COLOR, "paint"));
-    addPanel(b, board, BILLBOARD_W / 2 - F, BILLBOARD_T / 2, board.y0 + F, board.y1 - F, tint(BANNER_COLOR, "paint"));
+    addPanel(b, board, board.halfW, FLAG_T / 2, board.y0 + FLAG_GAP, board.y1, tint(PAINT["__Color_A01_1"][1], "paint"));
     solidFor(piece).push(...b.pos.slice(start));
     drawn += (b.pos.length - start) / 9;
   }
@@ -590,10 +596,10 @@ function gateBoxes(): Block[] {
   ];
 }
 
-/** A billboard: its center, the way its face points, and its height. */
-interface Billboard { x: number; z: number; nx: number; nz: number; y0: number; y1: number }
+/** A long flag: its center, the way its face points, half its width, and its height. */
+interface Billboard { x: number; z: number; nx: number; nz: number; halfW: number; y0: number; y1: number }
 
-/** A flag on a pole: a small upright object with cloth in it. Its billboard stands where the cloth hangs. */
+/** A flag on a pole: a small upright object with cloth in it. The long flag hangs where the cloth did, as wide. */
 function billboardOf(faces: Face[], box: number[]): Billboard | null {
   const cloth = faces.filter((f) => CLOTH.test(f.material));
   const h = box[4] - box[1], footprint = Math.hypot(box[3] - box[0], box[5] - box[2]);
@@ -610,7 +616,38 @@ function billboardOf(faces: Face[], box: number[]): Billboard | null {
     nx += f.n[0] * s; nz += f.n[2] * s;
   }
   const len = Math.hypot(nx, nz) || 1;
-  return { x: (x0 + x1) / 2, z: (z0 + z1) / 2, nx: nx / len, nz: nz / len, y0: box[1], y1 };
+  const x = (x0 + x1) / 2, z = (z0 + z1) / 2, ux = -nz / len, uz = nx / len;
+  let halfW = 0;
+  for (const f of cloth) for (let k = 0; k < 9; k += 3) halfW = Math.max(halfW, Math.abs((f.p[k] - x) * ux + (f.p[k + 2] - z) * uz));
+  return { x, z, nx: nx / len, nz: nz / len, halfW, y0: box[1], y1 };
+}
+
+/**
+ * One flag fewer in each row or arc: flags within `FLAG_ROW` of each other chain into one. An odd
+ * group loses its middle flag, so it stays symmetric; an even one loses its last, so the rest stay
+ * evenly spaced. A flag on its own stays.
+ */
+function thinFlags(flags: Map<number, Billboard>): Set<number> {
+  const ids = [...flags.keys()], seen = new Set<number>(), dropped = new Set<number>();
+  for (const start of ids) {
+    if (seen.has(start)) continue;
+    const group = [start];
+    seen.add(start);
+    for (let q = 0; q < group.length; q++) {
+      const a = flags.get(group[q])!;
+      for (const id of ids) {
+        const b = flags.get(id)!;
+        if (!seen.has(id) && Math.hypot(a.x - b.x, a.z - b.z) < FLAG_ROW) { seen.add(id); group.push(id); }
+      }
+    }
+    if (group.length < 2) continue;
+    // In order along the row: by whichever axis it spreads along most.
+    const xs = group.map((id) => flags.get(id)!.x), zs = group.map((id) => flags.get(id)!.z);
+    const alongX = Math.max(...xs) - Math.min(...xs) > Math.max(...zs) - Math.min(...zs);
+    group.sort((a, b) => (alongX ? flags.get(a)!.x - flags.get(b)!.x : flags.get(a)!.z - flags.get(b)!.z));
+    dropped.add(group[group.length % 2 ? (group.length - 1) / 2 : group.length - 1]);
+  }
+  return dropped;
 }
 
 /** An upright panel on a billboard's line: `halfW` across its face, `halfT` through it. */
