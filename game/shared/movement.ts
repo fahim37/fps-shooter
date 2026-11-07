@@ -119,7 +119,9 @@ export class Mover {
     this.kcc.computeColliderMovement(this.collider, desired, this.R.QueryFilterFlags.EXCLUDE_SENSORS, QUERY_MOVE);
     let m = this.kcc.computedMovement();
     const wasGrounded = s.grounded;
-    s.grounded = this.kcc.computedGrounded();
+    // Rapier also reports ground for a capsule brushing a vertical wall in the air. Believed, each
+    // such moment is a fresh jump and any wall is a ladder, so landing takes a walkable contact.
+    s.grounded = this.kcc.computedGrounded() && (wasGrounded || this.touchedFloor());
     let wall = this.touchedWall();
     if (wasGrounded && !wall && desired.y <= 0 && Math.hypot(m.x, m.z) < Math.hypot(desired.x, desired.z) * 0.5) {
       // Rapier now and then stops a step dead on flat floor when it carries gravity's small
@@ -170,6 +172,15 @@ export class Mover {
     }
     // Safety net: never fall out of the world.
     if (s.y < -20) this.teleport(s, 0, 2, 0);
+  }
+
+  /** Whether the last move hit anything a player can stand on. */
+  private touchedFloor() {
+    for (let i = this.kcc.numComputedCollisions() - 1; i >= 0; i--) {
+      const hit = this.kcc.computedCollision(i);
+      if (hit && hit.normal1.y >= WALKABLE_NORMAL_Y) return true;
+    }
+    return false;
   }
 
   /** Whether the last move hit anything too steep to walk on. */
