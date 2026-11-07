@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cycleSeconds, cycleStrokes, sampleHandling } from "./handling";
-import { PRIMARIES, WEAPONS, fireIntervalMs, type WeaponId } from "../../shared/weapons";
+import { PRIMARIES, WEAPONS, currentSpread, fireIntervalMs, type WeaponId } from "../../shared/weapons";
 
 const ALL: WeaponId[] = [...PRIMARIES, "pistol"];
 
@@ -66,6 +66,12 @@ describe("weapon handling", () => {
     expect(cocked.hammer).toBe(0);
     expect(cocked.cylinder).toBe(1);
     expect(sampleHandling("pistol", -1, Infinity, Infinity).hammer).toBe(0);
+  });
+
+  it("shoots the revolver nearly as straight from the hip as down the sights", () => {
+    const def = WEAPONS.pistol;
+    expect(currentSpread(def, 0, 0, false, false)).toBeLessThan(0.2);
+    expect(currentSpread(def, 0, 1, false, false)).toBeLessThan(0.4);
   });
 
   it("keeps the free hand off a one-handed gun", () => {
