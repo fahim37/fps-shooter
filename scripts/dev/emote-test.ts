@@ -55,7 +55,7 @@ async function main() {
     await page.keyboard.press("KeyT"); await menu.waitFor({ timeout: 2000 });
     await page.keyboard.press("KeyT"); await menu.waitFor({ state: "detached", timeout: 2000 });
     await page.keyboard.press("Digit2"); await sleep(650);
-    assert.match(await page.locator(".ammo").innerText(), /Sidearm/i);
+    assert.match(await page.locator(".ammo").innerText(), /Peacemaker/i);
 
     // The click that ends an emote brings the gun up instead of firing it.
     await page.keyboard.press("KeyT"); await page.keyboard.press("Digit3");

@@ -54,20 +54,20 @@ async function main() {
       await panel.waitFor();
       assert.equal(await page.locator(".modal-shade").count(), 0, "Loadout must not stack the pause menu");
       assert.equal(await page.evaluate(() => (window as TestWindow).__loadoutGame!.input.fire), false);
-      await panel.getByRole("button", { name: "Choose Vector SMG", exact: true }).click();
+      await panel.getByRole("button", { name: "Choose Honey Badger", exact: true }).click();
       await page.waitForFunction(() => {
         const game = (window as TestWindow).__loadoutGame!;
         return game.local?.weapon === "smg" && game.room.state.players.get(game.room.sessionId)?.primary === "smg";
       });
-      await panel.getByRole("button", { name: "Attach 2× scope to Vector SMG", exact: true }).click();
-      assert.equal(await panel.getByRole("button", { name: "Attach 2× scope to Vector SMG", exact: true }).getAttribute("aria-pressed"), "true");
+      await panel.getByRole("button", { name: "Attach 2× scope to Honey Badger", exact: true }).click();
+      assert.equal(await panel.getByRole("button", { name: "Attach 2× scope to Honey Badger", exact: true }).getAttribute("aria-pressed"), "true");
       await page.screenshot({ path: `out/qa/loadout-${mobile ? "mobile" : "desktop"}.png` });
       await panel.getByRole("button", { name: /BACK TO MATCH/ }).click();
       await page.waitForFunction(() => (window as TestWindow).__loadoutGame!.input.enabled);
       if (mobile) {
-        await page.getByRole("button", { name: "Equip Sidearm", exact: true }).tap();
+        await page.getByRole("button", { name: "Equip Peacemaker", exact: true }).tap();
         await page.waitForFunction(() => (window as TestWindow).__loadoutGame!.local!.weapon === "pistol");
-        await page.getByRole("button", { name: "Equip Vector SMG", exact: true }).tap();
+        await page.getByRole("button", { name: "Equip Honey Badger", exact: true }).tap();
       } else {
         await page.keyboard.press("2");
         await page.waitForFunction(() => (window as TestWindow).__loadoutGame!.local!.weapon === "pistol");
@@ -82,13 +82,13 @@ async function main() {
       await page.waitForTimeout(250);
       assert.equal(await page.evaluate(() => (window as TestWindow).__loadoutGame!.local!.scoped), true);
       const ammo = await page.evaluate(() => (window as TestWindow).__loadoutGame!.local!.ammo.smg.mag);
-      assert.ok(ammo < 32 && ammo > 0, "Firing the newly equipped gun must consume ammo");
+      assert.ok(ammo < 38 && ammo > 0, "Firing the newly equipped gun must consume ammo");
       await page.screenshot({ path: `out/qa/scope-${mobile ? "mobile" : "desktop"}.png` });
       if (mobile) await page.getByRole("button", { name: "Open loadout and scopes" }).tap();
       else await page.keyboard.press("b");
-      await panel.getByRole("button", { name: "Choose AK Rifle", exact: true }).click();
+      await panel.getByRole("button", { name: "Choose STM-556", exact: true }).click();
       await page.waitForFunction(() => (window as TestWindow).__loadoutGame!.local!.primary === "ar");
-      await panel.getByRole("button", { name: "Choose Vector SMG", exact: true }).click();
+      await panel.getByRole("button", { name: "Choose Honey Badger", exact: true }).click();
       await page.waitForFunction(() => (window as TestWindow).__loadoutGame!.local!.primary === "smg");
       assert.equal(await page.evaluate(() => (window as TestWindow).__loadoutGame!.local!.ammo.smg.mag), ammo, "Swapping guns must not refill ammunition");
       await panel.getByRole("button", { name: "Choose Hunter Sniper", exact: true }).click();

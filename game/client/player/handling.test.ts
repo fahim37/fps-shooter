@@ -28,12 +28,49 @@ describe("weapon handling", () => {
   });
 
   it("takes the magazine out mid reload and carries it in the support hand", () => {
-    for (const w of ["ar", "smg", "sniper", "pistol"] as WeaponId[]) {
+    for (const w of ["ar", "smg", "sniper"] as WeaponId[]) {
       const samples = Array.from({ length: 101 }, (_, i) => sampleHandling(w, i / 100, Infinity, Infinity));
       expect(Math.max(...samples.map((h) => h.mag))).toBeGreaterThan(0.08);
       expect(samples.some((h) => h.magHeld)).toBe(true);
       expect(samples.some((h) => h.left.a.pose === "mag" && (h.left.a.pouch ?? 0) > 0)).toBe(true);
     }
+  });
+
+  it("racks the charging handle on the rifle and SMG, and lets it spring home", () => {
+    for (const w of ["ar", "smg"] as WeaponId[]) {
+      const samples = Array.from({ length: 201 }, (_, i) => sampleHandling(w, i / 200, Infinity, Infinity).charge);
+      expect(Math.max(...samples)).toBeGreaterThan(0.05);
+      expect(samples[200]).toBe(0);
+    }
+    for (const w of ["shotgun", "sniper", "pistol"] as WeaponId[]) {
+      expect(sampleHandling(w, 0.8, Infinity, Infinity).charge).toBe(0);
+    }
+  });
+
+  it("loads the revolver round by round, one chamber at a time", () => {
+    const samples = Array.from({ length: 401 }, (_, i) => sampleHandling("pistol", i / 400, Infinity, Infinity));
+    let loads = 0, clicks = 0;
+    for (let i = 1; i < samples.length; i++) {
+      if (samples[i - 1].shellHeld && !samples[i].shellHeld) loads++;
+      if (samples[i - 1].cylinder > 0.5 && samples[i].cylinder < 0.5) clicks++;
+    }
+    expect(loads).toBe(WEAPONS.pistol.mag);
+    expect(clicks).toBe(WEAPONS.pistol.mag);
+    expect(sampleHandling("pistol", 1, Infinity, Infinity).hammer).toBe(0);
+  });
+
+  it("drops the hammer on the shot, then cocks it and turns the cylinder", () => {
+    expect(sampleHandling("pistol", -1, 0, Infinity).hammer).toBe(1);
+    expect(sampleHandling("pistol", -1, 0.024, Infinity).gun[3]).toBeGreaterThan(0.4);
+    const cocked = sampleHandling("pistol", -1, 0.25, Infinity);
+    expect(cocked.hammer).toBe(0);
+    expect(cocked.cylinder).toBe(1);
+    expect(sampleHandling("pistol", -1, Infinity, Infinity).hammer).toBe(0);
+  });
+
+  it("keeps the free hand off a one-handed gun", () => {
+    const h = sampleHandling("pistol", -1, Infinity, Infinity);
+    expect(h.left.a.belt).toBe(true);
   });
 
   it("loads the shotgun shell by shell and works the pump", () => {
@@ -55,13 +92,13 @@ describe("weapon handling", () => {
   });
 
   it("finishes working the action before the gun can fire again", () => {
-    for (const w of ["shotgun", "sniper"] as WeaponId[]) {
+    for (const w of ["shotgun", "sniper", "pistol"] as WeaponId[]) {
       expect(cycleSeconds(w)! * 1000).toBeLessThanOrEqual(fireIntervalMs(WEAPONS[w]));
       const [open, close] = cycleStrokes(w)!;
       expect(open).toBeLessThan(close);
       expect(close).toBeLessThan(cycleSeconds(w)!);
     }
-    for (const w of ["ar", "smg", "pistol"] as WeaponId[]) expect(cycleStrokes(w)).toBeNull();
+    for (const w of ["ar", "smg"] as WeaponId[]) expect(cycleStrokes(w)).toBeNull();
   });
 
   it("raises the gun from below while drawing it", () => {

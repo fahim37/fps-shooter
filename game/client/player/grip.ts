@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { instantiateCharacter, type CharacterTemplate } from "../assets/characters";
-import { SHELL_PORT, WEAPON_PARTS } from "../assets/weapons";
+import { SHELL_SEATS, WEAPON_PARTS } from "../assets/weapons";
 import type { WeaponId } from "../../shared/weapons";
 
 type V3 = readonly [number, number, number];
@@ -27,7 +27,7 @@ interface HandGrip {
   frame?: HandFrame;
 }
 
-export type RightPose = "grip" | "bolt";
+export type RightPose = "grip" | "bolt" | "cock";
 export type LeftPose = "support" | "mag" | "charge" | "shell";
 export type HandPoseId = RightPose | LeftPose;
 
@@ -73,6 +73,9 @@ function magGrip(center: V3, half: V3, pitch: number): HandGrip {
   };
 }
 
+/** The revolver's plow-handle grip, thumb lying along the frame. */
+const REVOLVER: HandGrip = { ...pistolGrip([0, -0.0075, 0.005], [0.0206, 0.06, 0.0288], -0.31, [0.4, 0.9, 0.45]), thumb: [0.1, 0.2, -1] };
+
 /**
  * Hand placements measured against the imported gun meshes. Each weapon has the firing grip
  * and support hold, plus the extra holds its reload and cycling animations move through.
@@ -80,33 +83,34 @@ function magGrip(center: V3, half: V3, pitch: number): HandGrip {
 const GRIPS: Record<WeaponId, { right: Partial<Record<RightPose, HandGrip>> & { grip: HandGrip }; left: Partial<Record<LeftPose, HandGrip>> & { support: HandGrip } }> = {
   ar: {
     right: {
-      grip: {
-        part: { center: [0, 0.005, -0.002], half: [0.011, 0.05, 0.02], round: 0.009, pitch: -0.24 },
-        palm: [0.026, 0.012, 0.012],
-        facing: [-1, 0, 0.1],
-        thumbSide: [0, 1, -0.24],
-        thumb: [-0.35, 0.25, -1],
-        trigger: [0.3, 0.75, 0.35],
-      },
+      // Thumb forward along the receiver: wrapped over the top it would sink into the wide lower.
+      grip: { ...pistolGrip([0, -0.0013, 0.0105], [0.0195, 0.058, 0.029], -0.5), thumb: [0.1, 0.15, -1] },
     },
     left: {
-      support: cradle([0, 0.1, -0.33], [0.014, 0.032, 0.075], "gun", 0.035),
-      mag: magGrip([0, -0.035, -0.2], [0.013, 0.07, 0.026], 0.42),
-      // Under-hand rack: palm against the right of the receiver, fingers hooked over the handle.
+      support: cradle([0, 0.097, -0.3], [0.029, 0.03, 0.08], "gun", 0.035),
+      mag: magGrip([0, -0.022, -0.124], [0.0134, 0.056, 0.03], 0.18),
+      // From the left, so the arm stays out of the view: fingers over the T-handle at the rear.
       charge: {
-        part: { center: [0, 0.1, -0.085], half: [0.016, 0.03, 0.03], round: 0.008 },
-        palm: [0.04, 0.072, -0.085],
-        facing: [-1, 0.25, 0],
-        thumbSide: [0, 0, -1],
-        thumb: [-0.3, 0, -1],
+        part: { center: [0, 0.115, 0.023], half: [0.026, 0.008, 0.007], round: 0.006 },
+        palm: [-0.042, 0.082, 0.03],
+        facing: [1, 0.25, 0],
+        thumbSide: [0, 0, 1],
+        thumb: [-0.2, -0.2, 1],
       },
     },
   },
   smg: {
-    right: { grip: pistolGrip([0, -0.008, 0.005], [0.013, 0.048, 0.019], -0.29) },
+    right: { grip: { ...pistolGrip([0, 0.0037, 0.003], [0.0135, 0.045, 0.024], -0.36, [0.5, 1.05, 0.55]), thumb: [0.1, 0.15, -1] } },
     left: {
-      support: cradle([0, 0.035, -0.23], [0.022, 0.03, 0.06]),
-      mag: magGrip([0, -0.065, -0.131], [0.013, 0.065, 0.022], 0),
+      support: cradle([0, 0.085, -0.235], [0.0285, 0.031, 0.06], "gun", 0.015),
+      mag: magGrip([0, -0.0245, -0.1187], [0.0105, 0.055, 0.027], 0.17),
+      charge: {
+        part: { center: [0, 0.1075, 0.023], half: [0.021, 0.006, 0.006], round: 0.005 },
+        palm: [-0.034, 0.075, 0.03],
+        facing: [1, 0.25, 0],
+        thumbSide: [0, 0, 1],
+        thumb: [-0.2, -0.2, 1],
+      },
     },
   },
   shotgun: {
@@ -123,7 +127,7 @@ const GRIPS: Record<WeaponId, { right: Partial<Record<RightPose, HandGrip>> & { 
     },
     left: {
       support: cradle([0, 0.006, -0.32], [0.015, 0.025, 0.093], "pump", 0.04),
-      shell: { ...cradle(SHELL_PORT, [0.011, 0.011, 0.03], "shell"), facing: [0.6, 1, 0] },
+      shell: { ...cradle(SHELL_SEATS.shotgun!.port, [0.011, 0.011, 0.03], "shell"), facing: [0.6, 1, 0] },
     },
   },
   sniper: {
@@ -145,9 +149,13 @@ const GRIPS: Record<WeaponId, { right: Partial<Record<RightPose, HandGrip>> & { 
     },
   },
   pistol: {
-    right: { grip: pistolGrip([0, -0.003, 0.006], [0.016, 0.04, 0.016], -0.42) },
+    right: {
+      grip: REVOLVER,
+      // Thumb up on the hammer spur, rolling it back.
+      cock: { ...REVOLVER, thumb: [-0.05, 0.75, 0.55] },
+    },
     left: {
-      // Cup and wrap: the support palm on the left of the grip, fingers over the right hand's.
+      // Never held in two hands: this is only where the arm hangs from (see BELT in handling.ts).
       support: {
         part: { center: [0.004, -0.012, -0.004], half: [0.032, 0.036, 0.03], round: 0.015, pitch: -0.42 },
         palm: [-0.046, -0.018, 0.006],
@@ -155,14 +163,15 @@ const GRIPS: Record<WeaponId, { right: Partial<Record<RightPose, HandGrip>> & { 
         thumbSide: [0, 0.55, -1],
         thumb: [-0.1, 0.3, -1],
       },
-      // Palm under the base plate, pushing the magazine up the grip.
-      mag: {
-        part: { center: [0, -0.0063, -0.0029], half: [0.0105, 0.042, 0.012], round: 0.004, pitch: -0.42 },
-        palm: [0, -0.0648, 0.0233],
-        facing: [0, 0.913, -0.408],
-        thumbSide: [-1, 0, 0],
-        thumb: [-0.2, 1, 0],
-        frame: "mag",
+      // In from the left, behind the cylinder, a round pinched in the fingertips. The right of the
+      // frame is where the gate is, but the gun hand fills that side.
+      shell: {
+        part: { center: [-0.0215, 0.0688, -0.06], half: [0.0075, 0.0075, 0.02], round: 0.005 },
+        palm: [-0.072, 0.074, 0.034],
+        facing: [1, 0, 0],
+        thumbSide: [0, 1, 0],
+        thumb: [-0.15, 0.5, -1],
+        frame: "shell",
       },
     },
   },
@@ -211,7 +220,7 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
 /** Seated origin of a frame in weapon space. */
 function frameOrigin(weapon: WeaponId, frame: HandFrame): V3 {
   if (frame === "gun") return [0, 0, 0];
-  if (frame === "shell") return SHELL_PORT;
+  if (frame === "shell") return SHELL_SEATS[weapon]!.port;
   return WEAPON_PARTS[weapon]![frame]!.pivot;
 }
 

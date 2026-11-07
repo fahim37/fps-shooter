@@ -1,3 +1,4 @@
+import type { WeaponTemplates } from "../assets/weapons";
 import * as THREE from "three";
 import { CharacterRig } from "../player/CharacterRig";
 import type { CharacterTemplate } from "../assets/characters";
@@ -74,7 +75,7 @@ export class RemotePlayer {
     if (this.snaps.length > 30) this.snaps.shift();
   }
 
-  ensureRig(templates: [CharacterTemplate, CharacterTemplate], weapons: Map<WeaponId, THREE.Object3D>, tint: number, char: number, scene: THREE.Object3D) {
+  ensureRig(templates: [CharacterTemplate, CharacterTemplate], weapons: WeaponTemplates, tint: number, char: number, scene: THREE.Object3D) {
     if (this.rig && this.tint === tint && this.char === char) return;
     this.rig?.dispose();
     this.tint = tint;

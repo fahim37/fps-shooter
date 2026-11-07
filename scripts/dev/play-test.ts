@@ -38,7 +38,7 @@ async function main() {
     await page.waitForTimeout(2600);
     assert.equal(parseInt(await ammo.innerText()), 30, "Reload should refill magazine");
     await page.keyboard.press("Digit2"); await page.waitForTimeout(650);
-    assert.match(await page.locator(".ammo").innerText(), /Sidearm/i);
+    assert.match(await page.locator(".ammo").innerText(), /Peacemaker/i);
     await page.mouse.down(); await page.waitForTimeout(700); await page.mouse.up();
     const pistolAmmo = parseInt(await ammo.innerText());
     assert.equal(pistolAmmo, 11, "Holding a semi-automatic trigger should fire once");

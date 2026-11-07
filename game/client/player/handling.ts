@@ -14,8 +14,14 @@ export interface HandKey<P extends string> {
   pose: P;
   /** 0..1 toward the belt pouch (fetching a magazine or shell). */
   pouch?: number;
+  /** Hanging at the hip, wherever the gun is: the free hand of a one-handed gun. */
+  belt?: boolean;
   /** Metres pulled back along the gun (racking a charging handle). */
   pull?: number;
+  /** Metres out to the left of the gun, to pass around it. */
+  clear?: number;
+  /** Metres down off the gun: fingers wrapped over a handguard have to lift clear before the hand moves aside. */
+  drop?: number;
 }
 
 export interface HandBlend<P extends string> { a: HandKey<P>; b: HandKey<P>; k: number }
@@ -30,6 +36,10 @@ export interface Handling {
   pump: number;
   /** Bolt handle lift (0..1) and pull back (0..1). */
   boltLift: number; boltPull: number;
+  /** Charging handle pulled back (m). */
+  charge: number;
+  /** Revolver hammer: 0 cocked, 1 fallen. Its cylinder turning to the next chamber (0..1). */
+  hammer: number; cylinder: number;
   /** Shell distance below the loading port (m); held = shown in the left hand. */
   shell: number; shellHeld: boolean;
 }
@@ -42,6 +52,8 @@ interface Clip {
   mag?: Keys<number>; magHeld?: Keys<boolean>; magVisible?: Keys<boolean>;
   pump?: Keys<number>;
   boltLift?: Keys<number>; boltPull?: Keys<number>;
+  charge?: Keys<number>;
+  hammer?: Keys<number>; cylinder?: Keys<number>;
   shell?: Keys<number>; shellHeld?: Keys<boolean>;
 }
 
@@ -50,6 +62,8 @@ const SUPPORT: HandKey<LeftPose> = { pose: "support" };
 const GRIP: HandKey<RightPose> = { pose: "grip" };
 const MAG: HandKey<LeftPose> = { pose: "mag" };
 const POUCH: HandKey<LeftPose> = { pose: "mag", pouch: 1 };
+/** Past the end of the magazine, down its slope: fingers around it slide off, not through it. */
+const OFF_MAG: HandKey<LeftPose> = { pose: "mag", drop: 0.11, pull: -0.02 };
 const SHELL: HandKey<LeftPose> = { pose: "shell" };
 const SHELL_POUCH: HandKey<LeftPose> = { pose: "shell", pouch: 1 };
 const BOLT: HandKey<RightPose> = { pose: "bolt" };
@@ -57,42 +71,80 @@ const BOLT: HandKey<RightPose> = { pose: "bolt" };
 /** `base` nudged by `d` (same layout as GunOffset, missing entries are 0). */
 const nudge = (base: GunOffset, ...d: number[]): GunOffset => base.map((v, i) => v + (d[i] ?? 0)) as GunOffset;
 
-/** Box-magazine swap: tilt, drop the mag, fetch another from the belt, seat it, optionally rack. */
-function magReload(charge: boolean): Clip {
+/** Metres a charging handle travels. */
+const CHARGE_PULL = 0.06;
+/** Metres out to the gun's left the support hand swings when changing hold. */
+const SWING = 0.075;
+const DROP = 0.075;
+
+/** Box-magazine swap: tilt, drop the mag, fetch another from the belt, seat it, rack the handle. */
+const MAG_RELOAD: Clip = (() => {
   // Raised toward the centre of the view, muzzle up and the magazine well turned toward the eye.
   const tilt: GunOffset = [-0.08, 0.09, 0.05, 0.3, 0.3, -0.3];
-  const rack: GunOffset = [-0.05, 0.05, 0.03, 0.12, 0.12, 0.3];
+  // Rolled toward the support hand and held out, so the handle shows at the back of the gun.
+  const rack: GunOffset = [0.03, 0.01, -0.05, 0.2, 0.2, 0.42];
+  const hold: HandKey<LeftPose> = { pose: "charge" }, pulled: HandKey<LeftPose> = { pose: "charge", pull: CHARGE_PULL };
   return {
     gun: [
       [0, REST], [0.12, tilt], [0.14, tilt], [0.19, nudge(tilt, 0, -0.012, 0, -0.03)], [0.26, tilt],
       [0.6, tilt], [0.645, nudge(tilt, 0, 0.012, 0, 0.06)], [0.7, tilt],
-      ...(charge
-        ? [[0.76, rack], [0.8, rack], [0.83, nudge(rack, 0, 0, 0.014)], [0.855, nudge(rack, 0, 0, -0.004, 0.045)], [0.95, REST]] as Keys<GunOffset>
-        : [[0.85, REST]] as Keys<GunOffset>),
+      [0.75, rack], [0.78, rack], [0.83, nudge(rack, 0, 0, 0.018)], [0.85, nudge(rack, 0, 0, 0.018)], [0.87, nudge(rack, 0, 0, -0.008, 0.05)], [0.96, REST],
     ],
+    // Between holds the hand swings out around the gun: a straight line would cut through it.
     left: [
-      [0, SUPPORT], [0.1, MAG], [0.24, MAG], [0.35, POUCH], [0.45, POUCH], [0.56, MAG], [0.67, MAG],
-      ...(charge
-        ? [[0.76, { pose: "charge" }], [0.8, { pose: "charge" }], [0.83, { pose: "charge", pull: 0.06 }], [0.85, { pose: "charge", pull: 0.06 }], [0.95, SUPPORT]] as Keys<HandKey<LeftPose>>
-        : [[0.8, SUPPORT]] as Keys<HandKey<LeftPose>>),
+      [0, SUPPORT], [0.04, { ...SUPPORT, drop: DROP }], [0.08, OFF_MAG], [0.11, MAG], [0.24, MAG], [0.35, POUCH], [0.45, POUCH], [0.56, MAG], [0.66, MAG],
+      [0.695, OFF_MAG], [0.725, { ...hold, clear: SWING }], [0.76, hold], [0.78, hold], [0.83, pulled], [0.85, pulled],
+      [0.885, { ...pulled, clear: SWING }], [0.925, { ...SUPPORT, drop: DROP }], [0.96, SUPPORT],
     ],
     mag: [[0.14, 0], [0.24, 0.16], [0.5, 0.16], [0.56, 0.06], [0.64, 0]],
     magHeld: [[0, false], [0.14, true], [0.66, false]],
-  };
-}
-
-const PISTOL_RELOAD: Clip = (() => {
-  const tilt: GunOffset = [-0.06, 0.07, 0.03, 0.25, 0.25, 0.28];
-  return {
-    gun: [[0, REST], [0.12, tilt], [0.6, tilt], [0.66, nudge(tilt, 0, 0.01, 0, 0.06)], [0.72, tilt],
-      [0.8, tilt], [0.83, nudge(tilt, 0, 0, 0, 0.05)], [0.95, REST]],
-    // The empty magazine drops free while the support hand already reaches for a full one.
-    left: [[0, SUPPORT], [0.16, POUCH], [0.4, POUCH], [0.54, MAG], [0.68, MAG], [0.86, SUPPORT]],
-    mag: [[0.1, 0], [0.24, 0.28], [0.42, 0.28], [0.54, 0.07], [0.66, 0]],
-    magVisible: [[0, true], [0.24, false], [0.32, true]],
-    magHeld: [[0, false], [0.3, true], [0.68, false]],
+    // Follows the hand back, then springs home the moment it lets go.
+    charge: [[0.78, 0], [0.83, CHARGE_PULL], [0.85, CHARGE_PULL], [0.862, 0]],
   };
 })();
+
+/** The six-shooter's rounds go in one at a time: start of each (0..1) and how long it takes to seat. */
+const ROUNDS = [0.1, 0.225, 0.35, 0.475, 0.6, 0.725];
+const ROUND_SEAT = 0.09;
+/** Sound cues in the revolver's reload, as fractions of it: each round seating. */
+export const REVOLVER_ROUND_CUES = ROUNDS.map((s) => s + ROUND_SEAT);
+
+const ROUND: HandKey<LeftPose> = { pose: "shell" };
+/** Reaching back to the cartridge loops. */
+const ROUND_LOOPS: HandKey<LeftPose> = { pose: "shell", pouch: 0.45 };
+/** The free hand of a one-handed gun, down by the belt. */
+const BELT: HandKey<LeftPose> = { pose: "support", belt: true };
+
+const REVOLVER_RELOAD: Clip = (() => {
+  // Brought up to the middle of the view, muzzle high: both hands end up below the cylinder, so
+  // neither hides it.
+  const tilt: GunOffset = [-0.11, 0.17, 0.1, 0.95, 0.1, 0.15];
+  const gun: Keys<GunOffset> = [[0, REST], [0.09, tilt]];
+  const left: Keys<HandKey<LeftPose>> = [[0, BELT]];
+  const shell: Keys<number> = [];
+  const shellHeld: Keys<boolean> = [[0, false]];
+  const cylinder: Keys<number> = [[0, 0]];
+  for (const s of ROUNDS) {
+    left.push([s, ROUND_LOOPS], [s + 0.055, ROUND], [s + ROUND_SEAT, ROUND]);
+    shell.push([s, 0.05], [s + 0.055, 0.05], [s + ROUND_SEAT, 0.024]);
+    shellHeld.push([s, true], [s + ROUND_SEAT + 0.002, false]);
+    gun.push([s + ROUND_SEAT, nudge(tilt, 0, 0.004, 0, 0.02)], [s + 0.12, tilt]);
+    // A click round to the next chamber. All six look alike, so it can then jump back unseen.
+    cylinder.push([s + ROUND_SEAT, 0], [s + ROUND_SEAT + 0.03, 1], [s + ROUND_SEAT + 0.0301, 0]);
+  }
+  left.push([0.9, BELT]);
+  gun.push([0.86, tilt], [0.95, [0, 0, 0, 0, 0, -0.08]], [1, REST]);
+  // Half cock frees the cylinder; back to full cock for the first shot.
+  return { gun, left, shell, shellHeld, cylinder, hammer: [[0, 0], [0.07, 0.45], [0.88, 0.45], [0.94, 0]] };
+})();
+
+/** After each shot: the muzzle kicks up, and the thumb rolls the hammer back, turning the cylinder. */
+const REVOLVER_COCK: Clip = {
+  gun: [[0, REST], [0.08, [0, 0.014, 0.035, 0.5, 0, 0.04]], [0.45, [0, 0.004, 0.01, 0.12, 0, 0]], [0.9, REST]],
+  right: [[0, GRIP], [0.18, { pose: "cock" }], [0.62, { pose: "cock" }], [1, GRIP]],
+  hammer: [[0, 1], [0.3, 1], [0.62, 0]],
+  cylinder: [[0.3, 0], [0.62, 1]],
+};
 
 /** When each shell starts its trip from the belt, and how long until it seats in the port. */
 const SHELLS = [0.1, 0.28, 0.46, 0.64];
@@ -158,12 +210,12 @@ const DRAW: Keys<GunOffset> = [[0, [0.03, -0.16, 0.06, -0.8, 0.25, 0.45]], [1, R
 /** A pump or bolt cycle: `strokes` are where the action hits the back and front of its travel (0..1). */
 interface Cycle { clip: Clip; seconds: number; strokes: readonly [number, number] }
 
-const CLIPS: Record<WeaponId, { reload: Clip; cycle?: Cycle }> = {
-  ar: { reload: magReload(true) },
-  smg: { reload: magReload(false) },
+const CLIPS: Record<WeaponId, { reload: Clip; cycle?: Cycle; rest?: HandKey<LeftPose> }> = {
+  ar: { reload: MAG_RELOAD },
+  smg: { reload: MAG_RELOAD },
   shotgun: { reload: SHOTGUN_RELOAD, cycle: { clip: SHOTGUN_PUMP, seconds: 0.36, strokes: [0.5, 0.75] } },
   sniper: { reload: SNIPER_RELOAD, cycle: { clip: SNIPER_BOLT, seconds: 0.64, strokes: [0.5, 0.64] } },
-  pistol: { reload: PISTOL_RELOAD },
+  pistol: { reload: REVOLVER_RELOAD, cycle: { clip: REVOLVER_COCK, seconds: 0.3, strokes: [0.3, 0.62] }, rest: BELT },
 };
 
 /** How long a pump or bolt gun takes to work its action after a shot (s), or null for other guns. */
@@ -180,7 +232,7 @@ export function cycleStrokes(weapon: WeaponId): readonly [number, number] | null
 export function createHandling(): Handling {
   return {
     gun: [...REST], left: { a: SUPPORT, b: SUPPORT, k: 0 }, right: { a: GRIP, b: GRIP, k: 0 },
-    mag: 0, magHeld: false, magVisible: true, pump: 0, boltLift: 0, boltPull: 0, shell: 0, shellHeld: false,
+    mag: 0, magHeld: false, magVisible: true, pump: 0, boltLift: 0, boltPull: 0, charge: 0, hammer: 0, cylinder: 0, shell: 0, shellHeld: false,
   };
 }
 
@@ -190,12 +242,12 @@ export function createHandling(): Handling {
  */
 export function sampleHandling(weapon: WeaponId, reload: number, sinceShot: number, sinceDraw: number, out = createHandling()) {
   out.gun.fill(0);
-  out.left.a = out.left.b = SUPPORT; out.left.k = 0;
+  const clips = CLIPS[weapon];
+  out.left.a = out.left.b = clips.rest ?? SUPPORT; out.left.k = 0;
   out.right.a = out.right.b = GRIP; out.right.k = 0;
-  out.mag = out.pump = out.boltLift = out.boltPull = out.shell = 0;
+  out.mag = out.pump = out.boltLift = out.boltPull = out.charge = out.hammer = out.cylinder = out.shell = 0;
   out.magHeld = out.shellHeld = false;
   out.magVisible = true;
-  const clips = CLIPS[weapon];
   if (reload >= 0) apply(clips.reload, Math.min(1, reload), out);
   else if (clips.cycle && sinceShot >= 0 && sinceShot < clips.cycle.seconds) apply(clips.cycle.clip, sinceShot / clips.cycle.seconds, out);
   const equip = WEAPONS[weapon].equipMs / 1000;
@@ -216,6 +268,9 @@ function apply(c: Clip, t: number, out: Handling) {
   if (c.pump) out.pump = sampleNum(c.pump, t);
   if (c.boltLift) out.boltLift = sampleNum(c.boltLift, t);
   if (c.boltPull) out.boltPull = sampleNum(c.boltPull, t);
+  if (c.charge) out.charge = sampleNum(c.charge, t);
+  if (c.hammer) out.hammer = sampleNum(c.hammer, t);
+  if (c.cylinder) out.cylinder = sampleNum(c.cylinder, t);
   if (c.shell) out.shell = sampleNum(c.shell, t);
   if (c.shellHeld) out.shellHeld = sampleStep(c.shellHeld, t);
 }

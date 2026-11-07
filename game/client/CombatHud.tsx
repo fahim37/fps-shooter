@@ -8,11 +8,11 @@ export function weaponLabel(weapon: string) {
 
 /** Each weapon's own silhouette (64 × 24), so the kill feed shows what actually got the kill. */
 const WEAPON_SHAPES: Record<string, string[]> = {
-  ar: ["M2 10 15 8h30v3h16v2H45v1H31l-2 2-1 6h-5l1-7-4-1L2 16Z", "M31 14c0 4 2 7 6 8l3-1c-3-2-4-4-4-7", "M40 8V6h3v2"],
-  smg: ["M12 8h28l3 3h12v2H43l-3 3H31l-1 2 1 4h-5l-1-6H12Z", "M12 9 5 8v6l7 1", "M33 16v7h4v-7", "M22 8V5h8v3"],
+  ar: ["M2 8h11v3h9V8h21v3h19v2H43v2H22l-9-1-4 4H2Z", "M24 15l-3 7h5l2-7", "M32 15l1 8h5l-1-8"],
+  smg: ["M4 7v9M4 10h9l1-2h26v2h20v4H40v1H24l-9-1H4", "M22 15l-3 7h5l2-7", "M31 15l1 8h5l-1-8", "M22 8V5M38 8V5"],
   shotgun: ["M2 13 15 9h47v3H18v2l-3 1-13 4Z", "M30 14h18v3H30Z", "M18 14l2 6h4l-2-6"],
   sniper: ["M2 12 14 9h48v2H26l-2 2h-4l-1 6h-5l1-6-13 3Z", "M24 4h16v4H24Z", "M28 8v1M36 8v1", "M50 11l-3 9M50 11l3 9"],
-  pistol: ["M13 6h36v7H30l-4 9H16l4-12h-7ZM38 6V3"],
+  pistol: ["M10 7h44v4H30l-2 3h-6l-4 9H9l5-11-3-1Z", "M22 14l3 3h4", "M50 7V4"],
   grenade: ["m29 5 6-3 4 5-5 3M29 9c-12 3-9 15 0 14 12-1 11-10 5-14Z", "m36 3 8 5 2 7"],
   fall: ["M32 2v13m-6-6 6 6 6-6M16 21h32"],
 };

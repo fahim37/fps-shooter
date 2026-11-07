@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { Document, type Material, type mat4 } from "@gltf-transform/core";
 import { transformMesh, prune } from "@gltf-transform/functions";
@@ -6,12 +7,10 @@ import { mergeDocuments } from "@gltf-transform/functions";
 
 // Quaternius "Ultimate Guns" (CC0, via poly.pizza). Source models point the muzzle along +X
 // in arbitrary units with the origin near the grip.
+// The assault rifle, SMG and sidearm come from elsewhere: see stm.ts, badger.ts and peacemaker.ts, the stages after this one.
 const GUNS: { id: string; file: string; length: number }[] = [
-  { id: "ar", file: "rifle.glb", length: 0.88 },
-  { id: "smg", file: "smg.glb", length: 0.62 },
   { id: "shotgun", file: "shotgun.glb", length: 1.0 },
   { id: "sniper", file: "sniper3.glb", length: 1.18 },
-  { id: "pistol", file: "pistol.glb", length: 0.21 },
 ];
 
 type Look = { color: [number, number, number]; metal: number; rough: number };
@@ -118,7 +117,8 @@ export async function importWeapons() {
   for (const s of doc.getRoot().listScenes()) if (s !== scene) s.dispose();
   await doc.transform(prune());
   const bytes = await writeGLB(doc, path.join(PUBLIC_MODELS, "weapons.glb"), { compress: false });
-  writeJSON(path.join(GENERATED, "weapons-meta.json"), meta);
+  const metaFile = path.join(GENERATED, "weapons-meta.json");
+  writeJSON(metaFile, { ...JSON.parse(fs.readFileSync(metaFile, "utf8")), ...meta });
   console.log(`[weapons] ${(bytes / 1e3).toFixed(0)} KB`, JSON.stringify(meta));
 }
 

@@ -1,7 +1,7 @@
 import type { WeaponId } from "../../shared/weapons";
 import type { MapId } from "../../shared/map/types";
 import { assetUrl } from "../assets/url";
-import { SHOTGUN_RELOAD_CUES, cycleStrokes } from "../player/handling";
+import { REVOLVER_ROUND_CUES, SHOTGUN_RELOAD_CUES, cycleStrokes } from "../player/handling";
 
 type V3 = { x: number; y: number; z: number };
 
@@ -46,6 +46,8 @@ type Clack = [freq: number, level: number, thud: number];
 const ACTIONS: Partial<Record<WeaponId, [open: Clack, close: Clack]>> = {
   shotgun: [[1150, 0.34, 170], [1750, 0.5, 230]],
   sniper: [[2100, 0.22, 300], [2900, 0.3, 360]],
+  // The two clicks of a single-action hammer coming to full cock.
+  pistol: [[2400, 0.3, 320], [3200, 0.38, 420]],
 };
 /** A shell thumbed into the shotgun's loading port. */
 const SHELL_IN: Clack = [1900, 0.26, 210];
@@ -65,7 +67,7 @@ const SHOTS: Record<WeaponId, ShotVoice> = {
   smg: { crack: 0.8, body: 0.8, thump: 0.6, pitch: 1.3, length: 0.11, tail: 0.4 },
   shotgun: { crack: 0.85, body: 1.2, thump: 1.3, pitch: 0.7, length: 0.24, tail: 0.9, boom: 0.8 },
   sniper: { crack: 1.2, body: 1.2, thump: 1.4, pitch: 0.85, length: 0.35, tail: 1 },
-  pistol: { crack: 0.9, body: 0.7, thump: 0.55, pitch: 1.2, length: 0.12, tail: 0.45 },
+  pistol: { crack: 1, body: 1.15, thump: 1.2, pitch: 0.8, length: 0.2, tail: 0.85, boom: 0.45 },
 };
 
 /**
@@ -434,11 +436,15 @@ export class AudioEngine {
 
   reload(weapon: WeaponId, durationS: number, pos?: V3) {
     if (weapon === "shotgun") return this.shotgunReload(durationS);
-    // Mag out, mag in, charging handle.
+    if (weapon === "pistol") {
+      for (const at of REVOLVER_ROUND_CUES) this.click(2100, 0.3, pos, durationS * at);
+      return;
+    }
+    // Mag out, mag in, charging handle back, handle released: on the beats of the clip in handling.ts.
     this.click(1500, 0.35, pos, durationS * 0.2);
-    this.click(900, 0.4, pos, durationS * 0.55);
-    this.click(2600, 0.3, pos, durationS * 0.85);
-    this.click(1800, 0.35, pos, durationS * 0.92);
+    this.click(900, 0.4, pos, durationS * 0.62);
+    this.click(2600, 0.3, pos, durationS * 0.83);
+    this.click(1800, 0.35, pos, durationS * 0.862);
   }
 
   switchWeapon() {

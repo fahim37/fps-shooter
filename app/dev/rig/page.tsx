@@ -1,9 +1,11 @@
 import RigViewer from "./RigViewerLoader";
 import type { WeaponId } from "@/game/shared/weapons";
+import type { OpticId } from "@/game/shared/optics";
 
 // Dev tool: weapon-holding rigs. /dev/rig?pitch=0&speed=0&reload=-1  or  /dev/rig?fpp=1&weapon=ar&ads=0
 // &shot=s / &draw=s hold the pump or bolt cycle / weapon draw that many seconds in.
 // &solo=1 shows only the male rig holding &weapon (TPP), &move=rad turns its movement off the aim.
+// &optic=iron|red-dot|2x... picks the sight (FPP).
 // Add &orbit=1&cam=x,y,z[&target=x,y,z] to view the first-person arms from outside, &fov=n for the FPP camera.
 export default async function RigPage(props: PageProps<"/dev/rig">) {
   const q = await props.searchParams;
@@ -15,6 +17,7 @@ export default async function RigPage(props: PageProps<"/dev/rig">) {
       solo={q.solo === "1"}
       move={Number(str(q.move, "0"))}
       weapon={str(q.weapon, "ar") as WeaponId}
+      optic={typeof q.optic === "string" ? q.optic as OpticId : undefined}
       pitch={Number(str(q.pitch, "0"))}
       speed={Number(str(q.speed, "0"))}
       reload={Number(str(q.reload, "-1"))}

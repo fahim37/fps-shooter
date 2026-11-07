@@ -43,14 +43,14 @@ const W = (d: WeaponDef) => d;
 
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
   ar: W({
-    id: "ar", name: "AK Rifle", slot: 0, auto: true, rpm: 600, damage: 26, headMult: 1.8, limbMult: 0.85, pellets: 1,
+    id: "ar", name: "STM-556", slot: 0, auto: true, rpm: 600, damage: 26, headMult: 1.8, limbMult: 0.85, pellets: 1,
     falloffStart: 30, falloffEnd: 65, minMult: 0.72, range: 200, mag: 30, reserve: 120, reloadMs: 1900, equipMs: 450,
     spreadHip: 1.7, spreadAds: 0.12, spreadMove: 1.1, spreadAir: 5, recoilUp: 0.4, recoilSide: 0.12,
     adsFov: 55, adsMs: 220, moveMult: 0.95,
   }),
   smg: W({
-    id: "smg", name: "Vector SMG", slot: 0, auto: true, rpm: 880, damage: 19, headMult: 1.6, limbMult: 0.9, pellets: 1,
-    falloffStart: 14, falloffEnd: 35, minMult: 0.6, range: 150, mag: 35, reserve: 160, reloadMs: 1650, equipMs: 350,
+    id: "smg", name: "Honey Badger", slot: 0, auto: true, rpm: 880, damage: 19, headMult: 1.6, limbMult: 0.9, pellets: 1,
+    falloffStart: 14, falloffEnd: 35, minMult: 0.6, range: 150, mag: 38, reserve: 160, reloadMs: 1650, equipMs: 350,
     spreadHip: 1.6, spreadAds: 0.22, spreadMove: 0.9, spreadAir: 3.5, recoilUp: 0.26, recoilSide: 0.15,
     adsFov: 62, adsMs: 170, moveMult: 1.05,
   }),
@@ -67,9 +67,9 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     adsFov: 18, adsMs: 170, moveMult: 0.9, scope: true,
   }),
   pistol: W({
-    id: "pistol", name: "Sidearm", slot: 1, auto: false, rpm: 380, damage: 30, headMult: 1.8, limbMult: 0.9, pellets: 1,
-    falloffStart: 18, falloffEnd: 40, minMult: 0.6, range: 120, mag: 12, reserve: 60, reloadMs: 1250, equipMs: 250,
-    spreadHip: 1.1, spreadAds: 0.16, spreadMove: 0.8, spreadAir: 3, recoilUp: 0.75, recoilSide: 0.14,
+    id: "pistol", name: "Peacemaker", slot: 1, auto: false, rpm: 190, damage: 44, headMult: 1.8, limbMult: 0.9, pellets: 1,
+    falloffStart: 18, falloffEnd: 40, minMult: 0.6, range: 120, mag: 6, reserve: 36, reloadMs: 2600, equipMs: 250,
+    spreadHip: 1.1, spreadAds: 0.16, spreadMove: 0.8, spreadAir: 3, recoilUp: 1.5, recoilSide: 0.2,
     adsFov: 66, adsMs: 150, moveMult: 1.05,
   }),
 };

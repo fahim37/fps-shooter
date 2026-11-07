@@ -57,7 +57,7 @@ async function main() {
     await page.screenshot({ path: "out/qa/scope-small-chevron.png" });
     await page.mouse.up({ button: "right" });
     await page.keyboard.press("KeyB");
-    await page.getByRole("button", { name: "Attach Red dot to AK Rifle" }).click();
+    await page.getByRole("button", { name: "Attach Red dot to STM-556" }).click();
     await page.getByRole("button", { name: "Close loadout" }).click();
     await page.waitForFunction(() => {
       // Wait for the game's input loop as well as the browser's pointer lock.

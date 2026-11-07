@@ -2,7 +2,7 @@ import * as THREE from "three";
 import type { GameRoom } from "../net/session";
 import { ServerClock } from "../net/clock";
 import { loadCharacters, type CharacterTemplate } from "../assets/characters";
-import { loadWeapons } from "../assets/weapons";
+import { loadWeapons, type WeaponTemplates } from "../assets/weapons";
 import { CharacterRig, type RigState } from "../player/CharacterRig";
 import { gripPose } from "../player/grip";
 import { getMap } from "../../shared/map/maps";
@@ -115,7 +115,7 @@ export class Game {
   private R!: Rapier;
   private world: World | null = null;
   private templates!: [CharacterTemplate, CharacterTemplate];
-  private weapons!: Map<WeaponId, THREE.Object3D>;
+  private weapons!: WeaponTemplates;
   private fpp: CharacterRig | null = null;
   private tpp: CharacterRig | null = null;
   private rigKey = "";
@@ -278,8 +278,8 @@ export class Game {
       if (key !== this.rigKey) {
         this.fpp?.dispose(); this.tpp?.dispose();
         // Your own outfit is always blue; opponents are always red (see the remotes below).
-        this.fpp = new CharacterRig(this.templates[me.char === 1 ? 1 : 0], this.weapons, ALLY_TINT, false, "fpp");
-        this.tpp = new CharacterRig(this.templates[me.char === 1 ? 1 : 0], this.weapons, ALLY_TINT, false, "tpp");
+        this.fpp = new CharacterRig(this.templates[me.char === 1 ? 1 : 0], this.weapons, ALLY_TINT, false, "fpp", true);
+        this.tpp = new CharacterRig(this.templates[me.char === 1 ? 1 : 0], this.weapons, ALLY_TINT, false, "tpp", true);
         this.scene.add(this.fpp.object, this.tpp.object);
         this.rigKey = key;
       }

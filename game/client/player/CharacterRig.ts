@@ -1,11 +1,11 @@
 import * as THREE from "three";
 import { instantiateCharacter, type CharacterTemplate, type CharacterInstance, type ClipName } from "../assets/characters";
-import { cloneWeapon, createShell, SHELL_PORT, WEAPON_META, WEAPON_PARTS } from "../assets/weapons";
+import { cloneWeapon, createShell, SHELL_SEATS, WEAPON_META, WEAPON_PARTS, type WeaponTemplates } from "../assets/weapons";
 import type { WeaponId } from "../../shared/weapons";
 import { solveTwoBone, setBoneWorldQuaternion, rotateBoneWorld } from "./ik";
 import { LEAN_ANGLE } from "../../shared/lean";
 import { DEFAULT_OPTICS, type OpticId } from "../../shared/optics";
-import { createReflexSight } from "./ReflexSight";
+import { createIronSights, createReflexSight } from "./ReflexSight";
 import { gripPose, type GripPose, type HandPose } from "./grip";
 import { createHandling, sampleHandling, type HandBlend, type HandKey } from "./handling";
 
@@ -64,6 +64,10 @@ const PROCEDURAL_BONES = ["spine_01", "spine_03", "neck_01", "clavicle_r", "uppe
 /** Bolt handle lift (rad) and travel (m) at full open. */
 const BOLT_LIFT = 1.15;
 const BOLT_TRAVEL = 0.065;
+/** How far a revolver's hammer rolls back from its fallen position (rad). */
+const COCK_ANGLE = 0.75;
+/** Where a free hand hangs: below, out from and ahead of its shoulder (m). */
+const BELT_DROP = 0.5, BELT_OUT = 0.1, BELT_AHEAD = 0.08;
 /** Where a hand fetching a magazine or shell goes: down and in toward the belt. */
 const POUCH_DROP = 0.3;
 const POUCH_IN = 0.08;
@@ -107,6 +111,8 @@ const COMFORT_REACH = 0.855;
 const PISTOL_REACH = 0.97;
 /** How far (rad) the clavicle may swing to carry the shoulder after a far hand. */
 const MAX_SHRUG = 0.5;
+/** How far the eye sits behind an AR-pattern stock: its high, straight comb would fill the view from closer. */
+const AR_EYE_RELIEF = 0.17;
 /** Long-gun stance: chest turned right of the aim (rad) so the support shoulder leads. */
 const RIFLE_STANCE = 0.28;
 /** Ground speed (m/s) of each movement clip at normal playback, measured from its planted toe. */
@@ -163,6 +169,8 @@ interface WeaponParts {
   pump?: THREE.Object3D;
   bolt?: THREE.Object3D;
   shell?: THREE.Object3D;
+  cylinder?: THREE.Object3D;
+  hammer?: THREE.Object3D;
 }
 
 export class CharacterRig {
@@ -186,6 +194,7 @@ export class CharacterRig {
   private guns = new Map<WeaponId, THREE.Object3D>();
   private parts = new Map<WeaponId, WeaponParts>();
   private sights = new Map<WeaponId, ReturnType<typeof createReflexSight>>();
+  private irons: ReturnType<typeof createIronSights> | null = null;
   private weapon: WeaponId | null = null;
   private legYaw = 0;
   private stance = 0;
@@ -207,10 +216,12 @@ export class CharacterRig {
 
   constructor(
     private template: CharacterTemplate,
-    private weaponTemplates: Map<WeaponId, THREE.Object3D>,
+    private weaponTemplates: WeaponTemplates,
     team: number,
     beard: boolean,
     readonly mode: RigMode,
+    /** The player's own rig, seen up close: it carries the detailed gun. */
+    private near = false,
   ) {
     this.inst = instantiateCharacter(template, team, beard);
     this.animationPose = [...this.inst.bones.values()].filter((bone) => PROCEDURAL_BONES.includes(bone.name))
@@ -252,13 +263,19 @@ export class CharacterRig {
     for (const g of this.guns.values()) g.visible = false;
     let g = this.guns.get(id);
     if (!g) {
-      g = cloneWeapon(this.weaponTemplates, id);
+      g = cloneWeapon(this.weaponTemplates, id, this.near);
       const sight = createReflexSight(id);
       g.add(sight.object);
       this.sights.set(id, sight);
-      const parts: WeaponParts = { mag: g.getObjectByName("mag"), pump: g.getObjectByName("pump"), bolt: g.getObjectByName("bolt") };
-      if (id === "shotgun") {
-        parts.shell = createShell();
+      if (id === "ar") {
+        this.irons = createIronSights();
+        g.add(this.irons.object);
+      }
+      const parts: WeaponParts = { mag: g.getObjectByName("mag"), pump: g.getObjectByName("pump"), bolt: g.getObjectByName("bolt"), cylinder: g.getObjectByName("cylinder"), hammer: g.getObjectByName("hammer") };
+      const seat = SHELL_SEATS[id];
+      if (seat) {
+        parts.shell = createShell(id === "pistol");
+        parts.shell.scale.setScalar(seat.scale);
         parts.shell.visible = false;
         g.add(parts.shell);
       }
@@ -480,8 +497,11 @@ export class CharacterRig {
     const meta = WEAPON_META[w];
     const pistol = w === "pistol";
     const sight = this.sights.get(w)!;
-    const reflex = (s.optic ?? DEFAULT_OPTICS[w]) === "red-dot";
+    const optic = s.optic ?? DEFAULT_OPTICS[w];
+    const reflex = optic === "red-dot";
     sight.object.visible = reflex;
+    const irons = w === "ar" ? this.irons : null;
+    if (irons) irons.object.visible = optic === "iron";
     const h = sampleHandling(w, s.reload, s.sinceShot ?? -1, s.sinceDraw ?? -1, this.handling);
     const [hx, hy, hz, hPitch, hYaw, hRoll] = h.gun;
     const sprint = s.sprint * (1 - s.ads);
@@ -489,10 +509,10 @@ export class CharacterRig {
     if (this.mode === "fpp" && s.eye && s.view) {
       // View-space placement: hip at the lower right, ADS lines the sights up with the eye.
       // Eye just above the top of the receiver / rear sight.
-      const sightY = reflex ? sight.height : pistol ? meta.max[1] - 0.004 : w === "sniper" ? meta.max[1] - 0.01 : meta.max[1] + 0.004;
+      const sightY = reflex ? sight.height : irons ? irons.height : pistol ? meta.max[1] - 0.004 : w === "sniper" ? meta.max[1] - 0.01 : meta.max[1] + 0.004;
       const hip = pistol ? _v.set(0.13, -0.21, -0.4) : _v.set(0.15, -0.25, -0.3);
       // Keep the stock end just in front of the eye; the pistol is held out at arm's length.
-      const ads = _v2.set(0, -sightY, pistol ? -0.48 : -(meta.max[2] + 0.07));
+      const ads = _v2.set(0, -sightY, pistol ? -0.48 : -(meta.max[2] + (w === "ar" || w === "smg" ? AR_EYE_RELIEF : 0.07)));
       hip.lerp(ads, s.ads);
       hip.x += (s.sway?.x ?? 0) + (s.bob?.x ?? 0) + hx - sprint * 0.04;
       hip.y += (s.sway?.y ?? 0) + (s.bob?.y ?? 0) + hy - sprint * 0.05 - (s.throwing ?? 0) * 0.75;
@@ -587,13 +607,16 @@ export class CharacterRig {
     }
     if (parts.pump && spec?.pump) parts.pump.position.set(...spec.pump.pivot).addScaledVector(_v.set(...spec.pump.axis), h.pump);
     if (parts.bolt && spec?.bolt) {
-      parts.bolt.position.set(...spec.bolt.pivot).addScaledVector(_v.set(...spec.bolt.axis), h.boltPull * BOLT_TRAVEL);
+      parts.bolt.position.set(...spec.bolt.pivot).addScaledVector(_v.set(...spec.bolt.axis), h.boltPull * BOLT_TRAVEL + h.charge);
       parts.bolt.rotation.set(0, 0, h.boltLift * BOLT_LIFT);
     }
+    if (parts.cylinder) parts.cylinder.rotation.z = -h.cylinder * Math.PI / 3;
+    if (parts.hammer) parts.hammer.rotation.x = (1 - h.hammer) * COCK_ANGLE;
     if (parts.shell) {
       parts.shell.visible = h.shellHeld;
       parts.shell.quaternion.identity();
-      parts.shell.position.set(SHELL_PORT[0], SHELL_PORT[1] - h.shell, SHELL_PORT[2]);
+      const seat = SHELL_SEATS[w]!;
+      parts.shell.position.set(...seat.port).addScaledVector(_v.set(...seat.axis), -h.shell);
     }
   }
 
@@ -658,9 +681,14 @@ export class CharacterRig {
     _m.copy(this.gunPivot.matrixWorld);
     const frame = this.frameObject(pose.frame);
     if (frame) _m.multiply(frame.matrix);
-    if (key.pull) _m.multiply(_m2.makeTranslation(0, 0, key.pull));
+    if (key.pull || key.clear || key.drop) _m.multiply(_m2.makeTranslation(-(key.clear ?? 0), -(key.drop ?? 0), key.pull ?? 0));
     _m.multiply(pose.matrix);
     _m.decompose(pos, quat, _scale);
+    if (key.belt) {
+      const fwd = _v.set(0, 0, -1).applyQuaternion(this.gunPivot.quaternion).setY(0).normalize();
+      pos.setFromMatrixPosition(this.inst.bones.get("upperarm_l")!.matrixWorld).addScaledVector(DOWN, BELT_DROP).addScaledVector(bodyLeft, BELT_OUT).addScaledVector(fwd, BELT_AHEAD);
+      quat.setFromRotationMatrix(_m2.lookAt(_v2.set(0, 0, 0), DOWN, fwd));
+    }
     if (key.pouch) {
       // Down to the belt and in toward the body, whichever way the gun is pointing.
       const fwd = _v.set(0, 0, -1).applyQuaternion(this.gunPivot.quaternion).setY(0).normalize();

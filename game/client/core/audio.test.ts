@@ -36,14 +36,15 @@ describe("audio voices", () => {
   }
   const voices = (audio: AudioEngine) => (audio as unknown as { voices: unknown[] }).voices.length;
 
-  it("works a pump or bolt after a shot, and only on those guns", () => {
+  it("works a pump, bolt or hammer after a shot, and only on those guns", () => {
     const { audio } = engine();
     audio.cycle("ar");
-    audio.cycle("pistol", { x: 4, y: 0, z: 0 });
+    audio.cycle("smg", { x: 4, y: 0, z: 0 });
     expect(voices(audio)).toBe(0);
     audio.cycle("shotgun");
     audio.cycle("sniper", { x: 4, y: 0, z: 0 });
-    expect(voices(audio)).toBe(2);
+    audio.cycle("pistol");
+    expect(voices(audio)).toBe(3);
   });
 
   it("cuts the local gun's scheduled handling sounds when it leaves the hands", () => {

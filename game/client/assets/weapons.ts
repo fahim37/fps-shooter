@@ -16,7 +16,7 @@ export const WEAPON_META = meta as Record<WeaponId, WeaponMeta>;
 type V3 = [number, number, number];
 
 /** Pieces that move while handling a gun: they become named children of each weapon. */
-export type PartId = "mag" | "pump" | "bolt";
+export type PartId = "mag" | "pump" | "bolt" | "cylinder" | "hammer";
 
 export interface PartSpec {
   /** Seated origin of the part, weapon space (grip at origin, muzzle toward -Z). */
@@ -39,12 +39,14 @@ interface Synth { half: V3; pitch: number; color: string }
 const PARTS: Partial<Record<WeaponId, Partial<Record<PartId, PartSpec & { extract?: Extract; synth?: Synth }>>>> = {
   ar: {
     mag: {
-      pivot: [0, 0.055, -0.16], axis: norm([0, -1, -0.28]),
-      extract: { min: [-0.03, -0.14, -0.3], max: [0.03, 0.05, -0.1], material: /Black/ },
+      pivot: [0, 0.03, -0.114], axis: norm([0, -1, -0.18]),
+      extract: { min: [-0.03, -0.1, -0.2], max: [0.03, 0.1, -0.06], material: /Mag_/ },
     },
+    bolt: { pivot: [0, 0.115, 0.023], axis: [0, 0, 1], extract: { min: [-0.05, 0.08, -0.2], max: [0.05, 0.15, 0.07], material: /Charge_/ } },
   },
   smg: {
-    mag: { pivot: [0, 0.002, -0.131], axis: [0, -1, 0], extract: { min: [-0.03, -0.14, -0.165], max: [0.03, 0.0, -0.095] } },
+    mag: { pivot: [0, 0.0275, -0.109], axis: norm([0, -1, -0.17]), extract: { min: [-0.03, -0.1, -0.2], max: [0.03, 0.1, -0.05], material: /Mag_/ } },
+    bolt: { pivot: [0, 0.1075, 0.023], axis: [0, 0, 1], extract: { min: [-0.05, 0.07, -0.2], max: [0.05, 0.15, 0.07], material: /Charge_/ } },
   },
   shotgun: {
     pump: { pivot: [0, 0.006, -0.32], axis: [0, 0, 1], extract: { min: [-0.03, -0.03, -0.43], max: [0.03, 0.04, -0.22], material: /DarkWood/ } },
@@ -54,20 +56,32 @@ const PARTS: Partial<Record<WeaponId, Partial<Record<PartId, PartSpec & { extrac
     bolt: { pivot: [0, 0.03, -0.045], axis: [0, 0, 1], extract: { min: [0.012, 0, -0.08], max: [0.06, 0.06, -0.01], material: /DarkMetal/, triangles: true } },
   },
   pistol: {
-    mag: { pivot: [0, 0.032, -0.02], axis: [0, -Math.cos(0.42), Math.sin(0.42)], synth: { half: [0.0105, 0.042, 0.012], pitch: -0.42, color: "#18191b" } },
+    // Turn rather than slide: the cylinder about its pin, the hammer about its axle. `axis` is the pin's direction.
+    cylinder: { pivot: [0, 0.0764, -0.0909], axis: [0, 0, 1], extract: { min: [-0.05, 0.025, -0.15], max: [0.05, 0.125, -0.0375], material: /Cyl_/ } },
+    hammer: { pivot: [0, 0.0551, -0.0425], axis: [1, 0, 0], extract: { min: [-0.025, 0.0375, -0.075], max: [0.025, 0.125, 0.0125], material: /Hammer_/ } },
   },
 };
 
 export const WEAPON_PARTS = PARTS as Partial<Record<WeaponId, Partial<Record<PartId, PartSpec>>>>;
 
-/** Shotgun loading port: a shell's seat (centre, along +Z) once pushed up into the receiver. */
-export const SHELL_PORT: V3 = [0, -0.012, -0.14];
+/** Where a hand-loaded round seats (its centre, lying along +Z), the way it travels in, and its size. */
+export const SHELL_SEATS: Partial<Record<WeaponId, { port: V3; axis: V3; scale: number }>> = {
+  // Pushed up into the receiver.
+  shotgun: { port: [0, -0.012, -0.14], axis: [0, 1, 0], scale: 1 },
+  // Pushed forward into the cylinder from behind.
+  pistol: { port: [-0.0215, 0.0688, -0.0819], axis: [0, 0, -1], scale: 0.69 },
+};
 
-let templates: Promise<Map<WeaponId, THREE.Object3D>> | null = null;
+/** Name suffix of a gun's detailed model, for the player's own hands. Not every gun has one. */
+const NEAR = "_near";
+
+export type WeaponTemplates = Map<string, THREE.Object3D>;
+
+let templates: Promise<WeaponTemplates> | null = null;
 
 export function loadWeapons() {
   return (templates ??= loadGLTF("/models/weapons.glb").then((gltf) => {
-    const map = new Map<WeaponId, THREE.Object3D>();
+    const map: WeaponTemplates = new Map();
     for (const child of [...gltf.scene.children]) {
       child.traverse((o) => {
         const m = o as THREE.Mesh;
@@ -76,7 +90,7 @@ export function loadWeapons() {
           m.receiveShadow = true;
         }
       });
-      const id = child.name as WeaponId;
+      const id = child.name.replace(NEAR, "") as WeaponId;
       for (const [part, spec] of Object.entries(PARTS[id] ?? {})) {
         const node = spec.extract ? extractPart(child, spec.extract, spec.pivot) : synthMagazine(spec.synth!);
         node.name = part;
@@ -84,14 +98,14 @@ export function loadWeapons() {
         child.add(node);
       }
       mergeFlatMeshes(child, new Set(Object.keys(PARTS[id] ?? {})));
-      map.set(id, child);
+      map.set(child.name, child);
     }
     return map;
   }));
 }
 
-export function cloneWeapon(templates: Map<WeaponId, THREE.Object3D>, id: WeaponId): THREE.Object3D {
-  const src = templates.get(id);
+export function cloneWeapon(templates: WeaponTemplates, id: WeaponId, near: boolean): THREE.Object3D {
+  const src = (near && templates.get(id + NEAR)) || templates.get(id);
   if (!src) throw new Error(`weapon model ${id} missing`);
   const o = src.clone(true);
   o.position.set(0, 0, 0);
@@ -100,19 +114,17 @@ export function cloneWeapon(templates: Map<WeaponId, THREE.Object3D>, id: Weapon
 }
 
 let shellGeometry: THREE.BufferGeometry | null = null;
-const shellMaterials = [
-  new THREE.MeshStandardMaterial({ color: "#8c1d18", roughness: 0.6 }),
-  new THREE.MeshStandardMaterial({ color: "#b8913d", roughness: 0.35, metalness: 0.9 }),
-];
+const brass = new THREE.MeshStandardMaterial({ color: "#b8913d", roughness: 0.35, metalness: 0.9 });
+const shellHull = new THREE.MeshStandardMaterial({ color: "#8c1d18", roughness: 0.6 });
 
-/** A 12-gauge shell (or rifle round) along +Z, base at the back: shown in the hand while loading. */
-export function createShell() {
+/** A round along +Z, base at the back, shown in the hand while loading: a 12-gauge shell, or all brass. */
+export function createShell(allBrass = false) {
   if (!shellGeometry) {
     const hull = new THREE.CylinderGeometry(0.0105, 0.0105, 0.052, 10).rotateX(Math.PI / 2).translate(0, 0, -0.008);
     const base = new THREE.CylinderGeometry(0.0115, 0.0115, 0.014, 10).rotateX(Math.PI / 2).translate(0, 0, 0.024);
     shellGeometry = mergeGroups([hull, base]);
   }
-  const mesh = new THREE.Mesh(shellGeometry, shellMaterials);
+  const mesh = new THREE.Mesh(shellGeometry, [allBrass ? brass : shellHull, brass]);
   mesh.name = "shell";
   return mesh;
 }

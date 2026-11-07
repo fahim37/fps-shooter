@@ -3,6 +3,9 @@
 import { ready } from "./assets/common";
 import { KITS, importKit } from "./assets/kits";
 import { importWeapons } from "./assets/weapons";
+import { importStm } from "./assets/stm";
+import { importBadger } from "./assets/badger";
+import { importPeacemaker } from "./assets/peacemaker";
 import { importCharacters } from "./assets/characters";
 import { importIndustrial } from "./assets/industrial";
 import { importOutpost } from "./assets/outpost";
@@ -23,6 +26,9 @@ const STAGES: Record<string, () => Promise<void>> = {
   blockade: importBlockade,
   street: importStreet,
   weapons: importWeapons,
+  stm: importStm,
+  badger: importBadger,
+  peacemaker: importPeacemaker,
   characters: importCharacters,
 };
 

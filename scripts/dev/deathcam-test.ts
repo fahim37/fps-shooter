@@ -61,7 +61,7 @@ async function main() {
     await page.locator('[data-relation="self"]').waitFor({ state: "detached" });
     await page.getByText("LIVE KILLER CAM", { exact: false }).waitFor();
     assert.match(await page.getByRole("region", { name: "Death recap" }).innerText(), /Viper QA/);
-    assert.match(await page.getByRole("region", { name: "Death recap" }).innerText(), /AK Rifle/);
+    assert.match(await page.getByRole("region", { name: "Death recap" }).innerText(), /STM-556/);
     assert.match(await page.getByRole("region", { name: "Death recap" }).innerText(), /Headshot/);
     assert.match(await page.getByRole("log", { name: "Kill feed" }).innerText(), /YOU/);
     assert.equal(kills[0].killerInfo?.name, "Viper QA");
