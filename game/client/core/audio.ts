@@ -66,7 +66,8 @@ const SHOTS: Record<WeaponId, ShotVoice> = {
   ar: { crack: 0.9, body: 1, thump: 0.9, pitch: 1, length: 0.16, tail: 0.55 },
   smg: { crack: 0.8, body: 0.8, thump: 0.6, pitch: 1.3, length: 0.11, tail: 0.4 },
   shotgun: { crack: 0.85, body: 1.2, thump: 1.3, pitch: 0.7, length: 0.24, tail: 0.9, boom: 0.8 },
-  sniper: { crack: 1.2, body: 1.2, thump: 1.4, pitch: 0.85, length: 0.35, tail: 1 },
+  // An anti-materiel round: the heaviest crack, and a blast rolling off long after it.
+  sniper: { crack: 1.3, body: 1.3, thump: 1.6, pitch: 0.75, length: 0.38, tail: 1.2, boom: 1 },
   pistol: { crack: 1, body: 1.15, thump: 1.2, pitch: 0.8, length: 0.2, tail: 0.85, boom: 0.45 },
 };
 

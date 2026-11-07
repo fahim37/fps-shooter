@@ -33,10 +33,7 @@ interface Extract {
   triangles?: boolean;
 }
 
-/** A plain box magazine for guns whose model has the magazine hidden inside the body. */
-interface Synth { half: V3; pitch: number; color: string }
-
-const PARTS: Partial<Record<WeaponId, Partial<Record<PartId, PartSpec & { extract?: Extract; synth?: Synth }>>>> = {
+const PARTS: Partial<Record<WeaponId, Partial<Record<PartId, PartSpec & { extract: Extract }>>>> = {
   ar: {
     mag: {
       pivot: [0, 0.03, -0.114], axis: norm([0, -1, -0.18]),
@@ -52,8 +49,8 @@ const PARTS: Partial<Record<WeaponId, Partial<Record<PartId, PartSpec & { extrac
     pump: { pivot: [0, 0.006, -0.32], axis: [0, 0, 1], extract: { min: [-0.03, -0.03, -0.43], max: [0.03, 0.04, -0.22], material: /DarkWood/ } },
   },
   sniper: {
-    mag: { pivot: [0, 0.012, -0.152], axis: [0, -1, 0], synth: { half: [0.012, 0.018, 0.034], pitch: 0, color: "#141516" } },
-    bolt: { pivot: [0, 0.03, -0.045], axis: [0, 0, 1], extract: { min: [0.012, 0, -0.08], max: [0.06, 0.06, -0.01], material: /DarkMetal/, triangles: true } },
+    mag: { pivot: [0, -0.03, -0.172], axis: [0, -1, 0], extract: { min: [-0.03, -0.12, -0.25], max: [0.03, 0, -0.09], material: /Mag_/ } },
+    bolt: { pivot: [0, 0.0091, -0.1065], axis: [0, 0, 1], extract: { min: [0.005, -0.02, -0.16], max: [0.04, 0.035, -0.06], material: /Bolt_/ } },
   },
   pistol: {
     // Turn rather than slide: the cylinder about its pin, the hammer about its axle. `axis` is the pin's direction.
@@ -92,7 +89,7 @@ export function loadWeapons() {
       });
       const id = child.name.replace(NEAR, "") as WeaponId;
       for (const [part, spec] of Object.entries(PARTS[id] ?? {})) {
-        const node = spec.extract ? extractPart(child, spec.extract, spec.pivot) : synthMagazine(spec.synth!);
+        const node = extractPart(child, spec.extract, spec.pivot);
         node.name = part;
         node.position.set(...spec.pivot);
         child.add(node);
@@ -144,17 +141,6 @@ function mergeGroups(parts: THREE.BufferGeometry[]) {
   out.setAttribute("normal", new THREE.Float32BufferAttribute(nrm, 3));
   out.setIndex(index);
   return out;
-}
-
-function synthMagazine(s: Synth) {
-  const group = new THREE.Group();
-  const material = new THREE.MeshStandardMaterial({ color: s.color, roughness: 0.5, metalness: 0.6 });
-  const [hx, hy, hz] = s.half;
-  // Hangs below the pivot along the (pitched) magazine axis, with a slightly wider base plate.
-  const body = new THREE.Mesh(new THREE.BoxGeometry(hx * 2, hy * 2, hz * 2).translate(0, -hy, 0), material);
-  const plate = new THREE.Mesh(new THREE.BoxGeometry(hx * 2 + 0.003, 0.006, hz * 2 + 0.004).translate(0, -hy * 2 + 0.003, 0), material);
-  for (const m of [body, plate]) { m.rotation.x = s.pitch; m.castShadow = true; group.add(m); }
-  return group;
 }
 
 /**

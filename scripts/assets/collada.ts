@@ -1,7 +1,7 @@
 import fs from "node:fs";
 
 /**
- * A small COLLADA 1.4 reader for SketchUp exports: triangles, grouped by the node they sit under
+ * A small COLLADA 1.4 reader: triangles and polylists, grouped by the node they sit under
  * and by material, with every node transform and `instance_node` applied. Lines are dropped.
  * Node has no DOM, and three's ColladaLoader needs one.
  */
@@ -63,7 +63,21 @@ function mul(a: M4, b: M4): M4 {
 interface Source { data: Float64Array; stride: number }
 interface Prim { symbol: string; pos: Float64Array }
 
-/** Corners of each <triangles> element, expanded out of its index streams. */
+/** A polylist's polygons as triangle fans. Plain triangles (no `vcount`) pass through. */
+function fanned(idx: Float64Array, width: number, vcount: El | undefined) {
+  if (!vcount) return idx;
+  const out: number[] = [];
+  let corner = 0;
+  for (const n of floats(vcount.text)) {
+    for (let k = 1; k < n - 1; k++) {
+      for (const c of [corner, corner + k, corner + k + 1]) out.push(...idx.subarray(c * width, (c + 1) * width));
+    }
+    corner += n;
+  }
+  return Float64Array.from(out);
+}
+
+/** Corners of each <triangles> or <polylist> element, expanded out of its index streams. */
 function readGeometry(geometry: El): Prim[] {
   const mesh = kid(geometry, "mesh");
   if (!mesh) return [];
@@ -80,7 +94,7 @@ function readGeometry(geometry: El): Prim[] {
     vertices.set(v.attrs.id, inputs);
   }
   const prims: Prim[] = [];
-  for (const t of kids(mesh, "triangles")) {
+  for (const t of [...kids(mesh, "triangles"), ...kids(mesh, "polylist")]) {
     let width = 0;
     let P: { src: Source; off: number } | undefined;
     for (const i of kids(t, "input")) {
@@ -90,7 +104,7 @@ function readGeometry(geometry: El): Prim[] {
     }
     const p = kid(t, "p");
     if (!p || !P) continue;
-    const idx = floats(p.text), n = idx.length / width;
+    const idx = fanned(floats(p.text), width, kid(t, "vcount")), n = idx.length / width;
     const pos = new Float64Array(n * 3);
     for (let c = 0; c < n; c++) for (let k = 0; k < 3; k++) pos[c * 3 + k] = P.src.data[idx[c * width + P.off] * P.src.stride + k];
     prims.push({ symbol: t.attrs.material ?? "", pos });

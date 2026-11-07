@@ -18,7 +18,7 @@ export interface HandKey<P extends string> {
   belt?: boolean;
   /** Metres pulled back along the gun (racking a charging handle). */
   pull?: number;
-  /** Metres out to the left of the gun, to pass around it. */
+  /** Metres out to the left of the gun (negative: to its right), to pass around it. */
   clear?: number;
   /** Metres down off the gun: fingers wrapped over a handguard have to lift clear before the hand moves aside. */
   drop?: number;
@@ -34,8 +34,8 @@ export interface Handling {
   mag: number; magHeld: boolean; magVisible: boolean;
   /** Pump slide back (m). */
   pump: number;
-  /** Bolt handle lift (0..1) and pull back (0..1). */
-  boltLift: number; boltPull: number;
+  /** Bolt pulled back (0..1): the sniper is a straight-pull action. */
+  boltPull: number;
   /** Charging handle pulled back (m). */
   charge: number;
   /** Revolver hammer: 0 cocked, 1 fallen. Its cylinder turning to the next chamber (0..1). */
@@ -51,7 +51,7 @@ interface Clip {
   right?: Keys<HandKey<RightPose>>;
   mag?: Keys<number>; magHeld?: Keys<boolean>; magVisible?: Keys<boolean>;
   pump?: Keys<number>;
-  boltLift?: Keys<number>; boltPull?: Keys<number>;
+  boltPull?: Keys<number>;
   charge?: Keys<number>;
   hammer?: Keys<number>; cylinder?: Keys<number>;
   shell?: Keys<number>; shellHeld?: Keys<boolean>;
@@ -64,9 +64,18 @@ const MAG: HandKey<LeftPose> = { pose: "mag" };
 const POUCH: HandKey<LeftPose> = { pose: "mag", pouch: 1 };
 /** Past the end of the magazine, down its slope: fingers around it slide off, not through it. */
 const OFF_MAG: HandKey<LeftPose> = { pose: "mag", drop: 0.11, pull: -0.02 };
+/** The same for a straight magazine, further down: the thumb rides up behind it. */
+const OFF_STRAIGHT_MAG: HandKey<LeftPose> = { pose: "mag", drop: 0.14 };
 const SHELL: HandKey<LeftPose> = { pose: "shell" };
 const SHELL_POUCH: HandKey<LeftPose> = { pose: "shell", pouch: 1 };
 const BOLT: HandKey<RightPose> = { pose: "bolt" };
+/**
+ * Between the grip and the bolt: first off the bottom of the grip along its slant, then out to the right.
+ * Fingers round the grip slide off its end; a straight line would take them through it and the receiver.
+ */
+const GRIP_DOWN: HandKey<RightPose> = { pose: "grip", drop: 0.1, pull: 0.066 };
+const GRIP_OUT: HandKey<RightPose> = { pose: "grip", clear: -0.06, drop: 0.1, pull: 0.066 };
+const BOLT_OUT: HandKey<RightPose> = { pose: "bolt", clear: -0.05 };
 
 /** `base` nudged by `d` (same layout as GunOffset, missing entries are 0). */
 const nudge = (base: GunOffset, ...d: number[]): GunOffset => base.map((v, i) => v + (d[i] ?? 0)) as GunOffset;
@@ -185,10 +194,12 @@ const SNIPER_RELOAD: Clip = (() => {
   return {
     gun: [[0, REST], [0.08, tilt], [0.15, nudge(tilt, 0, 0, 0.008)], [0.2, tilt], [0.6, tilt],
       [0.64, nudge(tilt, 0, 0.01, 0, 0.05)], [0.68, tilt], [0.78, nudge(tilt, 0, 0, -0.006)], [0.9, tilt], [1, REST]],
-    right: [[0, GRIP], [0.07, BOLT], [0.17, BOLT], [0.25, GRIP], [0.66, GRIP], [0.72, BOLT], [0.84, BOLT], [0.93, GRIP]],
-    boltLift: [[0.07, 0], [0.11, 1], [0.8, 1], [0.84, 0]],
+    right: [[0, GRIP], [0.02, GRIP_DOWN], [0.04, GRIP_OUT], [0.055, BOLT_OUT], [0.07, BOLT], [0.17, BOLT], [0.195, BOLT_OUT], [0.21, GRIP_OUT], [0.23, GRIP_DOWN], [0.25, GRIP],
+      [0.66, GRIP], [0.675, GRIP_DOWN], [0.69, GRIP_OUT], [0.705, BOLT_OUT], [0.72, BOLT], [0.84, BOLT], [0.865, BOLT_OUT], [0.88, GRIP_OUT], [0.905, GRIP_DOWN], [0.93, GRIP]],
     boltPull: [[0.11, 0], [0.17, 1], [0.74, 1], [0.8, 0]],
-    left: [[0, SUPPORT], [0.2, MAG], [0.24, MAG], [0.34, POUCH], [0.44, POUCH], [0.55, MAG], [0.62, MAG], [0.75, SUPPORT]],
+    // Off the foregrip down and away, then up the magazine from below: never through the gun.
+    left: [[0, SUPPORT], [0.1, { ...SUPPORT, drop: 0.14 }], [0.17, OFF_STRAIGHT_MAG], [0.2, MAG], [0.24, MAG], [0.34, POUCH], [0.44, POUCH], [0.55, MAG], [0.62, MAG],
+      [0.66, OFF_STRAIGHT_MAG], [0.71, { ...SUPPORT, drop: 0.14 }], [0.76, SUPPORT]],
     mag: [[0.24, 0], [0.31, 0.1], [0.48, 0.1], [0.55, 0.05], [0.61, 0]],
     magHeld: [[0, false], [0.24, true], [0.62, false]],
   };
@@ -196,10 +207,11 @@ const SNIPER_RELOAD: Clip = (() => {
 
 const SNIPER_BOLT: Clip = (() => {
   const work: GunOffset = [-0.02, -0.03, -0.09, 0.05, 0.08, 0.3];
+  // The shot shoves the gun back into the shoulder and the muzzle up, before the bolt is worked.
+  const kick: GunOffset = [0, 0.012, 0.06, 0.2, 0, 0.03];
   return {
-    gun: [[0, REST], [0.3, work], [0.5, nudge(work, 0, 0, 0.01)], [0.56, nudge(work, 0, 0, 0.01)], [0.76, work], [1, REST]],
-    right: [[0.18, GRIP], [0.32, BOLT], [0.76, BOLT], [0.92, GRIP]],
-    boltLift: [[0.32, 0], [0.4, 1], [0.64, 1], [0.72, 0]],
+    gun: [[0, REST], [0.05, kick], [0.3, work], [0.5, nudge(work, 0, 0, 0.01)], [0.56, nudge(work, 0, 0, 0.01)], [0.76, work], [1, REST]],
+    right: [[0.18, GRIP], [0.22, GRIP_DOWN], [0.25, GRIP_OUT], [0.28, BOLT_OUT], [0.32, BOLT], [0.76, BOLT], [0.84, BOLT_OUT], [0.87, GRIP_OUT], [0.895, GRIP_DOWN], [0.92, GRIP]],
     boltPull: [[0.4, 0], [0.5, 1], [0.56, 1], [0.64, 0]],
   };
 })();
@@ -232,7 +244,7 @@ export function cycleStrokes(weapon: WeaponId): readonly [number, number] | null
 export function createHandling(): Handling {
   return {
     gun: [...REST], left: { a: SUPPORT, b: SUPPORT, k: 0 }, right: { a: GRIP, b: GRIP, k: 0 },
-    mag: 0, magHeld: false, magVisible: true, pump: 0, boltLift: 0, boltPull: 0, charge: 0, hammer: 0, cylinder: 0, shell: 0, shellHeld: false,
+    mag: 0, magHeld: false, magVisible: true, pump: 0, boltPull: 0, charge: 0, hammer: 0, cylinder: 0, shell: 0, shellHeld: false,
   };
 }
 
@@ -245,7 +257,7 @@ export function sampleHandling(weapon: WeaponId, reload: number, sinceShot: numb
   const clips = CLIPS[weapon];
   out.left.a = out.left.b = clips.rest ?? SUPPORT; out.left.k = 0;
   out.right.a = out.right.b = GRIP; out.right.k = 0;
-  out.mag = out.pump = out.boltLift = out.boltPull = out.charge = out.hammer = out.cylinder = out.shell = 0;
+  out.mag = out.pump = out.boltPull = out.charge = out.hammer = out.cylinder = out.shell = 0;
   out.magHeld = out.shellHeld = false;
   out.magVisible = true;
   if (reload >= 0) apply(clips.reload, Math.min(1, reload), out);
@@ -266,7 +278,6 @@ function apply(c: Clip, t: number, out: Handling) {
   if (c.magHeld) out.magHeld = sampleStep(c.magHeld, t);
   if (c.magVisible) out.magVisible = sampleStep(c.magVisible, t);
   if (c.pump) out.pump = sampleNum(c.pump, t);
-  if (c.boltLift) out.boltLift = sampleNum(c.boltLift, t);
   if (c.boltPull) out.boltPull = sampleNum(c.boltPull, t);
   if (c.charge) out.charge = sampleNum(c.charge, t);
   if (c.hammer) out.hammer = sampleNum(c.hammer, t);

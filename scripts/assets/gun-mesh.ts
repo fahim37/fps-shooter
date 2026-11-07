@@ -15,7 +15,7 @@ const CREASE = Math.cos(22 * Math.PI / 180);
 
 export type Look = { color: [number, number, number]; metal: number; rough: number };
 export interface Mesh { positions: Float32Array; indices: Uint32Array }
-/** Final meshes by material. A prefix ("Mag_", "Charge_", "Cyl_", "Hammer_") is how the client finds a moving part. */
+/** Final meshes by material. A prefix ("Mag_", "Charge_", "Bolt_", "Cyl_", "Hammer_") is how the client finds a moving part. */
 export type GunPieces = Map<string, { look: Look; meshes: Mesh[] }>;
 
 /** Swaps both levels of `id` in weapons.glb and updates its bounds and muzzle point. */
@@ -54,11 +54,11 @@ export async function readFbx(file: string) {
   return root;
 }
 
-/** At range nobody sees a handle, cylinder or hammer move, so they stay part of the gun: fewer draws per player. */
+/** At range nobody sees a handle, bolt, cylinder or hammer move, so they stay part of the gun: fewer draws per player. */
 function weldMoving(pieces: GunPieces) {
   const out: GunPieces = new Map();
   for (const [name, piece] of pieces) {
-    const key = name.replace(/^(Charge|Cyl|Hammer)_/, "");
+    const key = name.replace(/^(Charge|Bolt|Cyl|Hammer)_/, "");
     const found = out.get(key);
     if (found) found.meshes.push(...piece.meshes);
     else out.set(key, { look: piece.look, meshes: [...piece.meshes] });

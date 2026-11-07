@@ -132,20 +132,22 @@ const GRIPS: Record<WeaponId, { right: Partial<Record<RightPose, HandGrip>> & { 
   },
   sniper: {
     right: {
-      grip: pistolGrip([0, -0.035, 0.045], [0.018, 0.04, 0.026], -0.1, [0.22, 0.6, 0.3]),
-      // Hand comes in from the right, fingers hooked around the bolt knob.
+      grip: { ...pistolGrip([0, -0.073, 0.021], [0.0175, 0.05, 0.024], -0.59, [0.3, 0.8, 0.4]), thumb: [0.1, 0.15, -1] },
+      // In from the right, fingers over the cocking knob. The part reaches in to the receiver's side,
+      // so fingers stop on its surface instead of curling into it; the thumb rides above.
       bolt: {
-        part: { center: [0.044, 0.03, -0.045], half: [0.008, 0.008, 0.008], round: 0.007 },
-        palm: [0.07, 0.04, -0.03],
-        facing: [-1, -0.2, 0],
-        thumbSide: [0, 1, 0.2],
-        thumb: [-0.6, -0.2, -1],
+        part: { center: [0, -0.03, -0.13], half: [0.038, 0.07, 0.08], round: 0.006 },
+        palm: [0.045, 0, -0.08],
+        facing: [-1, 0, 0],
+        thumbSide: [0, 1, 0],
+        thumb: [0.3, 0.7, 0.3],
         frame: "bolt",
       },
     },
     left: {
-      support: cradle([0, 0.022, -0.31], [0.02, 0.017, 0.08], "gun", 0.035),
-      mag: magGrip([0, -0.006, -0.152], [0.012, 0.018, 0.034], 0),
+      // Around the foregrip under the barrel.
+      support: cradle([0, -0.035, -0.305], [0.0145, 0.035, 0.05], "gun", 0),
+      mag: magGrip([0, -0.063, -0.172], [0.018, 0.03, 0.05], 0),
     },
   },
   pistol: {

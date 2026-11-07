@@ -11,7 +11,7 @@ import styles from "./LoadoutPanel.module.css";
 
 const ROLES: Record<WeaponId, string> = {
   ar: "Balanced · Automatic", smg: "Close range · Automatic", shotgun: "Close range · Pump action",
-  sniper: "Long range · Bolt action", pistol: "Backup · Single action",
+  sniper: "Long range · Straight pull", pistol: "Backup · Single action",
 };
 
 function GunIcon({ weapon }: { weapon: WeaponId }) {

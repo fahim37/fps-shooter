@@ -91,9 +91,9 @@ async function main() {
       await panel.getByRole("button", { name: "Choose Honey Badger", exact: true }).click();
       await page.waitForFunction(() => (window as TestWindow).__loadoutGame!.local!.primary === "smg");
       assert.equal(await page.evaluate(() => (window as TestWindow).__loadoutGame!.local!.ammo.smg.mag), ammo, "Swapping guns must not refill ammunition");
-      await panel.getByRole("button", { name: "Choose Hunter Sniper", exact: true }).click();
+      await panel.getByRole("button", { name: "Choose Kalamit 52B", exact: true }).click();
       await page.waitForFunction(() => (window as TestWindow).__loadoutGame!.local!.primary === "sniper");
-      await panel.getByRole("button", { name: "Attach 4× scope to Hunter Sniper", exact: true }).click();
+      await panel.getByRole("button", { name: "Attach 4× scope to Kalamit 52B", exact: true }).click();
       await panel.getByRole("button", { name: /BACK TO MATCH/ }).click();
       if (mobile) {
         await page.evaluate(() => { const game = (window as TestWindow).__loadoutGame!; game.input.setAction("fire", true); game.input.setAction("ads", true); });

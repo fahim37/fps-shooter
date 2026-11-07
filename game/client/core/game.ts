@@ -106,6 +106,9 @@ const ENEMY_TINT = 2;
 type V3 = [number, number, number];
 
 /** Owns one match's input, simulation, network subscriptions and scene objects. */
+/** Muzzle flash size by gun, when not the usual: the anti-materiel sniper flashes big. */
+const FLASH_SIZE: Partial<Record<WeaponId, number>> = { sniper: 1.5 };
+
 export class Game {
   readonly clock = new ServerClock();
   readonly input: Input;
@@ -351,7 +354,7 @@ export class Game {
     const rig = this.local?.thirdPerson && !this.local.throughSight ? this.tpp : this.fpp;
     // The scoped viewmodel is hidden and not animated; its old muzzle is stale.
     const muzzle = this.local?.scoped ? new THREE.Vector3(...origin) : rig?.muzzle ?? new THREE.Vector3(...origin);
-    if (!this.local?.scoped) this.effects.muzzleFlash(muzzle, new THREE.Vector3(...dirs[0]));
+    if (!this.local?.scoped) this.effects.muzzleFlash(muzzle, new THREE.Vector3(...dirs[0]), FLASH_SIZE[weapon] ?? 1);
     audio.shot(weapon, undefined, true);
     for (const dir of dirs) {
       const hit = this.traceFrom(origin, dir, WEAPONS[weapon].range);
@@ -387,7 +390,7 @@ export class Game {
     audio.cycle(ev.weapon, from);
     // Like PUBG, enemy gunfire gives the shooter's position away on the minimap.
     if (!friendly) this.mark({ key: ev.id, kind: "shot", x: ev.origin[0], z: ev.origin[2], yaw: remote?.yaw ?? 0, at: performance.now() });
-    if (ev.ends[0]) this.effects.muzzleFlash(from, new THREE.Vector3(...ev.ends[0]).sub(from).normalize(), 1, false);
+    if (ev.ends[0]) this.effects.muzzleFlash(from, new THREE.Vector3(...ev.ends[0]).sub(from).normalize(), FLASH_SIZE[ev.weapon] ?? 1, false);
     ev.ends.forEach((end, i) => {
       const to = new THREE.Vector3(...end);
       this.effects.tracer(from, to, friendly ? "friendly" : "enemy");

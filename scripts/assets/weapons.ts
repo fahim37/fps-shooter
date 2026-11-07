@@ -7,10 +7,9 @@ import { mergeDocuments } from "@gltf-transform/functions";
 
 // Quaternius "Ultimate Guns" (CC0, via poly.pizza). Source models point the muzzle along +X
 // in arbitrary units with the origin near the grip.
-// The assault rifle, SMG and sidearm come from elsewhere: see stm.ts, badger.ts and peacemaker.ts, the stages after this one.
+// The other guns come from elsewhere: see stm.ts, badger.ts, peacemaker.ts and kalamit.ts, the stages after this one.
 const GUNS: { id: string; file: string; length: number }[] = [
   { id: "shotgun", file: "shotgun.glb", length: 1.0 },
-  { id: "sniper", file: "sniper3.glb", length: 1.18 },
 ];
 
 type Look = { color: [number, number, number]; metal: number; rough: number };

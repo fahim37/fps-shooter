@@ -61,11 +61,11 @@ const headCache = new WeakMap<CharacterTemplate, THREE.Vector3>();
 const LOCO: ClipName[] = ["idle", "walk", "jog", "sprint", "crouchIdle", "crouchWalk", "jumpLoop"];
 const FPP_VISIBLE = /Arms/;
 const PROCEDURAL_BONES = ["spine_01", "spine_03", "neck_01", "clavicle_r", "upperarm_r", "lowerarm_r", "hand_r", "clavicle_l", "upperarm_l", "lowerarm_l", "hand_l"];
-/** Bolt handle lift (rad) and travel (m) at full open. */
-const BOLT_LIFT = 1.15;
 const BOLT_TRAVEL = 0.065;
 /** How far a revolver's hammer rolls back from its fallen position (rad). */
 const COCK_ANGLE = 0.75;
+/** Height of the middle of the sniper's scope above the weapon origin (m). */
+const SNIPER_SCOPE_AXIS = 0.113;
 /** How far the revolver is pushed out from the eye when aimed (m). */
 const REVOLVER_ADS_REACH = 0.58;
 /** Aim point above the top of the revolver (m): the target stands on the front sight, not behind the gun. */
@@ -519,7 +519,7 @@ export class CharacterRig {
     if (this.mode === "fpp" && s.eye && s.view) {
       // View-space placement: hip at the lower right, ADS lines the sights up with the eye.
       // Eye just above the top of the receiver / rear sight.
-      const sightY = reflex ? sight.height : irons ? irons.height : pistol ? meta.max[1] + REVOLVER_HOLD : w === "sniper" ? meta.max[1] - 0.01 : meta.max[1] + 0.004;
+      const sightY = reflex ? sight.height : irons ? irons.height : pistol ? meta.max[1] + REVOLVER_HOLD : w === "sniper" ? SNIPER_SCOPE_AXIS : meta.max[1] + 0.004;
       const hip = pistol ? _v.set(0.13, -0.21, -0.4) : _v.set(0.15, -0.25, -0.3);
       // Keep the stock end just in front of the eye; the pistol is held out at arm's length, small enough
       // on screen not to hide a target.
@@ -619,7 +619,6 @@ export class CharacterRig {
     if (parts.pump && spec?.pump) parts.pump.position.set(...spec.pump.pivot).addScaledVector(_v.set(...spec.pump.axis), h.pump);
     if (parts.bolt && spec?.bolt) {
       parts.bolt.position.set(...spec.bolt.pivot).addScaledVector(_v.set(...spec.bolt.axis), h.boltPull * BOLT_TRAVEL + h.charge);
-      parts.bolt.rotation.set(0, 0, h.boltLift * BOLT_LIFT);
     }
     if (parts.cylinder) parts.cylinder.rotation.z = -h.cylinder * Math.PI / 3;
     if (parts.hammer) parts.hammer.rotation.x = (1 - h.hammer) * COCK_ANGLE;

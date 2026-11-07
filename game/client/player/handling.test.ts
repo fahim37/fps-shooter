@@ -10,8 +10,8 @@ describe("weapon handling", () => {
       const h = sampleHandling(w, -1, Infinity, Infinity);
       expect(h.gun.every((v) => v === 0)).toBe(true);
       expect([h.left.a.pose, h.left.b.pose, h.right.a.pose, h.right.b.pose]).toEqual(["support", "support", "grip", "grip"]);
-      expect({ mag: h.mag, pump: h.pump, lift: h.boltLift, pull: h.boltPull, held: h.magHeld, shell: h.shellHeld, visible: h.magVisible })
-        .toEqual({ mag: 0, pump: 0, lift: 0, pull: 0, held: false, shell: false, visible: true });
+      expect({ mag: h.mag, pump: h.pump, pull: h.boltPull, held: h.magHeld, shell: h.shellHeld, visible: h.magVisible })
+        .toEqual({ mag: 0, pump: 0, pull: 0, held: false, shell: false, visible: true });
     }
   });
 
