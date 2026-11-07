@@ -17,7 +17,7 @@ const LOBBY_LEVEL = 0.7;
 const LOBBY_THEME = "/audio/lobby-theme.mp3";
 const LOBBY_THEME_LEVEL = 0.55;
 /** Seconds of the theme's intro that are skipped, on the first play and on every loop. */
-const LOBBY_THEME_SKIP = 10;
+const LOBBY_THEME_SKIP = 25;
 /**
  * How long the menu bed outlives the menu screen that asked for it: going from the home lobby to a
  * room's waiting room swaps screens, and the next one picks the theme up without a restart.
