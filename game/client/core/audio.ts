@@ -1,7 +1,7 @@
-import type { WeaponId } from "../../shared/weapons";
+import { WEAPONS, roundSeats, type WeaponId } from "../../shared/weapons";
 import type { MapId } from "../../shared/map/types";
 import { assetUrl } from "../assets/url";
-import { REVOLVER_ROUND_CUES, SHOTGUN_RELOAD_CUES, cycleStrokes } from "../player/handling";
+import { SHOTGUN_RELOAD_CUES, cycleStrokes } from "../player/handling";
 
 type V3 = { x: number; y: number; z: number };
 
@@ -435,10 +435,11 @@ export class AudioEngine {
     SHOTGUN_RELOAD_CUES.rack.forEach((at, i) => this.clack(out, t + durationS * at, action[i]));
   }
 
-  reload(weapon: WeaponId, durationS: number, pos?: V3) {
+  /** `need`: rounds the reload puts in (the revolver clicks once for each). */
+  reload(weapon: WeaponId, durationS: number, pos?: V3, need = WEAPONS[weapon].mag) {
     if (weapon === "shotgun") return this.shotgunReload(durationS);
     if (weapon === "pistol") {
-      for (const at of REVOLVER_ROUND_CUES) this.click(2100, 0.3, pos, durationS * at);
+      for (const at of roundSeats(need)) this.click(2100, 0.3, pos, durationS * at);
       return;
     }
     // Mag out, mag in, charging handle back, handle released: on the beats of the clip in handling.ts.
@@ -492,9 +493,15 @@ export class AudioEngine {
     o.frequency.value = head ? 2600 : 1700;
     const g = ctx.createGain();
     this.env(g, t, head ? 0.28 : 0.2, 0.001, 0.05);
-    o.connect(g).connect(this.spatial(undefined, 0.1)![0]);
+    const out = this.spatial(undefined, head ? 0.4 : 0.1)![0];
+    o.connect(g).connect(out);
     o.start(t);
     o.stop(t + 0.08);
+    // A headshot rings like a struck helmet, so it can't be mistaken for a body hit.
+    if (head) {
+      this.blip(out, "sine", 3300, t + 0.004, 0.17, 0.001, 0.3);
+      this.blip(out, "sine", 4950, t + 0.004, 0.07, 0.001, 0.18);
+    }
   }
 
   /** A kill streak refilled the shield: a bright charge rising to a held fifth. */

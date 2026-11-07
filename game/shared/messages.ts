@@ -52,6 +52,8 @@ export const F_ADS = 2;
 export const F_SPRINT = 4;
 export const F_GROUNDED = 8;
 export const F_RELOADING = 16;
+/** Bits 5-7: revolver rounds the reload skips (it already held them), so others see the same short reload. */
+export const F_RELOAD_SKIP_SHIFT = 5;
 
 // ----- client → server -----
 

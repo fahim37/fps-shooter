@@ -1,4 +1,4 @@
-import { WEAPONS, type WeaponId } from "../../shared/weapons";
+import { REVOLVER_ROUNDS, REVOLVER_ROUND_SEAT, WEAPONS, type WeaponId } from "../../shared/weapons";
 import type { LeftPose, RightPose } from "./grip";
 
 /**
@@ -112,11 +112,9 @@ const MAG_RELOAD: Clip = (() => {
   };
 })();
 
-/** The six-shooter's rounds go in one at a time: start of each (0..1) and how long it takes to seat. */
-const ROUNDS = [0.1, 0.225, 0.35, 0.475, 0.6, 0.725];
-const ROUND_SEAT = 0.09;
-/** Sound cues in the revolver's reload, as fractions of it: each round seating. */
-export const REVOLVER_ROUND_CUES = ROUNDS.map((s) => s + ROUND_SEAT);
+/** The six-shooter's rounds go in one at a time (shared: each one seated adds to the count). */
+const ROUNDS = REVOLVER_ROUNDS;
+const ROUND_SEAT = REVOLVER_ROUND_SEAT;
 
 const ROUND: HandKey<LeftPose> = { pose: "shell" };
 /** Reaching back to the cartridge loops. */

@@ -703,7 +703,7 @@ export class Game {
       }
       hud().set({
         alive: local.alive, weapon: local.weapon, primary: local.primary, mag: ammo.mag, reserve: ammo.reserve,
-        grenades: local.grenades, grenadeAim: this.stableAim(local.grenadeAim(now), airburst), grenadeThreat: this.grenadeThreat(local, now), reloading: local.reloadProgress, ads: local.ads, scoped: local.scoped,
+        grenades: local.grenades, grenadeAim: this.stableAim(local.grenadeAim(now), airburst), grenadeThreat: this.grenadeThreat(local, now), reloading: local.reloadBar, ads: local.ads, scoped: local.scoped,
         thirdPerson: local.thirdPerson, spreadDeg: local.spread, enemyInSight,
         crosshairRadius: Math.min(120, Math.max(3, spreadRadius(local.spread, fov, viewportHeight))),
         cameraFov: fov, locked: this.input.locked, scoreboard, fps: Math.round(1 / Math.max(this.averageFrameTime, 0.001)),

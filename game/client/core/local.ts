@@ -2,11 +2,11 @@ import * as THREE from "three";
 import { Mover, newMoveState, type MoveState } from "../../shared/movement";
 import { raycastWorld, type Rapier, type World } from "../../shared/physics";
 import { aimDir, spreadDir, zoomSensitivity } from "../../shared/aim";
-import { WEAPONS, GRENADE, SCOPE_UP, currentSpread, fireIntervalMs, type WeaponId } from "../../shared/weapons";
+import { WEAPONS, GRENADE, SCOPE_UP, currentSpread, fireIntervalMs, reloadClipAt, reloadMs, reloadNeed, reloadSkip, reloadedRounds, type WeaponId } from "../../shared/weapons";
 import { quickScope } from "../player/quickScope";
 import { grenadeVelocity } from "../../shared/grenade";
 import { EYE_HEIGHT, CROUCH_EYE_HEIGHT, GRENADES_PER_LIFE, INTERP_DELAY_MS } from "../../shared/constants";
-import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_SPRINT, type AmmoEvent, type GrenadeMsg, type LoadoutEvent, type PoseMsg, type SpawnEvent } from "../../shared/messages";
+import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_RELOAD_SKIP_SHIFT, F_SPRINT, type AmmoEvent, type GrenadeMsg, type LoadoutEvent, type PoseMsg, type SpawnEvent } from "../../shared/messages";
 import type { Input } from "./input";
 import type { Game } from "./game";
 import { useSettings } from "../settings";
@@ -52,6 +52,9 @@ export class LocalPlayer {
   ammo = {} as Record<WeaponId, { mag: number; reserve: number }>;
   reloadStart = 0;
   reloadEnd = 0;
+  /** Rounds this reload puts in, and how many are in so far. */
+  reloadNeed = 0;
+  reloadDone = 0;
   switchEnd = 0;
   /** When the current gun was last fired and drawn (performance.now ms), for the rig's handling. */
   private lastShotAt = -Infinity;
@@ -147,9 +150,16 @@ export class LocalPlayer {
     return this.reloadEnd > 0;
   }
 
-  get reloadProgress() {
+  /** How far through the reload (0..1), or -1. */
+  get reloadBar() {
     if (!this.reloadEnd) return -1;
     return Math.min(1, (performance.now() - this.reloadStart) / (this.reloadEnd - this.reloadStart));
+  }
+
+  /** Where the reload animation is (0..1), or -1: a revolver top-up skips the rounds it doesn't need. */
+  get reloadProgress() {
+    const t = this.reloadBar;
+    return t < 0 ? -1 : reloadClipAt(reloadSkip(this.weapon, this.reloadNeed), t);
   }
 
   spawn(ev: SpawnEvent) {
@@ -301,13 +311,15 @@ export class LocalPlayer {
     if (this.releasing && 1 - this.throwAnim >= THROW_RELEASE) this.releaseGrenade(now);
     this.grenadeHold += ((this.grenadeAt ? 1 : 0) - this.grenadeHold) * Math.min(1, dt * 12);
 
-    // Reload completion.
-    if (this.reloadEnd && now >= this.reloadEnd) {
+    // Rounds go in as the reload puts them in: the revolver's one at a time, a magazine at the end.
+    if (this.reloadEnd) {
       const a = this.ammo[this.weapon];
-      const take = Math.min(def.mag - a.mag, a.reserve);
+      const done = reloadedRounds(this.weapon, this.reloadNeed, Math.min(1, (now - this.reloadStart) / (this.reloadEnd - this.reloadStart)));
+      const take = Math.max(0, Math.min(done - this.reloadDone, def.mag - a.mag, a.reserve));
       a.mag += take;
       a.reserve -= take;
-      this.reloadEnd = 0;
+      this.reloadDone = done;
+      if (now >= this.reloadEnd) this.reloadEnd = 0;
     }
 
     // ---- movement (fixed substeps for stable collision)
@@ -515,12 +527,15 @@ export class LocalPlayer {
     const a = this.ammo[this.weapon];
     if (this.reloading || a.mag >= this.def.mag || a.reserve <= 0 || now < this.switchEnd) return;
     this.endEmote(now);
+    this.reloadNeed = reloadNeed(this.weapon, a.mag, a.reserve);
+    this.reloadDone = 0;
+    const ms = reloadMs(this.weapon, this.reloadNeed);
     this.reloadStart = now;
-    this.reloadEnd = now + this.def.reloadMs;
+    this.reloadEnd = now + ms;
     this.sendPose();
     this.game.send("reload", {});
     audio.stopWorking();
-    audio.reload(this.weapon, this.def.reloadMs / 1000);
+    audio.reload(this.weapon, ms / 1000, undefined, this.reloadNeed);
   }
 
   private tryFire(now: number) {
@@ -656,7 +671,8 @@ export class LocalPlayer {
 
   private sendPose() {
     const flags = (this.crouchT > 0.5 ? F_CROUCH : 0) | (this.ads > 0.5 ? F_ADS : 0) | (this.ms.sprinting ? F_SPRINT : 0)
-      | (this.ms.grounded ? F_GROUNDED : 0) | (this.reloading ? F_RELOADING : 0);
+      | (this.ms.grounded ? F_GROUNDED : 0)
+      | (this.reloading ? F_RELOADING | (reloadSkip(this.weapon, this.reloadNeed) << F_RELOAD_SKIP_SHIFT) : 0);
     const msg: PoseMsg = {
       x: round(this.ms.x), y: round(this.ms.y), z: round(this.ms.z),
       yaw: round(this.emote ? this.emoteYaw : this.yaw), pitch: round(this.pitch),

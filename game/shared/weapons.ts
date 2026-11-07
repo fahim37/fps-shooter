@@ -110,3 +110,47 @@ export function currentSpread(def: WeaponDef, ads: number, moving: number, airbo
   if (crouched) s *= 0.8;
   return s;
 }
+
+/** The revolver loads a round at a time: when each starts, as a fraction of a full reload, and how long it takes to seat. */
+export const REVOLVER_ROUNDS = [0.1, 0.225, 0.35, 0.475, 0.6, 0.725];
+export const REVOLVER_ROUND_SEAT = 0.09;
+const ROUND_STEP = REVOLVER_ROUNDS[1] - REVOLVER_ROUNDS[0];
+
+/** Rounds a reload puts in: what the magazine lacks, as far as the reserve goes. */
+export function reloadNeed(w: WeaponId, mag: number, reserve: number) {
+  return Math.max(0, Math.min(WEAPONS[w].mag - mag, reserve));
+}
+
+/** Revolver rounds a reload leaves out of its clip, the cylinder already holding them. */
+export function reloadSkip(w: WeaponId, need: number) {
+  return w === "pistol" ? Math.max(0, Math.min(REVOLVER_ROUNDS.length - 1, REVOLVER_ROUNDS.length - need)) : 0;
+}
+
+/** How long a reload of `need` rounds takes: the revolver only spends time on the rounds it loads. */
+export function reloadMs(w: WeaponId, need: number) {
+  return WEAPONS[w].reloadMs * (1 - reloadSkip(w, need) * ROUND_STEP);
+}
+
+/**
+ * Where the full reload clip (0..1) is, `frac` (0..1) of the way through a reload that skips
+ * `skip` revolver rounds: it plays as usual up to the first round, then jumps over the skipped ones.
+ */
+export function reloadClipAt(skip: number, frac: number) {
+  const c = frac * (1 - skip * ROUND_STEP);
+  return skip && c >= REVOLVER_ROUNDS[0] ? c + skip * ROUND_STEP : c;
+}
+
+/** When each round the revolver loads seats, as fractions of a reload of `need` rounds. */
+export function roundSeats(need: number) {
+  const skip = reloadSkip("pistol", need), scale = 1 - skip * ROUND_STEP;
+  return REVOLVER_ROUNDS.slice(skip).map((s) => (s - skip * ROUND_STEP + REVOLVER_ROUND_SEAT) / scale);
+}
+
+/**
+ * Rounds in so far, `frac` (0..1) of the way through a reload of `need`: the revolver's one by
+ * one as each seats, a magazine's all at once at the end (as many as fit; callers cap it).
+ */
+export function reloadedRounds(w: WeaponId, need: number, frac: number) {
+  if (w !== "pistol") return frac >= 1 ? WEAPONS[w].mag : 0;
+  return frac >= 1 ? need : roundSeats(need).filter((at) => frac >= at).length;
+}

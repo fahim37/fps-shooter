@@ -3,8 +3,8 @@ import * as THREE from "three";
 import { CharacterRig } from "../player/CharacterRig";
 import type { CharacterTemplate } from "../assets/characters";
 import type { WeaponId } from "../../shared/weapons";
-import { WEAPONS } from "../../shared/weapons";
-import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_SPRINT } from "../../shared/messages";
+import { WEAPONS, reloadClipAt, reloadMs } from "../../shared/weapons";
+import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_RELOAD_SKIP_SHIFT, F_SPRINT } from "../../shared/messages";
 import type { PlayerState } from "../../shared/schema";
 import { MOVING_SPEED, rayVsPose, type Pose, type PoseHit } from "../../shared/hitboxes";
 import { HitShapes } from "../player/hitShapes";
@@ -43,6 +43,7 @@ export class RemotePlayer {
   emote = "idle";
   private vel = new THREE.Vector3();
   private reloadT = -1;
+  private reloadSkip = 0;
   private stepDist = 0;
   private speed = 0;
   recoil = 0;
@@ -200,7 +201,9 @@ export class RemotePlayer {
     }
     const speed = this.speed = Math.hypot(this.vel.x, this.vel.z);
     const reloading = (this.flags & F_RELOADING) !== 0;
-    if (reloading) this.reloadT = this.reloadT < 0 ? 0 : this.reloadT + dt / (WEAPONS[this.weapon].reloadMs / 1000);
+    const skip = (this.flags >> F_RELOAD_SKIP_SHIFT) & 7;
+    this.reloadSkip = skip;
+    if (reloading) this.reloadT = this.reloadT < 0 ? 0 : this.reloadT + dt / (reloadMs(this.weapon, WEAPONS[this.weapon].mag - skip) / 1000);
     else this.reloadT = -1;
     this.recoil = Math.max(0, this.recoil - dt * 8);
     this.sinceShot += dt;
@@ -238,7 +241,7 @@ export class RemotePlayer {
       alive: this.alive,
       sprint: (this.flags & F_SPRINT) ? 1 : 0,
       ads: (this.flags & F_ADS) ? 1 : 0,
-      reload: this.reloadT >= 0 ? Math.min(this.reloadT, 1) : -1,
+      reload: this.reloadT >= 0 ? reloadClipAt(this.reloadSkip, Math.min(this.reloadT, 1)) : -1,
       recoil: this.recoil, sinceShot: this.sinceShot, sinceDraw: this.sinceDraw,
       emote: this.alive && isEmote(this.emote) ? this.emote : null,
     });

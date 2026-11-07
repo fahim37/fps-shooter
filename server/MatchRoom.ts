@@ -6,7 +6,7 @@ import {
   GRENADES_PER_LIFE, FALL_DAMAGE_MIN_SPEED, MAX_PLAYERS, MODE_INFO, scoreLimitFor, matchMinutes, WARMUP_MS, END_SCREEN_MS, EYE_HEIGHT,
   CROUCH_EYE_HEIGHT, SPRINT_SPEED, ROOM_SIZES, SCORE_LIMITS, type GameMode,
 } from "../game/shared/constants";
-import { WEAPONS, PRIMARIES, GRENADE, damageAt, fireIntervalMs, type WeaponId } from "../game/shared/weapons";
+import { WEAPONS, PRIMARIES, GRENADE, damageAt, fireIntervalMs, reloadMs, reloadNeed, reloadedRounds, type WeaponId } from "../game/shared/weapons";
 import { GRENADE_STEP_HZ, blastDistance, createGrenadeBody, grenadeVelocity, impactSpeed } from "../game/shared/grenade";
 import { PoseHistory } from "../game/shared/lagcomp";
 import { MOVING_SPEED, rayVsPose, type HitPart, type Pose } from "../game/shared/hitboxes";
@@ -41,6 +41,10 @@ export interface ServerPlayer {
   history: PoseHistory;
   ammo: Record<WeaponId, { mag: number; reserve: number }>;
   reloadingUntil: number;
+  reloadStartAt: number;
+  /** Rounds the reload puts in, and how many are in so far. */
+  reloadNeed: number;
+  reloadDone: number;
   lastFireAt: number;
   shotSeq: number;
   grenades: number;
@@ -382,6 +386,9 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       history: new PoseHistory(),
       ammo: fullAmmo(),
       reloadingUntil: 0,
+      reloadStartAt: 0,
+      reloadNeed: 0,
+      reloadDone: 0,
       lastFireAt: 0,
       shotSeq: 0,
       grenades: GRENADES_PER_LIFE,
@@ -539,7 +546,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
         if (p.st.hp < MAX_HEALTH && t - p.lastDamageAt > REGEN_DELAY_MS) {
           p.st.hp = Math.min(MAX_HEALTH, p.st.hp + (REGEN_PER_SEC * TICK_MS) / 1000);
         }
-        if (p.reloadingUntil && t >= p.reloadingUntil) this.finishReload(p);
+        if (p.reloadingUntil) this.advanceReload(p, t);
         // Nothing to carry until the client has reported a pose.
         if (!p.bot && !p.expectSpawn && p.lastPoseAt) this.carryPose(p, t);
         p.history.push(t, this.livePose(p));
@@ -584,7 +591,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     const allowed = clampLean(lean, p.st.x, p.st.y, p.st.z, p.st.yaw, crouch, (o, d, dist) => raycastWorld(RAPIER, this.world, o, d, dist)?.distance ?? null);
     p.st.lean = Math.round(allowed * 20) / 20;
     if (m.weapon === p.st.primary || m.weapon === "pistol") {
-      if (p.st.weapon !== m.weapon) p.reloadingUntil = 0;
+      if (p.st.weapon !== m.weapon) this.cancelReload(p);
       p.st.weapon = m.weapon;
     }
     p.vel = [m.vx || 0, m.vy || 0, m.vz || 0];
@@ -624,8 +631,8 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     const changed = p.st.primary !== m.primary;
     p.st.primary = m.primary;
     if (changed && p.st.alive) {
+      this.cancelReload(p);
       p.st.weapon = m.primary;
-      p.reloadingUntil = 0;
     }
     // Keep each gun's ammunition for this life; swapping never refills a magazine.
     const a = p.ammo[m.primary];
@@ -638,7 +645,12 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     if (!def || !p.st.alive || this.state.phase === "ended" || this.state.phase === "waiting") return;
     if (m.weapon !== p.st.primary && m.weapon !== "pistol") return;
     if (t - p.lastFireAt < fireIntervalMs(def) * 0.75) return;
-    if (p.reloadingUntil && t < p.reloadingUntil - 150) return;
+    if (p.reloadingUntil) {
+      if (t < p.reloadingUntil - 150) return;
+      // The client's reload ended a moment before ours: finish it now, or the shot would cancel it
+      // with the rounds never put in (and an empty magazine would refuse the shot outright).
+      if (m.weapon === p.st.weapon) this.advanceReload(p, t, true);
+    }
     const ammo = p.ammo[m.weapon];
     if (ammo.mag <= 0) return;
     // Shooting always ends an emote, even if the client's own cancel was lost.
@@ -814,17 +826,31 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     const w = p.st.weapon as WeaponId;
     const a = p.ammo[w];
     if (!p.st.alive || !a || p.reloadingUntil || a.mag >= WEAPONS[w].mag || a.reserve <= 0) return;
-    p.reloadingUntil = now() + WEAPONS[w].reloadMs;
+    p.reloadNeed = reloadNeed(w, a.mag, a.reserve);
+    p.reloadDone = 0;
+    p.reloadStartAt = now();
+    p.reloadingUntil = p.reloadStartAt + reloadMs(w, p.reloadNeed);
   }
 
-  private finishReload(p: ServerPlayer) {
-    p.reloadingUntil = 0;
+  /** Puts in the rounds the reload has got to (the revolver's one at a time), ending it when done. */
+  private advanceReload(p: ServerPlayer, t: number, finish = false) {
     const w = p.st.weapon as WeaponId;
     const a = p.ammo[w];
-    const take = Math.min(WEAPONS[w].mag - a.mag, a.reserve);
+    const frac = finish ? 1 : Math.min(1, (t - p.reloadStartAt) / (p.reloadingUntil - p.reloadStartAt));
+    const done = reloadedRounds(w, p.reloadNeed, frac);
+    const take = Math.max(0, Math.min(done - p.reloadDone, WEAPONS[w].mag - a.mag, a.reserve));
     a.mag += take;
     a.reserve -= take;
-    this.sendAmmo(p, w);
+    p.reloadDone = done;
+    if (frac >= 1) p.reloadingUntil = 0;
+    if (take > 0 || frac >= 1) this.sendAmmo(p, w);
+  }
+
+  /** Stops a reload (weapon put away): rounds already loaded stay in. */
+  private cancelReload(p: ServerPlayer) {
+    if (!p.reloadingUntil) return;
+    this.advanceReload(p, now());
+    p.reloadingUntil = 0;
   }
 
   private sendAmmo(p: ServerPlayer, weapon: WeaponId) {

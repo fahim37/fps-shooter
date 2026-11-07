@@ -8,10 +8,10 @@ vi.mock("./bot", () => ({ Bot: class {}, BOT_NAMES: [] }));
 function fixture(alive = true, phase = "live") {
   const send = vi.fn();
   const p = {
-    st: { primary: "ar", weapon: "ar", alive }, reloadingUntil: 999, shotSeq: 12,
+    st: { primary: "ar", weapon: "ar", alive }, reloadingUntil: 1e15, reloadStartAt: 0, reloadNeed: 28, reloadDone: 0, shotSeq: 12,
     ammo: { ar: { mag: 7, reserve: 35 }, smg: { mag: 9, reserve: 62 } }, client: { send },
   } as unknown as ServerPlayer;
-  const room = { state: { phase } } as MatchRoom;
+  const room = Object.assign(Object.create(MatchRoom.prototype), { state: { phase } }) as MatchRoom;
   const change = (m: unknown) => MatchRoom.prototype.changeLoadout.call(room, p, m as LoadoutMsg);
   return { p, send, change };
 }
