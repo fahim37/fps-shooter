@@ -8,6 +8,12 @@ describe("stored graphics settings", () => {
   it("drops a quality saved under an older default so players start on Low once", () => {
     expect(sanitizeSettings({ quality: "high", name: "Ana" })).toEqual({ name: "Ana" });
   });
+  it("drops a toggle peek value saved under the old default so it turns on once", () => {
+    expect(sanitizeSettings({ leanToggle: false, name: "Ana" })).toEqual({ name: "Ana" });
+  });
+  it("keeps toggle peek off once a player has turned it off under the new default", () => {
+    expect(sanitizeSettings({ leanToggle: false, leanDefaults: 1 })).toEqual({ leanToggle: false });
+  });
   it("ignores invalid qualities, unexpected fields and invalid numeric values", () => {
     expect(sanitizeSettings({ quality: "broken", adaptiveResolution: "false", clearView: "false", volume: NaN, set: "bad" })).toEqual({});
     expect(sanitizeSettings(null)).toEqual({});

@@ -60,6 +60,12 @@ const KEY = "hollowmere.settings.v1";
  */
 const QUALITY_DEFAULTS = 2;
 
+/**
+ * Bumped when the default for toggle peek changes: every save holds the old default, so a stored
+ * value from an older version is dropped once. Anything saved after that is the player's choice.
+ */
+const LEAN_DEFAULTS = 1;
+
 /** Only load known settings so older or damaged browser storage cannot break a match. */
 export function sanitizeSettings(value: unknown): Partial<Omit<Settings, "set">> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -67,9 +73,10 @@ export function sanitizeSettings(value: unknown): Partial<Omit<Settings, "set">>
   const out: Partial<Omit<Settings, "set">> = {};
   if (typeof input.name === "string") out.name = input.name.slice(0, 20);
   if (input.qualityDefaults === QUALITY_DEFAULTS && QUALITY_ORDER.includes(input.quality as Quality)) out.quality = input.quality as Quality;
-  for (const key of ["adaptiveResolution", "clearView", "invertY", "thirdPerson", "leanToggle", "fpsMeter"] as const) {
+  for (const key of ["adaptiveResolution", "clearView", "invertY", "thirdPerson", "fpsMeter"] as const) {
     if (typeof input[key] === "boolean") out[key] = input[key];
   }
+  if (input.leanDefaults === LEAN_DEFAULTS && typeof input.leanToggle === "boolean") out.leanToggle = input.leanToggle;
   const ranges = { sensitivity: [0.2, 3], adsSensitivity: [0.2, 1.5], fov: [60, 110], volume: [0, 1] } as const;
   for (const key of Object.keys(ranges) as (keyof typeof ranges)[]) {
     const n = input[key];
@@ -99,7 +106,7 @@ export const useSettings = create<Settings>((set, get) => ({
   volume: 0.8,
   invertY: false,
   thirdPerson: false,
-  leanToggle: false,
+  leanToggle: true,
   fpsMeter: true,
   ...load(),
   set: (patch) => {
@@ -107,7 +114,7 @@ export const useSettings = create<Settings>((set, get) => ({
     try {
       const { set: _omit, ...rest } = get();
       void _omit;
-      localStorage.setItem(KEY, JSON.stringify({ ...rest, qualityDefaults: QUALITY_DEFAULTS }));
+      localStorage.setItem(KEY, JSON.stringify({ ...rest, qualityDefaults: QUALITY_DEFAULTS, leanDefaults: LEAN_DEFAULTS }));
     } catch {
       /* storage unavailable (private mode): settings just won't persist */
     }
