@@ -493,14 +493,15 @@ export class AudioEngine {
     o.frequency.value = head ? 2600 : 1700;
     const g = ctx.createGain();
     this.env(g, t, head ? 0.28 : 0.2, 0.001, 0.05);
-    const out = this.spatial(undefined, head ? 0.4 : 0.1)![0];
+    const out = this.spatial(undefined, head ? 0.25 : 0.1)![0];
     o.connect(g).connect(out);
     o.start(t);
     o.stop(t + 0.08);
-    // A headshot rings like a struck helmet, so it can't be mistaken for a body hit.
+    // A headshot knocks like a struck helmet, damped short, so it can't be mistaken for a body hit.
     if (head) {
-      this.blip(out, "sine", 3300, t + 0.004, 0.17, 0.001, 0.3);
-      this.blip(out, "sine", 4950, t + 0.004, 0.07, 0.001, 0.18);
+      this.blip(out, "sine", 2200, t + 0.004, 0.15, 0.001, 0.11);
+      this.blip(out, "sine", 3300, t + 0.004, 0.04, 0.001, 0.06);
+      this.blip(out, "triangle", 420, t + 0.004, 0.1, 0.002, 0.07, 260);
     }
   }
 
