@@ -647,7 +647,7 @@ export class Game {
       eye: local.viewEye, view: local.viewQuat, speed: Math.hypot(local.ms.vx, local.ms.vz),
       moveYaw: Math.atan2(-local.ms.vx, -local.ms.vz), crouch: local.crouchT > 0.5,
       grounded: local.ms.grounded, alive: local.alive, sprint: local.ms.sprinting ? 1 : 0,
-      ads: local.ads, optic: local.optic, reload: local.reloadProgress, recoil: local.recoil,
+      ads: local.ads, quickScope: local.quickScope, optic: local.optic, reload: local.reloadProgress, recoil: local.recoil,
       bob: local.bob, sway: local.sway, tuck: local.tuck, throwing: Math.max(local.throwAnim, local.grenadeHold), lean: local.lean,
       sinceShot: local.sinceShot(now), sinceDraw: local.sinceDraw(now), emote: local.emote,
       grenade: this.grenadeArm(local, dt, now),

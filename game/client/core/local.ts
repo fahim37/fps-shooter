@@ -3,6 +3,7 @@ import { Mover, newMoveState, type MoveState } from "../../shared/movement";
 import { raycastWorld, type Rapier, type World } from "../../shared/physics";
 import { aimDir, spreadDir, zoomSensitivity } from "../../shared/aim";
 import { WEAPONS, GRENADE, SCOPE_UP, currentSpread, fireIntervalMs, type WeaponId } from "../../shared/weapons";
+import { quickScope } from "../player/quickScope";
 import { grenadeVelocity } from "../../shared/grenade";
 import { EYE_HEIGHT, CROUCH_EYE_HEIGHT, GRENADES_PER_LIFE, INTERP_DELAY_MS } from "../../shared/constants";
 import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_SPRINT, type AmmoEvent, type GrenadeMsg, type LoadoutEvent, type PoseMsg, type SpawnEvent } from "../../shared/messages";
@@ -63,6 +64,10 @@ export class LocalPlayer {
   private burst = 0;
   ads = 0;
   private adsProgress = 0;
+  private adsRaising = false;
+
+  /** The drawn gun's quick-scope move over the current raise or drop (visual only). */
+  get quickScope() { return quickScope(this.weapon, this.adsProgress, this.adsRaising); }
   crouchT = 0;
   /** Peek -1 (left) .. 1 (right), already limited by nearby walls. */
   lean = 0;
@@ -344,6 +349,7 @@ export class LocalPlayer {
     // ---- ADS (peeking raises the sights too)
     const adsTarget = (adsHeld || this.peeking) && !this.reloading && !this.grenadeAt && now > this.switchEnd ? 1 : 0;
     const adsRate = 1000 / def.adsMs;
+    if (adsTarget !== this.adsProgress) this.adsRaising = adsTarget > this.adsProgress;
     this.adsProgress = THREE.MathUtils.clamp(this.adsProgress + Math.sign(adsTarget - this.adsProgress) * adsRate * dt, 0, 1);
     this.ads = THREE.MathUtils.smoothstep(this.adsProgress, 0, 1);
 

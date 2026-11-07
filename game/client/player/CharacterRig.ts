@@ -8,6 +8,7 @@ import { DEFAULT_OPTICS, type OpticId } from "../../shared/optics";
 import { createIronSights, createReflexSight } from "./ReflexSight";
 import { gripPose, type GripPose, type HandPose } from "./grip";
 import { createHandling, sampleHandling, type HandBlend, type HandKey } from "./handling";
+import type { QuickScope } from "./quickScope";
 
 export type RigMode = "fpp" | "tpp";
 
@@ -27,6 +28,8 @@ export interface RigState {
   alive: boolean;
   sprint: number;
   ads: number;
+  /** FPP: the drawn gun's quick-scope move while raising or dropping the sights. */
+  quickScope?: QuickScope;
   optic?: OpticId;
   /** -1 when not reloading, else progress 0..1. */
   reload: number;
@@ -524,14 +527,15 @@ export class CharacterRig {
       // Keep the stock end just in front of the eye; the pistol is held out at arm's length, small enough
       // on screen not to hide a target.
       const ads = _v2.set(0, -sightY, pistol ? -REVOLVER_ADS_REACH : -(meta.max[2] + (w === "ar" || w === "smg" ? AR_EYE_RELIEF : 0.07)));
-      hip.lerp(ads, s.ads);
+      const qs = s.quickScope;
+      hip.lerp(ads, qs ? qs.lift : s.ads);
       hip.x += (s.sway?.x ?? 0) + (s.bob?.x ?? 0) + hx - sprint * 0.04;
-      hip.y += (s.sway?.y ?? 0) + (s.bob?.y ?? 0) + hy - sprint * 0.05 - (s.throwing ?? 0) * 0.75;
+      hip.y += (s.sway?.y ?? 0) + (s.bob?.y ?? 0) + hy - sprint * 0.05 - (s.throwing ?? 0) * 0.75 - (qs?.dip ?? 0);
       hip.z += s.recoil * 0.045 + (s.tuck ?? 0) * 0.16 + hz;
       _e.set(
         s.recoil * 0.06 + hPitch - sprint * 0.55 - (s.tuck ?? 0) * 0.7,
-        sprint * 0.75 + hYaw,
-        hRoll + sprint * 0.25,
+        sprint * 0.75 + hYaw + (qs?.yaw ?? 0),
+        hRoll + sprint * 0.25 - (qs?.roll ?? 0),
         "YXZ",
       );
       _q.copy(s.view).multiply(_q2.setFromEuler(_e));
