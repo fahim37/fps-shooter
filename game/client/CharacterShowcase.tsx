@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useState, type CSSProperties } from "react";
-import { SHOWOFFS, SHOWOFF_COOLDOWN_MS, type ShowcasePlayer, type ShowoffId } from "../shared/showcase";
+import { SHOWOFFS, SHOWOFF_COOLDOWN_MS, watermarkLines, type ShowcasePlayer, type ShowoffId } from "../shared/showcase";
 import type { TagMode } from "./CharacterStage";
 import styles from "./CharacterShowcase.module.css";
 
@@ -24,13 +24,13 @@ export function CharacterShowcase({ players, me, onShowoff, disabled = false, pr
   const [lastAt, setLastAt] = useState(0);
   const lineup = [...players].sort((a, b) => teamOrder(a.team) - teamOrder(b.team));
   const selected = players.find((p) => p.id === me)?.emote ?? "idle";
-  const watermark = preview ? lineup[0]?.name : title;
+  const watermark = watermarkLines((preview ? lineup[0]?.name : title) ?? "");
   const label = (p: ShowcasePlayer, mode: TagMode) => <>
     <strong data-me={!preview && p.id === me ? "" : undefined} title={p.name}><span>{p.name}</span>{!preview && p.id === me && <em>{" · You"}</em>}</strong>
     {mode === "full" && <small>{p.char === 1 ? "Female Operator" : "Male Operator"} · {SHOWOFFS.find((e) => e.id === p.emote)?.label ?? "At ease"}</small>}
   </>;
   return <section className={styles.showcase} data-lineup-size={lineup.length} aria-label={preview ? "Character preview" : "Lobby character stage"}>
-    {watermark && <span className={styles.watermark} style={{ "--chars": watermark.length } as CSSProperties} aria-hidden="true">{watermark}</span>}
+    {watermark[0] && <span className={styles.watermark} style={{ "--chars": Math.max(...watermark.map((line) => line.length)) } as CSSProperties} aria-hidden="true">{watermark.map((line) => <span key={line}>{line}</span>)}</span>}
     <div className={styles.heading}>
       <span>{preview ? "YOUR OPERATOR" : "THE LINEUP"}</span>
       <div className={styles.tools}>

@@ -3,7 +3,10 @@
 .showcase button:focus-visible { outline: 2px solid #d4eea4; outline-offset: -2px; }
 .showcase button:disabled { cursor: default; opacity: .4; }
 /* Big callsign (or room name) behind the operators, like an agent-select splash; long text shrinks to fit. */
-.watermark { position: absolute; z-index: -1; left: 0; right: 0; top: 30%; overflow: hidden; text-align: center; white-space: nowrap; text-transform: uppercase; font-size: clamp(32px, min(16cqi, calc(165cqi / var(--chars, 10))), 170px); font-weight: 900; line-height: 1; letter-spacing: -.03em; color: transparent; -webkit-text-stroke: 1px #d9ed792e; pointer-events: none; user-select: none; }
+.watermark { position: absolute; z-index: -1; left: 0; right: 0; margin-inline: auto; width: max-content; max-width: 100%; top: 22%; overflow: hidden; text-align: left; white-space: nowrap; text-transform: uppercase; font-size: clamp(32px, min(16cqi, calc(130cqi / var(--chars, 10))), 170px); font-weight: 900; line-height: 1; letter-spacing: -.03em; color: transparent; -webkit-text-stroke: 1px #d9ed792e; pointer-events: none; user-select: none; }
+/* The second line ends under the first, clear of the ranger standing in the middle. */
+.watermark > span { display: block; }
+.watermark > span + span { text-align: right; }
 .heading { position: absolute; z-index: 2; top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 8px 8px 14px; font: 10px var(--font-geist-mono), monospace; letter-spacing: .16em; color: #c8d5b8; background: linear-gradient(#0c120ecc, transparent); }
 .tools { display: flex; align-items: center; gap: 2px; margin-left: auto; }
 .tools > button { min-height: 32px; border: 0; background: transparent; color: #b9c6ab; font-size: 11px; letter-spacing: normal; padding: 4px 8px; }
@@ -29,10 +32,15 @@
 .tags:not([data-mode="full"]) strong { padding: 0 4px; border-radius: 2px; background: #0a110dbf; }
 .tags[data-mode="name"] strong { font-size: 11px; letter-spacing: .04em; line-height: 15px; }
 .tags[data-mode="stagger"] strong { font-size: 10px; letter-spacing: .02em; line-height: 13px; }
-.showoffs { position: relative; z-index: 2; flex: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 6px; border-top: 1px solid #ffffff14; background: #0a100cd9; }
-.showoffs button { min-height: 38px; padding: 6px 4px; border: 1px solid #ffffff22; background: #ffffff06; color: #cbd7bf; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Right under the ranger, on the stage itself: no bar of its own. */
+.showoffs { position: relative; z-index: 2; flex: none; display: flex; justify-content: center; gap: 4px; padding: 0 8px 8px; }
+.showoffs button { flex: 0 1 auto; min-width: 0; min-height: 30px; padding: 4px 12px; border: 1px solid #ffffff2e; background: #0a100cb8; color: #cbd7bf; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .showoffs button:hover:not(:disabled) { border-color: #d9ed7970; }
 .showoffs button[aria-pressed="true"] { color: #10200e; background: #c5df9b; border-color: #c5df9b; }
+/* A short stage drops the line under the name, or it runs into the showoff buttons. */
+@container (max-height: 360px) {
+  .tag small { display: none; }
+}
 /* A squeezed stage keeps just the ranger and the showoff row. */
 @container (max-height: 190px) {
   .heading, .tags, .watermark { display: none; }
@@ -42,7 +50,7 @@
   .showoffs button { font-size: 11px; }
 }
 @media (max-height: 520px), (max-width: 760px) {
-  .showoffs button { min-height: 34px; padding: 4px 3px; }
+  .showoffs button { min-height: 30px; padding: 3px 8px; }
   .tags[data-mode="full"] strong { font-size: 13px; }
   .tags[data-mode="full"] small { font-size: 10px; }
   .tools > button { min-height: 28px; font-size: 10px; padding: 3px 6px; }

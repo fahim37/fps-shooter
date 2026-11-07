@@ -765,15 +765,16 @@ small { display: block; }
    operator preview, which paint later in their own animated layers. */
 .room-top { position: relative; z-index: 30; }
 
-/* Room bar on anything wider than a phone: every map in one row, invite and ready side by side
-   beneath it, so the bar stays short and the rosters get the height. */
+/* Room bar on anything wider than a phone: the maps in two rows of four, so every name fits,
+   invite and ready side by side beneath them. */
 @media (min-width: 761px) and (min-height: 521px) {
   .room-bar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "map map" "invite start"; }
   .room-bar .room-map { grid-area: map; grid-template-columns: minmax(0, 1fr); }
   .room-bar .room-invite { grid-area: invite; align-content: center; }
   .room-bar .room-start { grid-area: start; grid-template-columns: 1fr 1fr; align-items: stretch; }
   .room-bar .room-start > p { grid-column: 1 / -1; }
-  .room-bar .room-map [role=radiogroup] { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+  .room-bar .room-map [role=radiogroup] { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .room-bar .room-map [data-map] > span:first-child { aspect-ratio: 16 / 5; }
   .room-bar .room-map [data-map] strong { padding: 14px 5px 5px; font-size: clamp(10px, .8vw, 14px); letter-spacing: .02em; }
   .room-start .primary-button, .room-start .outline-button { min-height: 48px; }
   .room-bar .invite-actions button { white-space: normal; }
@@ -785,14 +786,10 @@ small { display: block; }
 @media (min-width: 1001px) and (min-height: 521px) {
   .waiting-room { grid-template-areas: "top top top" "left stage right" "left bar right"; }
 }
-/* Narrow desktop: too tight for six names in a row, so the maps take two. */
-@media (min-width: 1001px) and (max-width: 1100px) and (min-height: 521px) {
-  .room-bar .room-map [role=radiogroup] { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-flow: row; }
-}
 /* Short windows: the invite link goes (the copy buttons stay) to leave the lineup some room. */
 @media (min-width: 761px) and (min-height: 521px) and (max-height: 760px) {
   .room-bar .room-invite input { display: none; }
-  .room-bar .room-map [data-map] > span:first-child { aspect-ratio: 16 / 6; }
+  .room-bar .room-map [data-map] > span:first-child { aspect-ratio: 16 / 4; }
   .slot-list { grid-auto-rows: minmax(38px, 60px); gap: 3px; }
 }
 /* Phones: maps three to a row, so they leave the rosters some height. */

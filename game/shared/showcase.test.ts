@@ -1,5 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { canEmote, canShowoff } from "./showcase";
+import { canEmote, canShowoff, watermarkLines } from "./showcase";
+
+describe("lineup watermark", () => {
+  it("puts a room's last word on the second line", () => {
+    expect(watermarkLines("BraveHound24's room")).toEqual(["BraveHound24's", "room"]);
+    expect(watermarkLines("Friday night scrim")).toEqual(["Friday night", "scrim"]);
+  });
+  it("puts a callsign's number on the second line", () => {
+    expect(watermarkLines("ShadowBison68")).toEqual(["ShadowBison", "68"]);
+  });
+  it("leaves anything else on one line", () => {
+    expect(watermarkLines("Operator")).toEqual(["Operator"]);
+    expect(watermarkLines("1234")).toEqual(["1234"]);
+    expect(watermarkLines("  Sam  ")).toEqual(["Sam"]);
+  });
+});
 
 describe("lobby showoff authorization", () => {
   it("rejects malformed clips, gameplay actions and disconnected players", () => {

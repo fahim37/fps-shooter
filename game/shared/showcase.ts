@@ -9,6 +9,15 @@ export const SHOWOFFS = [
 export type ShowoffId = typeof SHOWOFFS[number]["id"];
 export const SHOWOFF_COOLDOWN_MS = 750;
 
+/** The big lettering behind the lineup, on two lines so it fits: "Sam's" / "room", "ShadowBison" / "68". */
+export function watermarkLines(text: string): string[] {
+  const clean = text.trim();
+  const space = clean.lastIndexOf(" ");
+  if (space > 0) return [clean.slice(0, space), clean.slice(space + 1)];
+  const digits = /\d+$/.exec(clean);
+  return digits && digits.index > 0 ? [clean.slice(0, digits.index), digits[0]] : [clean];
+}
+
 export function isShowoff(value: unknown): value is ShowoffId {
   return SHOWOFFS.some((item) => item.id === value);
 }
