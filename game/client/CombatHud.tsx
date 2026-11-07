@@ -64,9 +64,12 @@ export function DeathRecap({ h, now }: { h: HudState; now: number }) {
 
 export function EliminationNotice({ h, now }: { h: HudState; now: number }) {
   const kill = h.elimination;
-  if (!kill || now - kill.at >= 2000) return null;
-  return <div key={kill.at} className={`${styles.elimination} ${h.alive ? "" : styles.posthumous}`} role="status" aria-live="polite" aria-label={`You eliminated ${kill.name}`}>
-    <span className={styles.eliminationIcon} aria-hidden="true">×</span>
-    <div><small>YOU ELIMINATED</small><strong>{kill.name}</strong><p>{kill.headshot && <span>⌖ HEADSHOT · </span>}{weaponLabel(kill.weapon)}{kill.count > 1 && <b> · {kill.count} ELIMINATIONS</b>}{kill.streak >= 3 && <b> · {kill.streak} KILL STREAK</b>}</p></div>
-  </div>;
+  if (!kill || now - kill.at >= 2500) return null;
+  return <>
+    {h.alive && now - kill.at < 450 && <div key={`burst${kill.at}`} className={`${styles.killBurst} ${kill.headshot ? styles.head : ""}`} aria-hidden="true"><i /><i /><i /><i /></div>}
+    <div key={kill.at} className={`${styles.elimination} ${h.alive ? "" : styles.posthumous}`} role="status" aria-live="polite" aria-label={`You eliminated ${kill.name}`}>
+      <span className={styles.eliminationIcon} aria-hidden="true">×</span>
+      <div><small>YOU ELIMINATED</small><strong>{kill.name}</strong><p>{kill.headshot && <span>⌖ HEADSHOT · </span>}{weaponLabel(kill.weapon)}{kill.count > 1 && <b> · {kill.count} ELIMINATIONS</b>}{kill.streak >= 3 && <b> · {kill.streak} KILL STREAK</b>}</p></div>
+    </div>
+  </>;
 }
