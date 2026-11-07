@@ -80,9 +80,9 @@ const DROP = 0.075;
 /** Box-magazine swap: tilt, drop the mag, fetch another from the belt, seat it, rack the handle. */
 const MAG_RELOAD: Clip = (() => {
   // Kept low at the side, the view stays clear: the magazine well turned toward the eye.
-  const tilt: GunOffset = [0.03, -0.07, -0.02, 0.12, -0.06, -0.3];
+  const tilt: GunOffset = [0.01, -0.02, -0.02, 0.16, -0.02, -0.3];
   // Rolled toward the support hand, so the handle shows at the back of the gun.
-  const rack: GunOffset = [0.05, -0.08, -0.04, 0.08, -0.06, 0.42];
+  const rack: GunOffset = [0.03, -0.03, -0.04, 0.12, -0.02, 0.42];
   const hold: HandKey<LeftPose> = { pose: "charge" }, pulled: HandKey<LeftPose> = { pose: "charge", pull: CHARGE_PULL };
   return {
     gun: [
@@ -118,7 +118,7 @@ const BELT: HandKey<LeftPose> = { pose: "support", belt: true };
 const REVOLVER_RELOAD: Clip = (() => {
   // Muzzle up but low at the side of the view: both hands end up below the cylinder, so neither
   // hides it, and neither gets in the way of the fight.
-  const tilt: GunOffset = [0.05, -0.1, -0.08, 0.6, -0.12, 0.15];
+  const tilt: GunOffset = [0.03, -0.035, -0.06, 0.62, -0.08, 0.15];
   const gun: Keys<GunOffset> = [[0, REST], [0.09, tilt]];
   const left: Keys<HandKey<LeftPose>> = [[0, BELT]];
   const shell: Keys<number> = [];
@@ -156,7 +156,7 @@ const RELOAD_RACK = [0.94, 0.98] as const;
 export const SHOTGUN_RELOAD_CUES = { shells: SHELLS.map((s) => s + SHELL_SEAT), rack: RELOAD_RACK };
 
 const SHOTGUN_RELOAD: Clip = (() => {
-  const tilt: GunOffset = [0.02, -0.05, -0.01, 0.14, 0, -0.55];
+  const tilt: GunOffset = [0.01, -0.015, -0.01, 0.17, 0.03, -0.55];
   const gun: Keys<GunOffset> = [[0, REST], [0.1, tilt]];
   const left: Keys<HandKey<LeftPose>> = [[0, SUPPORT]];
   const shell: Keys<number> = [];

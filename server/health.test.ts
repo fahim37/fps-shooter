@@ -26,12 +26,12 @@ describe("shield", () => {
   it("takes damage before health, and the rest carries through", () => {
     const { room, player, st } = full();
     room.damage(player, 12, null, "fall", "body", [0, 0, 0]);
-    expect([st.shield, st.hp]).toEqual([8, 100]);
-    room.damage(player, 18, null, "fall", "body", [0, 0, 0]);
+    expect([st.shield, st.hp]).toEqual([MAX_SHIELD - 12, 100]);
+    room.damage(player, MAX_SHIELD - 2, null, "fall", "body", [0, 0, 0]);
     expect([st.shield, st.hp]).toEqual([0, 90]);
   });
-  it("still falls to eight of a close shotgun blast's nine pellets", () => {
-    expect(damageAt(WEAPONS.shotgun, 5) * 8).toBeGreaterThanOrEqual(MAX_HEALTH + MAX_SHIELD);
+  it("still falls to all nine pellets of a close shotgun blast", () => {
+    expect(damageAt(WEAPONS.shotgun, 5) * 9).toBeGreaterThanOrEqual(MAX_HEALTH + MAX_SHIELD);
   });
   it("never regenerates: health heals back to 100 and stops", () => {
     const { room, player, st } = full();

@@ -44,13 +44,13 @@ const W = (d: WeaponDef) => d;
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
   ar: W({
     id: "ar", name: "STM-556", slot: 0, auto: true, rpm: 600, damage: 26, headMult: 1.8, limbMult: 0.85, pellets: 1,
-    falloffStart: 30, falloffEnd: 65, minMult: 0.72, range: 200, mag: 30, reserve: 120, reloadMs: 1900, equipMs: 450,
+    falloffStart: 30, falloffEnd: 65, minMult: 0.72, range: 200, mag: 35, reserve: 120, reloadMs: 1900, equipMs: 450,
     spreadHip: 1.7, spreadAds: 0.12, spreadMove: 1.1, spreadAir: 5, recoilUp: 0.4, recoilSide: 0.12,
     adsFov: 55, adsMs: 220, moveMult: 0.95,
   }),
   smg: W({
     id: "smg", name: "Honey Badger", slot: 0, auto: true, rpm: 880, damage: 19, headMult: 1.6, limbMult: 0.9, pellets: 1,
-    falloffStart: 14, falloffEnd: 35, minMult: 0.6, range: 150, mag: 38, reserve: 160, reloadMs: 1650, equipMs: 350,
+    falloffStart: 14, falloffEnd: 35, minMult: 0.6, range: 150, mag: 40, reserve: 160, reloadMs: 1650, equipMs: 350,
     spreadHip: 1.6, spreadAds: 0.22, spreadMove: 0.9, spreadAir: 3.5, recoilUp: 0.26, recoilSide: 0.15,
     adsFov: 62, adsMs: 170, moveMult: 1.05,
   }),
@@ -61,7 +61,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     adsFov: 65, adsMs: 200, moveMult: 0.97,
   }),
   sniper: W({
-    id: "sniper", name: "Hunter Sniper", slot: 0, auto: false, rpm: 90, damage: 100, headMult: 1.2, limbMult: 0.8, pellets: 1,
+    id: "sniper", name: "Hunter Sniper", slot: 0, auto: false, rpm: 90, damage: 100, headMult: 1.35, limbMult: 0.8, pellets: 1,
     falloffStart: 80, falloffEnd: 200, minMult: 1, range: 300, mag: 5, reserve: 25, reloadMs: 2500, equipMs: 600,
     spreadHip: 7, spreadAds: 0.02, spreadMove: 3, spreadAir: 9, recoilUp: 2.4, recoilSide: 0.2,
     adsFov: 18, adsMs: 170, moveMult: 0.9, scope: true,
@@ -80,7 +80,7 @@ export const GRENADE = {
   /** An underhand lob (right mouse while aiming) leaves the hand at this fraction of a full throw. */
   lobPower: 0.5,
   radius: 8,
-  /** At the blast; lethal through a full shield out to about 3 m, around 45 damage at 6 m. */
+  /** At the blast; lethal through a full shield out to about 2.5 m, around 45 damage at 6 m. */
   damage: 220,
   /** Minimum damage at the edge of the radius, as a fraction. */
   edgeMult: 0.1,

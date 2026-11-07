@@ -66,6 +66,12 @@ const BOLT_LIFT = 1.15;
 const BOLT_TRAVEL = 0.065;
 /** How far a revolver's hammer rolls back from its fallen position (rad). */
 const COCK_ANGLE = 0.75;
+/** How far the revolver is pushed out from the eye when aimed (m). */
+const REVOLVER_ADS_REACH = 0.58;
+/** Aim point above the top of the revolver (m): the target stands on the front sight, not behind the gun. */
+const REVOLVER_HOLD = 0.014;
+/** Size of a reflex sight when not aiming through it. */
+const SIGHT_ON_GUN = 0.62;
 /** Where a free hand hangs: below, out from and ahead of its shoulder (m). */
 const BELT_DROP = 0.5, BELT_OUT = 0.1, BELT_AHEAD = 0.08;
 /** Where a hand fetching a magazine or shell goes: down and in toward the belt. */
@@ -500,19 +506,24 @@ export class CharacterRig {
     const optic = s.optic ?? DEFAULT_OPTICS[w];
     const reflex = optic === "red-dot";
     sight.object.visible = reflex;
+    // Compact on the gun; only the aiming player needs the full window, as the sight comes up to the eye.
+    sight.object.scale.setScalar(this.mode === "fpp" ? THREE.MathUtils.lerp(SIGHT_ON_GUN, 1, THREE.MathUtils.smoothstep(s.ads, 0.3, 1)) : SIGHT_ON_GUN);
     const irons = w === "ar" ? this.irons : null;
     if (irons) irons.object.visible = optic === "iron";
     const h = sampleHandling(w, s.reload, s.sinceShot ?? -1, s.sinceDraw ?? -1, this.handling);
     const [hx, hy, hz, hPitch, hYaw, hRoll] = h.gun;
-    const sprint = s.sprint * (1 - s.ads);
+    // A reload is held up in view even on the run: the sprint pose would carry it off the screen.
+    const reloading = THREE.MathUtils.smoothstep(s.reload, 0, 0.1) * (1 - THREE.MathUtils.smoothstep(s.reload, 0.9, 1));
+    const sprint = s.sprint * (1 - s.ads) * (1 - reloading);
 
     if (this.mode === "fpp" && s.eye && s.view) {
       // View-space placement: hip at the lower right, ADS lines the sights up with the eye.
       // Eye just above the top of the receiver / rear sight.
-      const sightY = reflex ? sight.height : irons ? irons.height : pistol ? meta.max[1] - 0.004 : w === "sniper" ? meta.max[1] - 0.01 : meta.max[1] + 0.004;
+      const sightY = reflex ? sight.height : irons ? irons.height : pistol ? meta.max[1] + REVOLVER_HOLD : w === "sniper" ? meta.max[1] - 0.01 : meta.max[1] + 0.004;
       const hip = pistol ? _v.set(0.13, -0.21, -0.4) : _v.set(0.15, -0.25, -0.3);
-      // Keep the stock end just in front of the eye; the pistol is held out at arm's length.
-      const ads = _v2.set(0, -sightY, pistol ? -0.48 : -(meta.max[2] + (w === "ar" || w === "smg" ? AR_EYE_RELIEF : 0.07)));
+      // Keep the stock end just in front of the eye; the pistol is held out at arm's length, small enough
+      // on screen not to hide a target.
+      const ads = _v2.set(0, -sightY, pistol ? -REVOLVER_ADS_REACH : -(meta.max[2] + (w === "ar" || w === "smg" ? AR_EYE_RELIEF : 0.07)));
       hip.lerp(ads, s.ads);
       hip.x += (s.sway?.x ?? 0) + (s.bob?.x ?? 0) + hx - sprint * 0.04;
       hip.y += (s.sway?.y ?? 0) + (s.bob?.y ?? 0) + hy - sprint * 0.05 - (s.throwing ?? 0) * 0.75;

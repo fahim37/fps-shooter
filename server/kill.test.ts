@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { MatchRoom, type ServerPlayer } from "./MatchRoom";
 import type { KillEvent } from "../game/shared/messages";
+import { MAX_HEALTH, MAX_SHIELD } from "../game/shared/constants";
+import { WEAPONS, damageAt } from "../game/shared/weapons";
 
 vi.mock("./world", () => ({ map: {}, RAPIER: {} }));
 vi.mock("./bot", () => ({ Bot: class {}, BOT_NAMES: [] }));
@@ -21,6 +23,17 @@ describe("elimination snapshots", () => {
     killer.st.name = "Changed";
     expect(event.killerInfo?.name).toBe("Killer");
   });
+  it("kills a full-health, full-shield player with one sniper headshot at any range", () => {
+    for (const range of [5, 300]) {
+      const killer = player("Killer", range), victim = player("Victim", 0);
+      victim.st.hp = MAX_HEALTH; victim.st.shield = MAX_SHIELD;
+      const room = { state: { phase: "live", mode: "ffa" }, players: new Map([[killer.id, killer], [victim.id, victim]]), broadcast: vi.fn(), checkScoreLimit: vi.fn() };
+      const shot = damageAt(WEAPONS.sniper, range) * WEAPONS.sniper.headMult;
+      expect(MatchRoom.prototype.damage.call(room as unknown as MatchRoom, victim, shot, killer, "sniper", "head", [range, 1.6, 0])).toBe(true);
+      expect(victim.st.alive).toBe(false);
+    }
+  });
+
   it("does not attach a killer to an unassisted environmental death", () => {
     const victim = player("Victim", 0), broadcast = vi.fn();
     const room = { state: { phase: "live", mode: "ffa" }, players: new Map([[victim.id, victim]]), broadcast, checkScoreLimit: vi.fn() };
@@ -35,7 +48,7 @@ describe("elimination snapshots", () => {
     kill(); kill();
     expect(killer.st.shield).toBe(0);
     kill();
-    expect(killer.st.shield).toBe(20);
+    expect(killer.st.shield).toBe(35);
     killer.st.shield = 5;
     kill(); kill();
     expect(killer.st.shield).toBe(5);

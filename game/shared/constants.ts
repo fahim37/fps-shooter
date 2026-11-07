@@ -25,7 +25,7 @@ export const GRAVITY = 20;
 
 export const MAX_HEALTH = 100;
 /** Taken before health. Never regenerates: every life starts with it and kill streaks refill it. */
-export const MAX_SHIELD = 20;
+export const MAX_SHIELD = 35;
 /** Every this many kills in a row refills the shield. */
 export const SHIELD_STREAK = 3;
 export const REGEN_DELAY_MS = 5000;

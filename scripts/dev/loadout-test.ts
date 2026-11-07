@@ -82,7 +82,7 @@ async function main() {
       await page.waitForTimeout(250);
       assert.equal(await page.evaluate(() => (window as TestWindow).__loadoutGame!.local!.scoped), true);
       const ammo = await page.evaluate(() => (window as TestWindow).__loadoutGame!.local!.ammo.smg.mag);
-      assert.ok(ammo < 38 && ammo > 0, "Firing the newly equipped gun must consume ammo");
+      assert.ok(ammo < 40 && ammo > 0, "Firing the newly equipped gun must consume ammo");
       await page.screenshot({ path: `out/qa/scope-${mobile ? "mobile" : "desktop"}.png` });
       if (mobile) await page.getByRole("button", { name: "Open loadout and scopes" }).tap();
       else await page.keyboard.press("b");
