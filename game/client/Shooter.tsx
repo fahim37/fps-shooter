@@ -9,7 +9,7 @@ import { useSettings } from "./settings";
 import { MAX_PLAYERS, MODE_INFO, ROOM_SIZES, SCORE_LIMITS, scoreLimitFor, type GameMode } from "../shared/constants";
 import type { JoinOptions } from "../shared/messages";
 import { audio } from "./core/audio";
-import { parseRoomCode } from "./net/invite";
+import { lobbyUrl, parseRoomCode } from "./net/invite";
 import { LobbySounds } from "./lobbyAudio";
 import { ConnectedRoom } from "./RoomLobby";
 import { LobbyTools, SettingsDialog } from "./SettingsDialog";
@@ -115,6 +115,16 @@ export default function Shooter() {
     return () => { live = false; clearInterval(timer); };
   }, [room, refreshKey]);
 
+  // An invite link (/CODE) goes straight into its room; if that fails, the Join tab shows why.
+  const inviteCode = useRef(code);
+  useEffect(() => {
+    if (!inviteCode.current) return;
+    const selected = inviteCode.current;
+    inviteCode.current = "";
+    void join("code", selected);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, for the link the page opened with
+  }, []);
+
   async function join(kind: "quick" | "create" | "code", selectedCode = code) {
     if (joining.current) return;
     joining.current = true;
@@ -136,8 +146,7 @@ export default function Shooter() {
   async function leave() {
     await leaveCurrentRoom(); setRoom(null); audio.dispose();
     setName(useSettings.getState().name || name);
-    const url = new URL(window.location.href); url.searchParams.delete("room");
-    window.history.replaceState(null, "", url); setCode(""); setError("");
+    window.history.replaceState(null, "", lobbyUrl(window.location.href)); setCode(""); setError("");
   }
   if (room) return <ConnectedRoom room={room} onLeave={() => void leave()} />;
 
