@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import type { GameRoom } from "../net/session";
 import { ServerClock } from "../net/clock";
-import { loadCharacters, type CharacterTemplate } from "../assets/characters";
+import { loadCharacter, type CharacterTemplate } from "../assets/characters";
 import { loadWeapons, type WeaponTemplates } from "../assets/weapons";
 import { CharacterRig, type RigState } from "../player/CharacterRig";
 import { gripPose } from "../player/grip";
@@ -117,7 +117,7 @@ export class Game {
   local: LocalPlayer | null = null;
   private R!: Rapier;
   private world: World | null = null;
-  private templates!: [CharacterTemplate, CharacterTemplate];
+  private template!: CharacterTemplate;
   private weapons!: WeaponTemplates;
   private fpp: CharacterRig | null = null;
   private tpp: CharacterRig | null = null;
@@ -175,11 +175,11 @@ export class Game {
     this.R = physics.R;
     this.world = physics.world;
     hud().set({ loading: 0.35 });
-    [this.templates, this.weapons] = await Promise.all([loadCharacters(), loadWeapons()]);
+    [this.template, this.weapons] = await Promise.all([loadCharacter(), loadWeapons()]);
     if (this.disposed) return;
     // Solve every hand pose behind the loading screen, not on the first weapon switch.
     const t0 = performance.now();
-    for (const template of this.templates) for (const w of Object.keys(WEAPONS) as WeaponId[]) gripPose(template, w);
+    for (const w of Object.keys(WEAPONS) as WeaponId[]) gripPose(this.template, w);
     console.debug(`[game] grip poses solved in ${(performance.now() - t0).toFixed(0)} ms`);
     this.local = new LocalPlayer(this, this.R, this.world);
     this.local.thirdPerson = useSettings.getState().thirdPerson;
@@ -277,12 +277,12 @@ export class Game {
     if (me && this.local) {
       if (!this.initializedPlayer && me.alive) this.spawn({ x: me.x, y: me.y, z: me.z, yaw: me.yaw, primary: me.primary as WeaponId });
       this.syncLife(me.alive);
-      const key = `${me.team}:${me.char}`;
+      const key = `${me.team}`;
       if (key !== this.rigKey) {
         this.fpp?.dispose(); this.tpp?.dispose();
         // Your own outfit is always blue; opponents are always red (see the remotes below).
-        this.fpp = new CharacterRig(this.templates[me.char === 1 ? 1 : 0], this.weapons, ALLY_TINT, false, "fpp", true);
-        this.tpp = new CharacterRig(this.templates[me.char === 1 ? 1 : 0], this.weapons, ALLY_TINT, false, "tpp", true);
+        this.fpp = new CharacterRig(this.template, this.weapons, ALLY_TINT, "fpp", true);
+        this.tpp = new CharacterRig(this.template, this.weapons, ALLY_TINT, "tpp", true);
         this.scene.add(this.fpp.object, this.tpp.object);
         this.rigKey = key;
       }
@@ -296,7 +296,7 @@ export class Game {
         remote.protectedUntil = p.protectedUntil;
         remote.team = p.team;
         const ally = mapRelation(id, p.team, this.room.sessionId, me?.team ?? 0, state.mode as GameMode) === "ally";
-        remote.ensureRig(this.templates, this.weapons, ally ? ALLY_TINT : ENEMY_TINT, p.char, this.scene);
+        remote.ensureRig(this.template, this.weapons, ally ? ALLY_TINT : ENEMY_TINT, this.scene);
         remote.setWeapon(p.weapon as WeaponId);
         remote.push(state.serverTime, p);
       });

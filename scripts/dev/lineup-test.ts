@@ -58,7 +58,7 @@ async function main() {
   const stage = page.getByRole("region", { name: "Lobby character stage", exact: true });
   const add = async (from: number, to: number) => {
     for (let i = from; i <= to; i++) {
-      const peer = await client.joinById(code, { name: i === 7 ? "Commander Longcallsign" : `Ranger ${i}`, char: i % 2 });
+      const peer = await client.joinById(code, { name: i === 7 ? "Commander Longcallsign" : `Ranger ${i}`, char: 0 });
       peer.onMessage("*", () => {}); peers.push(peer);
     }
   };

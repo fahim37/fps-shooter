@@ -7,6 +7,7 @@ import { importStm } from "./assets/stm";
 import { importBadger } from "./assets/badger";
 import { importPeacemaker } from "./assets/peacemaker";
 import { importKalamit } from "./assets/kalamit";
+import { importSoldier } from "./assets/soldier";
 import { importCharacters } from "./assets/characters";
 import { importIndustrial } from "./assets/industrial";
 import { importOutpost } from "./assets/outpost";
@@ -31,6 +32,7 @@ const STAGES: Record<string, () => Promise<void>> = {
   badger: importBadger,
   peacemaker: importPeacemaker,
   kalamit: importKalamit,
+  soldier: importSoldier,
   characters: importCharacters,
 };
 

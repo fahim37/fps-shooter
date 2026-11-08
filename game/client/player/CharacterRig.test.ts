@@ -44,7 +44,7 @@ function template(): CharacterTemplate {
 
 describe("character shooting pose", () => {
   it("returns to the same track sampling cost after cycling movement animations", () => {
-    const rig = new CharacterRig(template(), new Map(), 1, false, "tpp");
+    const rig = new CharacterRig(template(), new Map(), 1, "tpp");
     const state: RigState = {
       x: 0, y: 0, z: 0, yaw: 0, pitch: 0, speed: 0, moveYaw: 0,
       crouch: false, grounded: true, alive: true, sprint: 0, ads: 0, reload: -1, recoil: 0,
@@ -68,7 +68,7 @@ describe("character shooting pose", () => {
   });
 
   it.each(["ar", "pistol"] as WeaponId[])("holds a stable %s pose while the legs face sideways", (weapon) => {
-    const rig = new CharacterRig(template(), new Map([[weapon, new THREE.Group()]]), 1, false, "tpp");
+    const rig = new CharacterRig(template(), new Map([[weapon, new THREE.Group()]]), 1, "tpp");
     rig.setWeapon(weapon);
     const state: RigState = {
       x: 0, y: 0, z: 0, yaw: 0, pitch: 0.25, speed: 5, moveYaw: Math.PI / 2,
@@ -87,7 +87,7 @@ describe("character shooting pose", () => {
   });
 
   it("puts the gun away for an emote, holds it steadily and takes the gun back up after", () => {
-    const rig = new CharacterRig(template(), new Map([["ar", new THREE.Group()]]), 1, false, "tpp");
+    const rig = new CharacterRig(template(), new Map([["ar", new THREE.Group()]]), 1, "tpp");
     rig.setWeapon("ar");
     const gun = (rig as unknown as { gunPivot: THREE.Object3D }).gunPivot;
     const state: RigState = {

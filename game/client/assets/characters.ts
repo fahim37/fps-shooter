@@ -23,37 +23,35 @@ export interface CharacterTemplate {
   upper: Map<ClipName, THREE.AnimationClip>;
 }
 
-let templates: Promise<[CharacterTemplate, CharacterTemplate]> | null = null;
+/** The one playable character, the tactical soldier (scripts/assets/soldier.ts). */
+const MODEL = "/models/soldier.glb";
+/** The lobby shows it up close, so it gets the full-detail build. */
+const LOBBY_MODEL = "/models/soldier_hq.glb";
 
-const lobbyTemplates = new Map<number, Promise<CharacterTemplate>>();
+let template: Promise<CharacterTemplate> | null = null;
+let lobbyTemplate: Promise<CharacterTemplate> | null = null;
 
-/** Lobby requests only the visible body and four showoff clips, never combat/world assets. */
-export function loadLobbyCharacter(index: number) {
-  const body = index === 1 ? 1 : 0;
-  let promise = lobbyTemplates.get(body);
-  if (!promise) {
-    promise = Promise.all([
-      loadGLTF(`/models/char_${body ? "female" : "male"}.glb`),
-      loadGLTF("/models/lobby-anims.glb"),
-    ]).then(([character, animations]) => makeTemplate(character.scene, animations.animations, findBone(animations.scene, "pelvis")!.position.clone()));
-    lobbyTemplates.set(body, promise);
-    void promise.catch(() => lobbyTemplates.delete(body));
+/** Lobby requests only the body and four showoff clips, never combat/world assets. */
+export function loadLobbyCharacter() {
+  if (!lobbyTemplate) {
+    const promise = lobbyTemplate = Promise.all([loadGLTF(LOBBY_MODEL), loadGLTF("/models/lobby-anims.glb")])
+      .then(([character, animations]) => makeTemplate(character.scene, animations.animations, findBone(animations.scene, "pelvis")!.position.clone()));
+    void promise.catch(() => { if (lobbyTemplate === promise) lobbyTemplate = null; });
   }
-  return promise;
+  return lobbyTemplate;
 }
 
-export function loadCharacters() {
-  return (templates ??= Promise.all([
-    loadGLTF("/models/char_male.glb"),
-    loadGLTF("/models/char_female.glb"),
+export function loadCharacter() {
+  return (template ??= Promise.all([
+    loadGLTF(MODEL),
     loadGLTF("/models/anims.glb"),
     // Emotes reuse the lobby's showoff clips (usually cached from the lobby already).
     loadGLTF("/models/lobby-anims.glb"),
-  ]).then(([male, female, anims, lobby]) => {
+  ]).then(([character, anims, lobby]) => {
     const animPelvis = findBone(anims.scene, "pelvis")!.position.clone();
     const names = new Set(anims.animations.map((clip) => clip.name));
     const clips = [...anims.animations, ...lobby.animations.filter((clip) => !names.has(clip.name))];
-    return [makeTemplate(male.scene, clips, animPelvis), makeTemplate(female.scene, clips, animPelvis)];
+    return makeTemplate(character.scene, clips, animPelvis);
   }));
 }
 
@@ -101,21 +99,8 @@ function filterClip(clip: THREE.AnimationClip, keep: (bone: string) => boolean) 
 }
 
 const teamMaterials = new Map<string, THREE.Material>();
-const hairMaterials = new Map<string, THREE.Material>();
-/** Facial hair ships near-white; tinted to a dark brown that reads as hair, not age. */
-const FACIAL_HAIR = new THREE.Color("#5a3a26");
 
-function facialHairMaterial(src: THREE.MeshStandardMaterial) {
-  let m = hairMaterials.get(src.uuid);
-  if (!m) {
-    const c = src.clone();
-    c.color.copy(FACIAL_HAIR);
-    hairMaterials.set(src.uuid, m = c);
-  }
-  return m;
-}
-
-/** Ranger outfit tinted per team; skin, eyes and hair keep their own materials. */
+/** The soldier tinted per team: the albedo's alpha marks the cloth (jacket, trousers, helmet cover). */
 function outfitMaterial(src: THREE.MeshStandardMaterial, team: number) {
   const key = `${src.uuid}:${team}`;
   let m = teamMaterials.get(key);
@@ -132,10 +117,10 @@ function outfitMaterial(src: THREE.MeshStandardMaterial, team: number) {
             "#include <map_fragment>",
             `#include <map_fragment>
             {
+              // The olive cloth is nearly grey, so the mask alone decides what is cloth.
               float l = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
-              float sat = max(max(diffuseColor.r, diffuseColor.g), diffuseColor.b) - min(min(diffuseColor.r, diffuseColor.g), diffuseColor.b);
-              float cloth = smoothstep(0.02, 0.09, sat) * (1.0 - smoothstep(0.35, 0.6, l));
-              diffuseColor.rgb = mix(diffuseColor.rgb, uTeam * (l * 2.2 + 0.03), cloth * 0.72);
+              float cloth = smoothstep(0.7, 0.95, diffuseColor.a);
+              diffuseColor.rgb = mix(diffuseColor.rgb, uTeam * (l * 3.0 + 0.04), cloth * 0.6);
             }`,
           );
       };
@@ -155,7 +140,7 @@ export interface CharacterInstance {
 }
 
 /** Deep-clones a character (skeleton included) and applies the team outfit. */
-export function instantiateCharacter(template: CharacterTemplate, team: number, beard: boolean): CharacterInstance {
+export function instantiateCharacter(template: CharacterTemplate, team: number): CharacterInstance {
   const root = cloneSkinned(template.scene) as THREE.Group;
   const bones = new Map<string, THREE.Bone>();
   const meshes: THREE.SkinnedMesh[] = [];
@@ -164,10 +149,8 @@ export function instantiateCharacter(template: CharacterTemplate, team: number, 
     const m = o as THREE.SkinnedMesh;
     if (m.isSkinnedMesh) {
       meshes.push(m);
-      if (m.name === "Beard") m.visible = beard;
       const mat = m.material as THREE.MeshStandardMaterial;
-      if (/Ranger/i.test(mat.name)) m.material = outfitMaterial(mat, team);
-      else if (m.name === "Beard" || m.name === "Eyebrows") m.material = facialHairMaterial(mat);
+      if (/^Soldier_/.test(mat.name)) m.material = outfitMaterial(mat, team);
     }
   });
   shareSkeleton(template, meshes);
@@ -188,9 +171,8 @@ function skeletonOffset(base: THREE.SkinnedMesh, mesh: THREE.SkinnedMesh) {
 }
 
 /**
- * Outfit pieces sharing a material become one skinned mesh: same look, one draw call instead of
- * up to seven per character. First-person arm pieces and the optional beard stay separate so
- * they can still be shown or hidden on their own.
+ * Pieces sharing a material become one skinned mesh: two draw calls per soldier instead of 24.
+ * The first-person arms stay apart from the body so they can be shown on their own.
  */
 function mergeParts(scene: THREE.Object3D) {
   const meshes: THREE.SkinnedMesh[] = [];
@@ -206,7 +188,7 @@ function mergeParts(scene: THREE.Object3D) {
     if (!offset || Array.isArray(mesh.material) || !mesh.bindMatrix.equals(base.bindMatrix) || !mesh.matrixWorld.equals(base.matrixWorld)) continue;
     // The loader clones a material for parts with vertex colors; those copies still merge.
     const material = mesh.material as THREE.MeshStandardMaterial;
-    const key = `${material.name}|${material.map?.uuid}|${/Arms/.test(mesh.name) ? "arms" : mesh.name === "Beard" ? "beard" : ""}`;
+    const key = `${material.name}|${material.map?.uuid}|${/Arms/.test(mesh.name) ? "arms" : ""}`;
     let g = groups.get(key);
     if (!g) groups.set(key, g = []);
     g.push({ mesh, offset });

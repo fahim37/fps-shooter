@@ -42,7 +42,7 @@ async function main() {
       await ready();
       await page.waitForTimeout(800);
       const rows = await measure(page);
-      rows.forEach((row, i) => console.log(`tpp pitch=${pitch} ${WEAPONS[Math.floor(i / 2)]} ${i % 2 ? "female" : "male"}`, JSON.stringify(row)));
+      rows.forEach((row, i) => console.log(`tpp pitch=${pitch} ${WEAPONS[Math.floor(i / 2)]} team ${i % 2 + 1}`, JSON.stringify(row)));
     }
     for (const w of WEAPONS) for (const ads of [0, 1]) {
       await page.goto(`${base}/dev/rig?fpp=1&weapon=${w}&ads=${ads}`);

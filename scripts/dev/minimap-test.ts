@@ -89,7 +89,7 @@ async function main() {
     });
     assert.ok(materials.find((remote) => remote.name === "Enemy Scout")!.materials.some((material) => material.key.includes("readability-v2")));
     assert.ok(materials.find((remote) => remote.name === "Ally Scout")!.materials.every((material) => !material.key.includes("readability")));
-    assert.ok(materials.every((remote) => remote.materials.filter((material) => !/Ranger/i.test(material.name)).every((material) => !material.key.includes("readability"))));
+    assert.ok(materials.every((remote) => remote.materials.filter((material) => !/^Soldier_/.test(material.name)).every((material) => !material.key.includes("readability"))));
     await mkdir("out/qa", { recursive: true });
     await page.screenshot({ path: "out/qa/minimap-desktop.png" });
     for (const [width, height] of [[844, 390], [640, 360], [568, 320]]) {

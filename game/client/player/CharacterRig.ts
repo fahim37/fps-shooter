@@ -162,7 +162,7 @@ const RELOAD_ROLL = -0.6;
 function headRef(template: CharacterTemplate) {
   let head = headCache.get(template);
   if (head) return head;
-  const inst = instantiateCharacter(template, 0, false);
+  const inst = instantiateCharacter(template, 0);
   const mixer = new THREE.AnimationMixer(inst.root);
   mixer.clipAction(template.full.get("aimNeutral")!).play();
   mixer.update(0);
@@ -227,12 +227,11 @@ export class CharacterRig {
     private template: CharacterTemplate,
     private weaponTemplates: WeaponTemplates,
     team: number,
-    beard: boolean,
     readonly mode: RigMode,
     /** The player's own rig, seen up close: it carries the detailed gun. */
     private near = false,
   ) {
-    this.inst = instantiateCharacter(template, team, beard);
+    this.inst = instantiateCharacter(template, team);
     this.animationPose = [...this.inst.bones.values()].filter((bone) => PROCEDURAL_BONES.includes(bone.name))
       .map((bone) => ({ bone, quaternion: bone.quaternion.clone() }));
     this.head = headRef(template);

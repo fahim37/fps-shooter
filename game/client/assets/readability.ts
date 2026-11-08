@@ -30,8 +30,8 @@ export function setEnemyReadability(meshes: THREE.Mesh[], enabled: boolean) {
   for (const mesh of meshes) {
     let source = originals.get(mesh);
     if (!source) { source = mesh.material; originals.set(mesh, source); }
-    // Skin, eyes and hair retain their original lighting and color.
-    const outfit = (material: THREE.Material) => /Ranger/i.test(material.name) ? readableMaterial(material) : material;
+    // Only the soldier's own materials (body and arms atlases); anything else keeps its lighting.
+    const outfit = (material: THREE.Material) => /^Soldier_/.test(material.name) ? readableMaterial(material) : material;
     mesh.material = !enabled ? source : Array.isArray(source) ? source.map(outfit) : outfit(source);
   }
 }

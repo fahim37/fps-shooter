@@ -4,7 +4,7 @@ import { Suspense, use, useEffect, useMemo } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Environment } from "@react-three/drei";
 import * as THREE from "three";
-import { loadCharacters } from "../assets/characters";
+import { loadCharacter } from "../assets/characters";
 import { loadWeapons } from "../assets/weapons";
 import { CharacterRig, type RigState } from "../player/CharacterRig";
 import { HitShapes, SHAPES } from "../player/hitShapes";
@@ -16,13 +16,14 @@ import type { OpticId } from "../../shared/optics";
 const WEAPONS: WeaponId[] = ["ar", "smg", "shotgun", "sniper", "pistol"];
 
 function Rigs({ pitch, speed, reload, ads, shot, draw, solo, move, weapon }: { pitch: number; speed: number; reload: number; ads: number; shot: number; draw: number; solo: boolean; move: number; weapon: WeaponId }) {
-  const [male, female] = use(loadCharacters());
+  const template = use(loadCharacter());
   const weapons = use(loadWeapons());
-  const rigs = useMemo(() => (solo ? [weapon] : WEAPONS).flatMap((w) => (solo ? [male] : [male, female]).map((template, gender) => {
-    const r = new CharacterRig(template, weapons, gender + 1, gender === 0, "tpp");
+  // Two per gun, one of each team, side by side.
+  const rigs = useMemo(() => (solo ? [weapon] : WEAPONS).flatMap((w) => (solo ? [1] : [1, 2]).map((team) => {
+    const r = new CharacterRig(template, weapons, team, "tpp");
     r.setWeapon(w);
     return r;
-  })), [male, female, weapons, solo, weapon]);
+  })), [template, weapons, solo, weapon]);
   const scene = useThree((s) => s.scene);
   useEffect(() => {
     (window as unknown as { __rigs: CharacterRig[]; THREE: typeof THREE }).__rigs = rigs;
@@ -47,13 +48,13 @@ function Rigs({ pitch, speed, reload, ads, shot, draw, solo, move, weapon }: { p
 const FPP_EYE = new THREE.Vector3(0, 1.62, 0);
 
 function FppRig({ weapon, optic, ads, pitch, reload, orbit, shot, draw, raise }: { weapon: WeaponId; optic?: OpticId; ads: number; pitch: number; reload: number; orbit: boolean; shot: number; draw: number; raise?: "up" | "down" }) {
-  const [male] = use(loadCharacters());
+  const template = use(loadCharacter());
   const weapons = use(loadWeapons());
   const rig = useMemo(() => {
-    const r = new CharacterRig(male, weapons, 1, false, "fpp", true);
+    const r = new CharacterRig(template, weapons, 1, "fpp", true);
     r.setWeapon(weapon);
     return r;
-  }, [male, weapons, weapon]);
+  }, [template, weapons, weapon]);
   const { scene, camera } = useThree();
   useEffect(() => {
     (window as unknown as { __rigs: CharacterRig[]; THREE: typeof THREE }).__rigs = [rig];

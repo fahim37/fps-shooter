@@ -19,8 +19,6 @@ async function main() {
     await host.goto(url);
     await host.getByText("SERVER ONLINE", { exact: true }).waitFor({ timeout: 60000 });
     await host.locator('[data-stage-status="ready"]').waitFor({ timeout: 60000 });
-    await host.getByRole("radio", { name: "Female Operator", exact: true }).click();
-    await host.locator('[data-stage-status="ready"]').waitFor();
     await host.getByRole("button", { name: "Dance", exact: true }).click();
     await host.waitForTimeout(900);
     await host.screenshot({ path: "out/qa/lobby-desktop.png", fullPage: true });
@@ -43,7 +41,7 @@ async function main() {
     await guest.getByRole("button", { name: "READY UP", exact: true }).waitFor();
     await host.locator('[data-stage-status="ready"]').waitFor();
     await host.getByRole("button", { name: "Dance", exact: true }).click();
-    await guest.getByText("Female Operator · Dance", { exact: true }).waitFor();
+    await guest.getByText("Operator · Dance", { exact: true }).waitFor();
     await guest.getByRole("button", { name: "Power stance", exact: true }).click();
     await host.getByText("Male Operator · Power stance", { exact: true }).waitFor();
     await host.getByRole("button", { name: "CANCEL READY", exact: true }).waitFor();

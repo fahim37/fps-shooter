@@ -49,18 +49,6 @@ function Choices<T extends string | number>({ label, hint, value, options, onCha
   </div>;
 }
 
-function CharacterPicker({ value, onChange }: { value: number; onChange: (char: number) => void }) {
-  return <div className="character-picker" role="radiogroup" aria-label="Character">
-    {(["Male", "Female"] as const).map((label, char) => <button key={char} type="button" role="radio" aria-checked={value === char} aria-label={`${label} Operator`} onClick={() => onChange(char)}>
-      <svg viewBox="0 0 48 48" aria-hidden="true">
-        {char === 1 && <path className="hair" d="M13.5 22c-1-9 4-15.5 10.5-15.5S35.5 13 34.5 22c-.3 5.5 1.5 9 4 11.5-5 1.2-9.5-.3-11.5-3.5h-5c-2 3.2-6.5 4.7-11.5 3.5 2.5-2.5 4.3-6 4-11.5z" />}
-        <path d="M7 47c1-10.5 7.5-15.5 17-15.5S40 36.5 41 47z" /><circle cx="24" cy="19" r="9" />
-      </svg>
-      <strong>{label}</strong><small>OPERATOR</small>
-    </button>)}
-  </div>;
-}
-
 export default function Shooter() {
   const [room, setRoom] = useState<GameRoom | null>(null);
   const [rooms, setRooms] = useState<PublicRoom[]>([]);
@@ -79,7 +67,6 @@ export default function Shooter() {
   const [mode, setMode] = useState<GameMode>("tdm");
   const [map, setMapState] = useState<MapId>(savedMap);
   const setMap = (next: MapId) => { setMapState(next); try { window.localStorage.setItem(MAP_KEY, next); } catch { /* not persisted */ } };
-  const [character, setCharacter] = useState(0);
   const [joinTeam, setJoinTeam] = useState<0 | 1 | 2>(0);
   const [emote, setEmote] = useState<ShowoffId>("idle");
   const [privateRoom, setPrivateRoom] = useState(true);
@@ -128,7 +115,7 @@ export default function Shooter() {
     setError(""); audio.unlock();
     const playerName = name.trim().slice(0, NAME_MAX) || randomName();
     useSettings.getState().set({ name: playerName });
-    const opts: JoinOptions = { name: playerName, char: character, mode, ...(kind === "code" ? { team: joinTeam } : { map }) };
+    const opts: JoinOptions = { name: playerName, char: 0, mode, ...(kind === "code" ? { team: joinTeam } : { map }) };
     try {
       const joined = await (kind === "code" ? joinByCode(parseRoomCode(selectedCode), opts) : kind === "quick" ? quickPlay(opts) : createRoom({
         ...opts, mode,
@@ -170,12 +157,11 @@ export default function Shooter() {
       <div className="operator-intro"><span className="eyebrow">SQUAD UP. LOCK IN. STRIKE FIRST.</span><h1>Hold the <em>line</em><span className="title-dot">.</span></h1><p>Four fronts: a village, a downtown block, a freight yard and an outpost. Two squads, one scoreboard.</p></div>
       <fieldset className="operator-fields" disabled={!!busy}>
         <label>CALLSIGN<span className="callsign"><input value={name} onChange={(e) => setName(e.target.value)} maxLength={NAME_MAX} autoComplete="nickname" /><button type="button" aria-label="Random callsign" title="Random callsign" onClick={() => setName(randomName())}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="3.5" /><circle cx="8.5" cy="8.5" r="1.4" /><circle cx="15.5" cy="8.5" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle cx="8.5" cy="15.5" r="1.4" /><circle cx="15.5" cy="15.5" r="1.4" /></svg></button></span></label>
-        <div className="character-field"><span className="field-caption">CHARACTER</span><CharacterPicker value={character} onChange={setCharacter} /></div>
       </fieldset>
       <ol className="lobby-steps"><li><b>01</b>Pick a front</li><li><b>02</b>Squad up with friends or bots</li><li><b>03</b>Strike first</li></ol>
     </section>
 
-    <div className="lobby-stage"><CharacterShowcase preview players={[{ id: "preview", name: name.trim() || "Operator", char: character, team: 0, emote }]} me="preview" onShowoff={setEmote} /></div>
+    <div className="lobby-stage"><CharacterShowcase preview players={[{ id: "preview", name: name.trim() || "Operator", char: 0, team: 0, emote }]} me="preview" onShowoff={setEmote} /></div>
 
     <section className="lobby-panel" role="tabpanel" id="play-panel" aria-labelledby={`tab-${tab}`}>
       <div className="panel-body" key={tab}>

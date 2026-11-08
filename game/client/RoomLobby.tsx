@@ -133,7 +133,7 @@ export function ConnectedRoom({ room, onLeave }: { room: GameRoom; onLeave: () =
             setDraggedPlayer(null); setDropTeam(0);
           }}>
           <span className="player-avatar" aria-hidden="true">{p ? p.name.slice(0, 1).toUpperCase() : "+"}{p && p.id === s.host && <svg className="host-crown" viewBox="0 0 24 24"><path d="M3 19 2 7l6 4 4-7 4 7 6-4-1 12z" /></svg>}</span>
-          <div><strong>{p ? `${p.name}${p.id === room.sessionId ? " (you)" : ""}` : "Open slot"}</strong><small>{p ? <>{p.id === s.host && <b className="host-label">Host · </b>}{p.char === 1 ? "Female" : "Male"} Operator</> : "Invite a friend"}</small></div>
+          <div><strong>{p ? `${p.name}${p.id === room.sessionId ? " (you)" : ""}` : "Open slot"}</strong><small>{p ? <>{p.id === s.host && <b className="host-label">Host · </b>}Operator</> : "Invite a friend"}</small></div>
           {p && <span className={`ready-badge ${p.ready && p.connected ? "is-ready" : ""}`}>{!p.connected ? "Reconnecting" : p.ready ? "Ready" : "Not ready"}</span>}
           {p && (isHost || p.id === room.sessionId) && <button type="button" className="player-controls-button" disabled={disabled} onClick={() => setSelectedPlayer(p.id)} aria-label={p.id === room.sessionId ? "Edit your player" : `Manage ${p.name}`} title={p.id === room.sessionId ? "Edit name and player controls" : "Manage player"}>⋯</button>}
         </div>;

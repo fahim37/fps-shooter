@@ -5,7 +5,7 @@ import { setEnemyReadability } from "./readability";
 describe("Low enemy visibility", () => {
   it("reuses materials, preserves team shaders and depth testing, and restores the original", () => {
     const original = new THREE.MeshStandardMaterial({ color: "#36502e" });
-    original.name = "Ranger_Outfit";
+    original.name = "Soldier_Body";
     const compile = vi.fn((shader: { fragmentShader: string }) => { shader.fragmentShader = `// team tint\n${shader.fragmentShader}`; });
     original.onBeforeCompile = compile;
     original.customProgramCacheKey = () => "team2";
@@ -27,7 +27,7 @@ describe("Low enemy visibility", () => {
     setEnemyReadability([a], true);
     expect(a.material).toBe(variant);
   });
-  it("keeps skin, hair and eyes on their original materials", () => {
+  it("leaves materials that are not the soldier's alone", () => {
     const meshes = ["Skin", "Hair", "Eyes"].map((name) => {
       const material = new THREE.MeshStandardMaterial();
       material.name = name;

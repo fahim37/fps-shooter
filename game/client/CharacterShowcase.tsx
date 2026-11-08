@@ -27,7 +27,7 @@ export function CharacterShowcase({ players, me, onShowoff, disabled = false, pr
   const watermark = watermarkLines((preview ? lineup[0]?.name : title) ?? "");
   const label = (p: ShowcasePlayer, mode: TagMode) => <>
     <strong data-me={!preview && p.id === me ? "" : undefined} title={p.name}><span>{p.name}</span>{!preview && p.id === me && <em>{" · You"}</em>}</strong>
-    {mode === "full" && <small>{p.char === 1 ? "Female Operator" : "Male Operator"} · {SHOWOFFS.find((e) => e.id === p.emote)?.label ?? "At ease"}</small>}
+    {mode === "full" && <small>Operator · {SHOWOFFS.find((e) => e.id === p.emote)?.label ?? "At ease"}</small>}
   </>;
   return <section className={styles.showcase} data-lineup-size={lineup.length} aria-label={preview ? "Character preview" : "Lobby character stage"}>
     {watermark[0] && <span className={styles.watermark} style={{ "--chars": Math.max(...watermark.map((line) => line.length)) } as CSSProperties} aria-hidden="true">{watermark.map((line) => <span key={line}>{line}</span>)}</span>}

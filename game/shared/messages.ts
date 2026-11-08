@@ -9,7 +9,7 @@ export interface JoinOptions {
   mode?: GameMode;
   /** Quick play matches rooms on this map. */
   map?: MapId;
-  /** 0 = male, 1 = female character. */
+  /** Kept for older clients: there is one character now, so this is always 0. */
   char: number;
   /** Preferred team when joining TDM; omitted/0 assigns an available team. */
   team?: 0 | 1 | 2;

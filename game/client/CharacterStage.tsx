@@ -6,8 +6,8 @@ import { instantiateCharacter, loadLobbyCharacter, type CharacterInstance } from
 import { isShowoff, type ShowcasePlayer } from "../shared/showcase";
 import styles from "./CharacterShowcase.module.css";
 
-interface Actor { instance: CharacterInstance; mixer: THREE.AnimationMixer; action?: THREE.AnimationAction; emote: string; char: number; team: number }
-interface Member { id: string; char: number; team: number }
+interface Actor { instance: CharacterInstance; mixer: THREE.AnimationMixer; action?: THREE.AnimationAction; emote: string; team: number }
+interface Member { id: string; team: number }
 interface Spot { id: string; team: number; x: number; y: number; z: number; row: 0 | 1 }
 /** How much a name tag may show: callsign and details, callsign only, or callsign on alternating lines. */
 export type TagMode = "full" | "name" | "stagger";
@@ -266,7 +266,7 @@ export default function CharacterStage({ players, paused, label }: {
       lineup = formation(members);
       for (const [id, actor] of actors) {
         const member = members.find((m) => m.id === id);
-        if (!member || member.char !== actor.char || member.team !== actor.team) { releaseActor(actor); actors.delete(id); }
+        if (!member || member.team !== actor.team) { releaseActor(actor); actors.delete(id); }
       }
       const missing = members.filter((m) => !actors.has(m.id));
       arrange();
@@ -274,11 +274,10 @@ export default function CharacterStage({ players, paused, label }: {
       if (!missing.length) { setStatus(""); return; }
       if (!actors.size) setStatus("Loading characters…");
       try {
-        const templates = await Promise.all(missing.map((m) => loadLobbyCharacter(m.char)));
+        const template = await loadLobbyCharacter();
         if (disposed || current !== generation) return;
-        templates.forEach((template, i) => {
-          const member = missing[i];
-          const instance = instantiateCharacter(template, member.team, member.char === 0);
+        missing.forEach((member, i) => {
+          const instance = instantiateCharacter(template, member.team);
           scene.add(instance.root);
           const mixer = new THREE.AnimationMixer(instance.root);
           const requested = latest.current.players.find((p) => p.id === member.id)?.emote;
@@ -287,7 +286,7 @@ export default function CharacterStage({ players, paused, label }: {
           // Stagger the loops so a big lineup does not move in lockstep.
           action.time = (i * 0.37) % Math.max(0.01, action.getClip().duration);
           mixer.update(0);
-          actors.set(member.id, { instance, mixer, action, emote, char: member.char, team: member.team });
+          actors.set(member.id, { instance, mixer, action, emote, team: member.team });
         });
         arrange();
         setStatus("");

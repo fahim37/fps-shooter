@@ -27,7 +27,6 @@ export class RemotePlayer {
   rig: CharacterRig | null = null;
   private snaps: Snap[] = [];
   team = -1;
-  char = -1;
   /** Outfit tint as the local player sees this one: 1 ally (blue), 2 enemy (red). */
   private tint = -1;
   weapon: WeaponId = "ar";
@@ -77,12 +76,11 @@ export class RemotePlayer {
     if (this.snaps.length > 30) this.snaps.shift();
   }
 
-  ensureRig(templates: [CharacterTemplate, CharacterTemplate], weapons: WeaponTemplates, tint: number, char: number, scene: THREE.Object3D) {
-    if (this.rig && this.tint === tint && this.char === char) return;
+  ensureRig(template: CharacterTemplate, weapons: WeaponTemplates, tint: number, scene: THREE.Object3D) {
+    if (this.rig && this.tint === tint) return;
     this.rig?.dispose();
     this.tint = tint;
-    this.char = char;
-    this.rig = new CharacterRig(templates[char === 1 ? 1 : 0], weapons, tint, char === 0 && hash(this.id) % 2 === 0, "tpp");
+    this.rig = new CharacterRig(template, weapons, tint, "tpp");
     this.hitShapes = null;
     // Not posed until the next `animate`: a ray meanwhile would meet the bind pose at the origin.
     this.posed = false;
@@ -324,10 +322,4 @@ const _prev = new THREE.Vector3();
 
 function wrap(a: number) {
   return Math.atan2(Math.sin(a), Math.cos(a));
-}
-
-function hash(s: string) {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-  return Math.abs(h);
 }

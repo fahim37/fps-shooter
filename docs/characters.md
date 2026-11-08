@@ -1,22 +1,22 @@
 # Characters and lobby showoffs
 
-The two playable Rangers use Quaternius Universal Base Characters (male/female faces, eyes and brows; optional male beard; beard and brows are tinted dark brown) with the existing Modular Character Outfits Ranger clothing. Both use the same animation skeleton as Universal Animation Library. Gameplay keeps its existing layered locomotion, aiming and weapon IK.
+Everyone plays the same character: "Soldier Full Tactical Gear (LowPolyGameReady)" by DanlyVostok (Sketchfab, posted as free to use). Its Character Creator rig is replaced by the Universal Animation Library skeleton the game already animates (the old Rangers' skeleton, kept in `game/shared/generated/skeleton.json`), so locomotion, aiming, weapon IK, grips and hitboxes are unchanged. Teams are told apart by a tint on the jacket, trousers and helmet cover. First person shows the soldier's own sleeves and gloves.
 
-The home screen previews the selected body. Waiting rooms replicate each player's showoff to everyone, including late joiners. At ease, Dance, Talk and Spell stance loop until changed or the match starts. Showoffs never affect readiness, movement, damage or hitboxes. The server accepts only these four IDs in the waiting phase, at most once every 750 ms.
+The home screen previews the soldier. Waiting rooms replicate each player's showoff to everyone, including late joiners. At ease, Dance, Talk and Spell stance loop until changed or the match starts. Showoffs never affect readiness, movement, damage or hitboxes. The server accepts only these four IDs in the waiting phase, at most once every 750 ms.
 
 ## Runtime budget
 
 | Asset | Previous | Optimized |
 | --- | ---: | ---: |
-| Male Ranger | 2,562,260 bytes | 1,245,156 bytes |
-| Female Ranger | 2,593,044 bytes | 1,273,644 bytes |
+| Soldier, in matches (28,000 triangles, 2 materials) | 84,158 triangles, 12 materials, 31 4K maps | 1,484,728 bytes |
+| Soldier, lobby (full detail, 4K body atlas) | — | 3,049,352 bytes |
 | Lobby animation set | — | 87,284 bytes |
 
-The combined character download is 51% smaller. These are file-size measurements, not an FPS benchmark.
+The lobby loads only the full-detail soldier; matches load only the lighter one. These are file-size measurements, not an FPS benchmark.
 
 - One lobby renderer shows every human in the room together (up to 20), capped at 30 FPS and 1.25 device pixel ratio, rendering only when something moves. Up to six stand in one row; larger rooms zig-zag across a front row and a raised back row, Blue on the left and Red on the right. The camera fits the whole formation and its name tags at any aspect ratio, and tags shorten (name only, then alternating lines) as slots narrow. Joins and leaves add or remove single actors instead of rebuilding the scene.
 - No world, physics, weapons, HDR environment, postprocessing or shadow maps loaded by the preview.
-- Only the visible character body and `lobby-anims.glb` are requested. Geometry/textures are cached and shared with gameplay; skeletons and mixers are independent.
+- Only `soldier_hq.glb` and `lobby-anims.glb` are requested; skeletons and mixers are independent per actor.
 - Offscreen and hidden-tab rendering pauses. Reduced-motion preferences freeze animations; Pause motion and Hide preview are also available.
 - Preview load/WebGL failures leave room controls usable, with a retry button.
 - 1024px WebP textures, welded geometry, Meshopt compression, and conservative accessory simplification (55% target, 0.1% mesh-radius error limit, borders locked). Faces, hands and first-person arms are not simplified.
@@ -24,15 +24,9 @@ The combined character download is 51% smaller. These are file-size measurements
 
 ## Rebuild
 
-Existing ignored `assets-raw` packs remain the default. Override the two supplied packs in PowerShell:
+Put `Mark_1_Olive_IdlePose.fbx` (from the download's `source/Mark_1.zip`) and the `textures/` folder at `assets-raw/soldier`, then run `npx tsx scripts/import-assets.ts soldier`. It writes `public/models/soldier.glb` (simplified part by part: the 26,500-triangle helmet keeps a tenth) and `public/models/soldier_hq.glb` (no simplifying). Each packs the 12 materials into a body atlas and an arms atlas (albedo with the team-tint mask in alpha, normal, occlusion/roughness/metal).
 
-```powershell
-$env:CHARACTER_PACK = 'C:\Users\bdcalling\Downloads\Universal Base Characters[Standard]\Universal Base Characters[Standard]'
-$env:ANIMATION_PACK = 'C:\Users\bdcalling\Downloads\Universal Animation Library[Standard]\Universal Animation Library[Standard]'
-npx tsx scripts/import-assets.ts characters
-```
-
-The existing Ranger outfit and Universal Animation Library 2 packs in `assets-raw` are also needed to rebuild the established outfits and extra combat clips. The importer fails if a required animation is missing. Both supplied packs identify their license as CC0; retained license text is in `docs/licenses`.
+The `characters` stage now builds only the animation sets, from the Universal Animation Library packs (CC0; license text in `docs/licenses`). The importer fails if a required animation is missing.
 
 ## Verify
 

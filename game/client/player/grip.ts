@@ -87,7 +87,8 @@ const GRIPS: Record<WeaponId, { right: Partial<Record<RightPose, HandGrip>> & { 
       grip: { ...pistolGrip([0, -0.0013, 0.0105], [0.0195, 0.058, 0.029], -0.5), thumb: [0.1, 0.15, -1] },
     },
     left: {
-      support: cradle([0, 0.097, -0.3], [0.029, 0.03, 0.08], "gun", 0.035),
+      // The handguard measured off the mesh: ±19 mm wide, 68-125 mm up. A wider box leaves the palm off its side.
+      support: cradle([0, 0.0965, -0.3], [0.019, 0.0285, 0.08], "gun", 0.035),
       mag: magGrip([0, -0.022, -0.124], [0.0134, 0.056, 0.03], 0.18),
       // From the left, so the arm stays out of the view: fingers over the T-handle at the rear.
       charge: {
@@ -228,7 +229,7 @@ function frameOrigin(weapon: WeaponId, frame: HandFrame): V3 {
 
 function solveGrips(template: CharacterTemplate, weapon: WeaponId): GripPose {
   // Solve on a bind-pose copy whose hands are detached, so "world" here is weapon space.
-  const inst = instantiateCharacter(template, 0, false);
+  const inst = instantiateCharacter(template, 0);
   inst.root.updateMatrixWorld(true);
   const spec = GRIPS[weapon];
   const fingers = { r: [] as string[], l: [] as string[] };
