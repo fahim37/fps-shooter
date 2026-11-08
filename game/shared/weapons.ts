@@ -43,13 +43,13 @@ const W = (d: WeaponDef) => d;
 
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
   ar: W({
-    id: "ar", name: "STM-556", slot: 0, auto: true, rpm: 600, damage: 26, headMult: 1.8, limbMult: 0.85, pellets: 1,
+    id: "ar", name: "STM-556", slot: 0, auto: true, rpm: 600, damage: 26, headMult: 3, limbMult: 0.85, pellets: 1,
     falloffStart: 30, falloffEnd: 65, minMult: 0.72, range: 200, mag: 35, reserve: 120, reloadMs: 1900, equipMs: 450,
     spreadHip: 1.7, spreadAds: 0.12, spreadMove: 1.1, spreadAir: 5, recoilUp: 0.4, recoilSide: 0.12,
     adsFov: 55, adsMs: 220, moveMult: 0.95,
   }),
   smg: W({
-    id: "smg", name: "Honey Badger", slot: 0, auto: true, rpm: 880, damage: 19, headMult: 1.6, limbMult: 0.9, pellets: 1,
+    id: "smg", name: "Honey Badger", slot: 0, auto: true, rpm: 880, damage: 19, headMult: 2.8, limbMult: 0.9, pellets: 1,
     falloffStart: 14, falloffEnd: 35, minMult: 0.6, range: 150, mag: 40, reserve: 160, reloadMs: 1650, equipMs: 350,
     spreadHip: 1.6, spreadAds: 0.22, spreadMove: 0.9, spreadAir: 3.5, recoilUp: 0.26, recoilSide: 0.15,
     adsFov: 62, adsMs: 170, moveMult: 1.05,
