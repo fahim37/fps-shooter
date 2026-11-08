@@ -19,18 +19,19 @@ export interface MapInfo {
   credit?: string;
 }
 
+/** In map-picker order: left to right, top to bottom. */
 export const MAPS: Record<MapId, MapInfo> = {
-  village: { id: "village", name: "Village", tagline: "Timber houses, a market plaza and forest edges.", style: "Open lanes · Multi-story houses" },
   downtown: { id: "downtown", name: "Downtown", tagline: "City streets, tight alleys and rooftop shops.", style: "Street fights · Close quarters" },
-  industrial: { id: "industrial", name: "Freight Yard", tagline: "Trailer corridors, a walk-through depot and workshop alleys.", style: "Three lanes · Warehouse fights" },
+  desert: { id: "desert", name: "Desert City", tagline: "Sun-baked streets, raised plazas and two sites between walled bases.", style: "Two sites · Mid-range lanes" },
   outpost: {
     id: "outpost", name: "Outpost", tagline: "A walled compound: a barracks and twin watchtowers between two raised bases.", style: "Compact 6v6 · Close quarters",
     credit: "\"LOWPOLY | FPS | TDM | GAME | MAP\" by ResoForge · CC BY 4.0",
   },
-  desert: { id: "desert", name: "Desert City", tagline: "Sun-baked streets, raised plazas and two sites between walled bases.", style: "Two sites · Mid-range lanes" },
+  industrial: { id: "industrial", name: "Freight Yard", tagline: "Trailer corridors, a walk-through depot and workshop alleys.", style: "Three lanes · Warehouse fights" },
+  street: { id: "street", name: "Boulevard", tagline: "A ceremonial avenue: a sunken road between stepped terraces, from a palace plaza to a sealed gate.", style: "Long avenue · Terraced flanks" },
+  village: { id: "village", name: "Village", tagline: "Timber houses, a market plaza and forest edges.", style: "Open lanes · Multi-story houses" },
   arena: { id: "arena", name: "Chiba Arena", tagline: "A stadium skate course: ramps, decks and rails ringed by crowd barriers.", style: "Vertical center · Flanking lanes" },
   blockade: { id: "blockade", name: "Blockade", tagline: "A barricaded depot: container rows, truck yards and a scaffolded hall between two watchtowers.", style: "Long lanes · Container cover", credit: "\"LOWPOLY | MAP | ASSET\" by ResoForge · CC BY 4.0 · modified" },
-  street: { id: "street", name: "Boulevard", tagline: "A ceremonial avenue: a sunken road between stepped terraces, from a palace plaza to a sealed gate.", style: "Long avenue · Terraced flanks" },
 };
 
 export const MAP_IDS = Object.keys(MAPS) as MapId[];

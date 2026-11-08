@@ -1,15 +1,15 @@
 /* Picture cards with the name laid over the bottom, two in a row. */
 .picker { min-width: 0; }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.card { position: relative; display: block; min-width: 0; padding: 0; overflow: hidden; border: 1px solid #ffffff24; background: #1b241c; color: #eef2e4; text-align: left; cursor: pointer; transition: border-color .15s; }
-.card:hover:not(:disabled) { border-color: #d9ed7970; }
+.card { position: relative; display: block; min-width: 0; padding: 0; overflow: hidden; border: 1px solid #ffffff24; background: #1c2023; color: #e5ebf1; text-align: left; cursor: pointer; transition: border-color .15s; }
+.card:hover:not(:disabled) { border-color: #d8d07c70; }
 .card:disabled { cursor: default; opacity: .45; }
-.card.selected, .card.selected:disabled { border-color: var(--accent); opacity: 1; box-shadow: 0 0 0 1px var(--accent), 0 0 18px #d9ed7930; }
-.preview { display: block; aspect-ratio: 16 / 7; background: #1b241c center / cover no-repeat; filter: saturate(.7) brightness(.75); }
+.card.selected, .card.selected:disabled { border-color: var(--accent); opacity: 1; box-shadow: 0 0 0 1px var(--accent), 0 0 18px #d8d07c30; }
+.preview { display: block; aspect-ratio: 16 / 7; background: #1c2023 center / cover no-repeat; filter: saturate(.7) brightness(.75); }
 .selected .preview { filter: none; }
-.name { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 10px 7px; background: linear-gradient(transparent, #0b110dee 70%); font-size: 14px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.name { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 10px 7px; background: linear-gradient(transparent, #0b0e11ee 70%); font-size: 14px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .selected .name { color: var(--accent); }
-.credit { display: block; margin-top: 5px; font-size: 8px; color: #8c9682; letter-spacing: .02em; }
+.credit { display: block; margin-top: 5px; font-size: 8px; color: #848d95; letter-spacing: .02em; }
 
 /* Thumbnails for the room bar: the room's own rules set how many to a row. */
 .compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }

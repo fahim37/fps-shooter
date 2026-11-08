@@ -19,7 +19,7 @@ const BACK_Z = -0.95;
 const RISER = 0.28;
 const HEADING = 40;
 const TAG_HEIGHT: Record<TagMode, number> = { full: 36, name: 16, stagger: 30 };
-const PAD_COLORS = ["#c4dc98", "#66b8ff", "#ff827c"];
+const PAD_COLORS = ["#ceca92", "#66b8ff", "#ff827c"];
 
 /**
  * Up to six stand in one row. Larger rooms zig-zag across a front row and a raised back row,
@@ -86,11 +86,14 @@ export default function CharacterStage({ players, paused, label }: {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.3;
     container.appendChild(renderer.domElement);
-    scene.add(new THREE.HemisphereLight(0xd8edff, 0x5b6446, 2.6));
-    const key = new THREE.DirectionalLight(0xffead0, 3.5);
+    // Olive kit on a slate stage: neutral bounce (no green from below) and two rims to cut the outline out.
+    scene.add(new THREE.HemisphereLight(0xdfeaf5, 0x4a4844, 2.4));
+    const key = new THREE.DirectionalLight(0xfff0dc, 3.6);
     key.position.set(2, 4, 5); scene.add(key);
-    const rim = new THREE.DirectionalLight(0xb5d9ff, 2);
-    rim.position.set(-3, 2, -2); scene.add(rim);
+    const rim = new THREE.DirectionalLight(0xb9dcff, 3.4);
+    rim.position.set(-3, 2.5, -2.5); scene.add(rim);
+    const kicker = new THREE.DirectionalLight(0xfff2e0, 2.2);
+    kicker.position.set(3, 2, -3); scene.add(kicker);
 
     // Pads and the back-row riser share one geometry each, scaled per slot.
     const padGeometry = new THREE.CircleGeometry(1, 32);
@@ -98,7 +101,7 @@ export default function CharacterStage({ players, paused, label }: {
     const pads = new THREE.Group();
     scene.add(pads);
     const riserGeometry = new THREE.BoxGeometry(1, 1, 1);
-    const riserMaterial = new THREE.MeshLambertMaterial({ color: "#2a3a2d" });
+    const riserMaterial = new THREE.MeshLambertMaterial({ color: "#2a3540" });
     const riser = new THREE.Mesh(riserGeometry, riserMaterial);
     riser.visible = false; scene.add(riser);
 

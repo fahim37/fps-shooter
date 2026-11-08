@@ -42,6 +42,8 @@ export interface Settings {
   adsSensitivity: number;
   fov: number;
   volume: number;
+  /** Menu theme level, on top of the master volume (match sound is unaffected). */
+  musicVolume: number;
   invertY: boolean;
   thirdPerson: boolean;
   /** Q/E peek latches on a tap instead of only while held. */
@@ -66,6 +68,13 @@ const QUALITY_DEFAULTS = 2;
  */
 const LEAN_DEFAULTS = 1;
 
+/**
+ * Look sensitivity. Aim turns 0.0022 rad per mouse count times this, so on the 1000 DPI office mice
+ * most players have, 0.5 is about 14 cm of mouse travel per full turn and 1.0 only 7 cm: the range
+ * leans low, with fine 0.05 steps.
+ */
+export const SENSITIVITY_RANGE = { min: 0.05, max: 2, step: 0.05 } as const;
+
 /** Only load known settings so older or damaged browser storage cannot break a match. */
 export function sanitizeSettings(value: unknown): Partial<Omit<Settings, "set">> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -77,7 +86,7 @@ export function sanitizeSettings(value: unknown): Partial<Omit<Settings, "set">>
     if (typeof input[key] === "boolean") out[key] = input[key];
   }
   if (input.leanDefaults === LEAN_DEFAULTS && typeof input.leanToggle === "boolean") out.leanToggle = input.leanToggle;
-  const ranges = { sensitivity: [0.2, 3], adsSensitivity: [0.2, 1.5], fov: [60, 110], volume: [0, 1] } as const;
+  const ranges = { sensitivity: [SENSITIVITY_RANGE.min, SENSITIVITY_RANGE.max], adsSensitivity: [0.2, 1.5], fov: [60, 110], volume: [0, 1], musicVolume: [0, 1] } as const;
   for (const key of Object.keys(ranges) as (keyof typeof ranges)[]) {
     const n = input[key];
     if (typeof n === "number" && Number.isFinite(n)) out[key] = Math.max(ranges[key][0], Math.min(ranges[key][1], n));
@@ -94,16 +103,16 @@ function load(): Partial<Omit<Settings, "set">> {
   }
 }
 
+/** Out-of-the-box aim, view and sound; the lobby quick settings mark these and can reset to them. */
+export const TUNING_DEFAULTS = { sensitivity: 0.5, adsSensitivity: 0.8, fov: 78, volume: 0.8, musicVolume: 1 };
+
 export const useSettings = create<Settings>((set, get) => ({
   name: "",
   // Low on every device: most players are on office PCs and integrated graphics.
   quality: "low",
   adaptiveResolution: true,
   clearView: true,
-  sensitivity: 1,
-  adsSensitivity: 0.8,
-  fov: 78,
-  volume: 0.8,
+  ...TUNING_DEFAULTS,
   invertY: false,
   thirdPerson: false,
   leanToggle: true,

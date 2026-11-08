@@ -13,6 +13,7 @@ import { lobbyUrl, parseRoomCode } from "./net/invite";
 import { LobbySounds } from "./lobbyAudio";
 import { ConnectedRoom } from "./RoomLobby";
 import { LobbyTools, SettingsDialog } from "./SettingsDialog";
+import { QuickSettings } from "./SettingsPanel";
 import { CharacterShowcase } from "./CharacterShowcase";
 import type { ShowoffId } from "../shared/showcase";
 import { MAPS, mapId } from "../shared/map/maps";
@@ -154,11 +155,10 @@ export default function Shooter() {
     <nav className="play-tabs" role="tablist" aria-label="Play options">{TABS.map(([id, label]) => <button key={id} type="button" role="tab" id={`tab-${id}`} aria-controls="play-panel" aria-selected={tab === id} disabled={!!busy} onClick={() => { setTab(id); setError(""); }}><svg viewBox="0 0 24 24" aria-hidden="true">{TAB_ICONS[id]}</svg><span>{label}</span></button>)}</nav>
 
     <section className="lobby-operator" aria-label="Your operator">
-      <div className="operator-intro"><span className="eyebrow">SQUAD UP. LOCK IN. STRIKE FIRST.</span><h1>Hold the <em>line</em><span className="title-dot">.</span></h1><p>Four fronts: a village, a downtown block, a freight yard and an outpost. Two squads, one scoreboard.</p></div>
       <fieldset className="operator-fields" disabled={!!busy}>
         <label>CALLSIGN<span className="callsign"><input value={name} onChange={(e) => setName(e.target.value)} maxLength={NAME_MAX} autoComplete="nickname" /><button type="button" aria-label="Random callsign" title="Random callsign" onClick={() => setName(randomName())}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="3.5" /><circle cx="8.5" cy="8.5" r="1.4" /><circle cx="15.5" cy="8.5" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle cx="8.5" cy="15.5" r="1.4" /><circle cx="15.5" cy="15.5" r="1.4" /></svg></button></span></label>
       </fieldset>
-      <ol className="lobby-steps"><li><b>01</b>Pick a front</li><li><b>02</b>Squad up with friends or bots</li><li><b>03</b>Strike first</li></ol>
+      <QuickSettings onMore={() => setSettings(true)} />
     </section>
 
     <div className="lobby-stage"><CharacterShowcase preview players={[{ id: "preview", name: name.trim() || "Operator", char: 0, team: 0, emote }]} me="preview" onShowoff={setEmote} /></div>

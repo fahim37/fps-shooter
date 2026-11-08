@@ -98,6 +98,8 @@ export class AudioEngine {
   private themeBytes: Promise<ArrayBuffer> | null = null;
   private theme: Promise<AudioBuffer> | null = null;
   volume = 0.8;
+  /** Scales only the menu bed (the lobby theme), so players can quiet the music but keep UI sounds. */
+  musicVolume = 1;
 
   /**
    * Creates or resumes the audio context. From a user gesture (click/tap) this always unlocks
@@ -139,6 +141,17 @@ export class AudioEngine {
     if (v === this.volume) return;
     this.volume = v;
     if (this.ctx) this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05);
+  }
+
+  setMusicVolume(v: number) {
+    if (v === this.musicVolume) return;
+    this.musicVolume = v;
+    // Only the live lobby bed follows; one that is fading out keeps fading.
+    if (this.ctx && this.bed?.key === "lobby") {
+      const gain = this.bed.out.gain, t = this.ctx.currentTime;
+      gain.cancelScheduledValues(t);
+      gain.setTargetAtTime(LOBBY_LEVEL * v, t, 0.05);
+    }
   }
 
   /**
@@ -705,7 +718,7 @@ export class AudioEngine {
     const t = ctx.currentTime;
     const out = ctx.createGain();
     out.gain.setValueAtTime(0, t);
-    out.gain.linearRampToValueAtTime(key === "lobby" ? LOBBY_LEVEL : 1, t + (key === "lobby" ? 1.5 : 2.5));
+    out.gain.linearRampToValueAtTime(key === "lobby" ? LOBBY_LEVEL * this.musicVolume : 1, t + (key === "lobby" ? 1.5 : 2.5));
     out.connect(this.master);
     const bed: Bed = { key, out, sources: [], timers: new Set() };
     switch (key) {

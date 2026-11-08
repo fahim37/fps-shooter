@@ -20,6 +20,7 @@ describe("stored graphics settings", () => {
     expect(sanitizeSettings([])).toEqual({});
   });
   it("keeps persisted aim and rendering options inside supported ranges", () => {
-    expect(sanitizeSettings({ fov: 250, sensitivity: -1, adsSensitivity: 0, volume: 5 })).toEqual({ fov: 110, sensitivity: 0.2, adsSensitivity: 0.2, volume: 1 });
+    expect(sanitizeSettings({ fov: 250, sensitivity: -1, adsSensitivity: 0, volume: 5, musicVolume: -2 })).toEqual({ fov: 110, sensitivity: 0.05, adsSensitivity: 0.2, volume: 1, musicVolume: 0 });
+    expect(sanitizeSettings({ sensitivity: 9, musicVolume: 0.4 })).toEqual({ sensitivity: 2, musicVolume: 0.4 });
   });
 });

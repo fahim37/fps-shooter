@@ -20,8 +20,9 @@ function control(e: Event): HTMLElement | null {
  */
 export function useLobbySounds() {
   useEffect(() => {
-    audio.setVolume(useSettings.getState().volume);
-    const unsubscribe = useSettings.subscribe((s) => audio.setVolume(s.volume));
+    const { volume, musicVolume } = useSettings.getState();
+    audio.setVolume(volume); audio.setMusicVolume(musicVolume);
+    const unsubscribe = useSettings.subscribe((s) => { audio.setVolume(s.volume); audio.setMusicVolume(s.musicVolume); });
     audio.lobby(true);
 
     let hovered: HTMLElement | null = null;
