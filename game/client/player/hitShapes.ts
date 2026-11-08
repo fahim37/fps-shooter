@@ -19,34 +19,37 @@ interface ShapeDef {
   r: number;
 }
 
-// Head: a sphere over the skull and hood (the Head bone sits at the base of the skull), and
-// the neck. Radii and the head offset are tuned by `scripts/dev/hit-accuracy.ts --tune` against
-// the skinned mesh: 94.6% of rays score the part they visibly hit (the rest graze an edge).
+// Head: a sphere over the skull and helmet (the Head bone sits at the base of the skull), and
+// the neck. The torso is thick with the plate carrier, pouches and belt. Radii and the head offset
+// are tuned by `scripts/dev/hit-accuracy.ts --tune --cover 3` against the soldier's skinned mesh,
+// favouring cover: a shot that visibly lands on the soldier or the gear carried should count. 90.4% of rays score
+// the part they visibly hit; visible hits that miss: head 1.7%, body 9.7% (loose gear such as the
+// dump pouch), legs 2.1%; 7% of rays that pass within a few cm of the mesh score.
 export const SHAPES: ShapeDef[] = [
-  { part: "head", from: "Head", at: [0, 0.105, -0.02], r: 0.14 },
+  { part: "head", from: "Head", at: [0.005, 0.085, -0.03], r: 0.16 },
   { part: "head", from: "neck_01", to: "Head", r: 0.12 },
-  { part: "body", from: "pelvis", to: "spine_02", r: 0.08 },
-  { part: "body", from: "spine_02", to: "spine_03", r: 0.14 },
+  { part: "body", from: "pelvis", to: "spine_02", r: 0.255 },
+  { part: "body", from: "spine_02", to: "spine_03", r: 0.27 },
   { part: "body", from: "spine_03", to: "neck_01", r: 0.13 },
   // Across the shoulders and the hips: the torso is wider than it is deep.
-  { part: "body", from: "clavicle_l", to: "clavicle_r", r: 0.09 },
+  { part: "body", from: "clavicle_l", to: "clavicle_r", r: 0.08 },
   { part: "body", from: "thigh_l", to: "thigh_r", r: 0.085 },
-  { part: "body", from: "clavicle_l", to: "upperarm_l", r: 0.09 },
-  { part: "body", from: "clavicle_r", to: "upperarm_r", r: 0.07 },
-  { part: "body", from: "upperarm_l", to: "lowerarm_l", r: 0.055 },
-  { part: "body", from: "upperarm_r", to: "lowerarm_r", r: 0.045 },
-  { part: "body", from: "lowerarm_l", to: "hand_l", r: 0.05 },
-  { part: "body", from: "lowerarm_r", to: "hand_r", r: 0.045 },
-  { part: "body", from: "hand_l", to: "middle_01_l", r: 0.04 },
-  { part: "body", from: "hand_r", to: "middle_01_r", r: 0.045 },
-  { part: "legs", from: "thigh_l", to: "calf_l", r: 0.09 },
-  { part: "legs", from: "thigh_r", to: "calf_r", r: 0.09 },
-  { part: "legs", from: "calf_l", to: "foot_l", r: 0.08 },
-  { part: "legs", from: "calf_r", to: "foot_r", r: 0.08 },
-  { part: "legs", from: "foot_l", to: "ball_l", r: 0.045 },
-  { part: "legs", from: "foot_r", to: "ball_r", r: 0.04 },
-  { part: "legs", from: "ball_l", to: "ball_leaf_l", r: 0.035 },
-  { part: "legs", from: "ball_r", to: "ball_leaf_r", r: 0.035 },
+  { part: "body", from: "clavicle_l", to: "upperarm_l", r: 0.075 },
+  { part: "body", from: "clavicle_r", to: "upperarm_r", r: 0.075 },
+  { part: "body", from: "upperarm_l", to: "lowerarm_l", r: 0.075 },
+  { part: "body", from: "upperarm_r", to: "lowerarm_r", r: 0.07 },
+  { part: "body", from: "lowerarm_l", to: "hand_l", r: 0.06 },
+  { part: "body", from: "lowerarm_r", to: "hand_r", r: 0.06 },
+  { part: "body", from: "hand_l", to: "middle_01_l", r: 0.06 },
+  { part: "body", from: "hand_r", to: "middle_01_r", r: 0.055 },
+  { part: "legs", from: "thigh_l", to: "calf_l", r: 0.135 },
+  { part: "legs", from: "thigh_r", to: "calf_r", r: 0.15 },
+  { part: "legs", from: "calf_l", to: "foot_l", r: 0.1 },
+  { part: "legs", from: "calf_r", to: "foot_r", r: 0.1 },
+  { part: "legs", from: "foot_l", to: "ball_l", r: 0.075 },
+  { part: "legs", from: "foot_r", to: "ball_r", r: 0.07 },
+  { part: "legs", from: "ball_l", to: "ball_leaf_l", r: 0.02 },
+  { part: "legs", from: "ball_r", to: "ball_leaf_r", r: 0.025 },
 ];
 
 /** Radius (m) of a sphere around the pelvis that holds every shape in any pose: a cheap reject. */

@@ -10,6 +10,7 @@ import type * as Three from "three";
 import type { CharacterRig, RigState } from "../../game/client/player/CharacterRig";
 import type { HitShapes as HitShapesT, SHAPES as SHAPES_T } from "../../game/client/player/hitShapes";
 import type { hitboxes as hitboxesT, rayVsPose as rayVsPoseT, HitPart } from "../../game/shared/hitboxes";
+import type { claimFits as claimFitsT } from "../../game/shared/hitclaim";
 
 type V3 = [number, number, number];
 interface Case { name: string; weapon: string; speed: number; crouch: boolean; ads: number; pitch: number; lean: number; sprint: number }
@@ -35,6 +36,9 @@ const RAYS = 260;
 async function main() {
   const args = process.argv.slice(2);
   const tune = args.includes("--tune");
+  // --cover W: while tuning, a ray that visibly hits the character counts W times, so the shapes
+  // grow to take in carried gear at the cost of a few near misses that score.
+  const cover = args.includes("--cover") ? Number(args[args.indexOf("--cover") + 1]) : 1;
   const base = (args.find((a) => !a.startsWith("--")) || "http://localhost:3107").replace(/\/$/, "");
   const browser = await chromium.launch({ channel: "chrome", headless: true, args: ["--enable-gpu", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader"] });
   try {
@@ -44,13 +48,13 @@ async function main() {
     await page.goto(`${base}/dev/rig`);
     await page.waitForFunction(() => !!(window as unknown as { __rigs?: unknown[]; __hit?: unknown }).__rigs?.length && !!(window as unknown as { __hit?: unknown }).__hit, null, { timeout: 180000 });
     const cases: Case[] = WEAPONS.flatMap((weapon) => STANCES.flatMap((s) => PITCHES.map((pitch) => ({ ...s, weapon, pitch }))));
-    const report = await page.evaluate(({ cases, yaw, phases, rays, tune }) => {
+    const report = await page.evaluate(({ cases, yaw, phases, rays, tune, cover }) => {
       const w = window as unknown as {
         __rigs: CharacterRig[]; THREE: typeof Three;
-        __hit: { HitShapes: typeof HitShapesT; SHAPES: typeof SHAPES_T; rayVsPose: typeof rayVsPoseT; hitboxes: typeof hitboxesT };
+        __hit: { HitShapes: typeof HitShapesT; SHAPES: typeof SHAPES_T; rayVsPose: typeof rayVsPoseT; hitboxes: typeof hitboxesT; claimFits: typeof claimFitsT };
       };
       const { THREE } = w;
-      const { HitShapes, SHAPES, rayVsPose, hitboxes } = w.__hit;
+      const { HitShapes, SHAPES, rayVsPose, claimFits } = w.__hit;
       const rigs = w.__rigs.slice(0, 2);
       for (const r of w.__rigs.slice(2)) r.object.visible = false;
       const PART = (name: string): HitPart => name === "Head" || name === "neck_01" ? "head"
@@ -141,7 +145,7 @@ async function main() {
       });
 
       type Defs = typeof SHAPES;
-      const score = (defs: Defs) => {
+      const score = (defs: Defs, weight = 1) => {
         const m: Record<string, number> = {};
         let ok = 0, n = 0;
         for (const p of poses) {
@@ -150,10 +154,26 @@ async function main() {
             const got = hs.raycast(ray.o, ray.d, 80)?.part ?? null;
             const key = `${ray.truth ?? "miss"}>${got ?? "miss"}`;
             m[key] = (m[key] ?? 0) + 1;
-            n++; if (got === ray.truth) ok++;
+            const w = ray.truth ? weight : 1;
+            n += w; if (got === ray.truth) ok += w;
           }
         }
         return { ok: ok / n, m };
+      };
+      /** Share of the shapes' hits, per part, that the server's claim check would refuse. */
+      const refusals = (defs: Defs) => {
+        const out: Record<string, [number, number]> = {};
+        for (const p of poses) {
+          const hs = new HitShapes(p.bones as never, defs);
+          for (const ray of p.rays) {
+            const hit = hs.raycast(ray.o, ray.d, 80);
+            if (!hit) continue;
+            const row = out[hit.part] ??= [0, 0];
+            row[1]++;
+            if (!claimFits(ray.o, ray.d, hit.distance, hit.part, p.pose, null, 80)) row[0]++;
+          }
+        }
+        return Object.fromEntries(Object.entries(out).map(([k, [bad, all]]) => [k, `${(bad / all * 100).toFixed(2)}% of ${all}`]));
       };
       const serverScore = () => {
         const m: Record<string, number> = {};
@@ -167,10 +187,10 @@ async function main() {
         return { ok: ok / n, m };
       };
 
-      let defs: Defs = SHAPES.map((s) => ({ ...s, at: s.at ? [...s.at] as V3 : undefined }));
+      const defs: Defs = SHAPES.map((s) => ({ ...s, at: s.at ? [...s.at] as V3 : undefined }));
       if (tune) {
         // Coordinate descent on radii and the head sphere's offset.
-        let best = score(defs).ok;
+        let best = score(defs, cover).ok;
         for (let pass = 0; pass < 3; pass++) {
           for (let i = 0; i < defs.length; i++) {
             const knobs: [() => number, (v: number) => void][] = [[() => defs[i].r, (v) => { defs[i].r = v; }]];
@@ -181,7 +201,7 @@ async function main() {
                   const was = get();
                   set(Math.round((was + step) * 1000) / 1000);
                   if (defs[i].r < 0.02) { set(was); break; }
-                  const s = score(defs).ok;
+                  const s = score(defs, cover).ok;
                   if (s > best + 1e-5) best = s; else { set(was); break; }
                 }
               }
@@ -197,8 +217,8 @@ async function main() {
         const spread = [0, 2].map((i) => Math.max(...rows.map((r) => r[i])) - Math.min(...rows.map((r) => r[i])));
         head[k] = `fwd ${mean[0].toFixed(2)} right ${mean[1].toFixed(2)} up ${mean[2].toFixed(2)}  spread fwd ${spread[0].toFixed(2)} up ${spread[1].toFixed(2)}`;
       }
-      return { poses: poses.length, rays: poses.length * rays, shapes: score(defs), server: serverScore(), defs: tune ? defs : null, head };
-    }, { cases, yaw: YAW, phases: PHASES, rays: RAYS, tune });
+      return { poses: poses.length, rays: poses.length * rays, shapes: score(defs), refused: refusals(defs), server: serverScore(), defs: tune ? defs : null, head };
+    }, { cases, yaw: YAW, phases: PHASES, rays: RAYS, tune, cover });
 
     const show = (label: string, r: { ok: number; m: Record<string, number> }) => {
       const parts = ["head", "body", "legs", "miss"];
@@ -211,6 +231,7 @@ async function main() {
     };
     console.log(`${report.poses} poses, ${report.rays} rays`);
     show("Bone hit shapes (client)", report.shapes);
+    console.log("  claims the server would refuse (no latency):", report.refused);
     show("Pose hitboxes (server)", report.server);
     if (args.includes("--head")) for (const [k, v] of Object.entries(report.head)) console.log(`${k.padEnd(20)} ${v}`);
     if (report.defs) console.log("\ntuned:\n" + report.defs.map((d) => JSON.stringify(d)).join(",\n"));

@@ -10,6 +10,7 @@ import { CharacterRig, type RigState } from "../player/CharacterRig";
 import { HitShapes, SHAPES } from "../player/hitShapes";
 import { quickScope } from "../player/quickScope";
 import { hitboxes, rayVsPose } from "../../shared/hitboxes";
+import { claimFits } from "../../shared/hitclaim";
 import type { WeaponId } from "../../shared/weapons";
 import type { OpticId } from "../../shared/optics";
 
@@ -29,7 +30,7 @@ function Rigs({ pitch, speed, reload, ads, shot, draw, solo, move, weapon }: { p
     (window as unknown as { __rigs: CharacterRig[]; THREE: typeof THREE }).__rigs = rigs;
     (window as unknown as { THREE: typeof THREE }).THREE = THREE;
     // For scripts/dev/hit-accuracy.ts: the hit shapes and shared ray tests, as the game uses them.
-    (window as unknown as { __hit: unknown }).__hit = { HitShapes, SHAPES, rayVsPose, hitboxes };
+    (window as unknown as { __hit: unknown }).__hit = { HitShapes, SHAPES, rayVsPose, hitboxes, claimFits };
     rigs.forEach((r) => scene.add(r.object));
     return () => rigs.forEach((r) => r.dispose());
   }, [rigs, scene]);
