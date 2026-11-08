@@ -161,13 +161,6 @@ small { display: block; }
 .panel-body .field-caption { margin-top: 14px; }
 .play-heading h2 { margin: 6px 0 4px; font-size: 23px; letter-spacing: -.04em; }
 .play-heading p { margin: 0; color: #a5b19a; font-size: 12px; line-height: 1.5; }
-.format-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.format-options button { display: grid; justify-items: start; gap: 1px; padding: 9px 11px; border: 1px solid var(--line-strong); background: #ffffff04; color: var(--soft); text-align: left; }
-.format-options button:hover { border-color: #d9ed7970; }
-.format-options button.selected { border-color: var(--accent); background: #d9ed790d; color: var(--accent); box-shadow: inset 0 -3px 0 var(--accent); }
-.format-options strong { font-size: 19px; letter-spacing: -.03em; }
-.format-options span { font-size: 11px; }
-.format-options small { font-size: 9px; color: var(--muted); }
 .format-note { margin: 7px 0 0; color: #a5b19a; font-size: 11px; line-height: 1.4; }
 .optional { font-size: 8px; opacity: .65; }
 .custom-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 10px; }
@@ -334,10 +327,8 @@ small { display: block; }
 }
 /* Short desktop and tablet windows: tighten the setup panel so Custom still fits. */
 @media (max-height: 820px) and (min-width: 761px) {
-  .play-heading p, .action-help, .format-note, .format-options small { display: none; }
+  .play-heading p, .action-help, .format-note { display: none; }
   .play-heading h2 { margin-bottom: 0; font-size: 21px; }
-  .format-options button { padding: 7px 10px; }
-  .format-options strong { font-size: 17px; }
   .panel-body label, .panel-body .field-caption { margin-top: 10px; }
   .panel-body input:not([type=checkbox]), .panel-body select { padding: 9px 11px; }
   .panel-body .toggle-label { height: 38px; }
@@ -373,9 +364,6 @@ small { display: block; }
   .panel-body label, .panel-body .field-caption { margin-top: 10px; }
   .play-heading, .action-help, .format-note { display: none; }
   .panel-body > fieldset > :first-child, .join-fields label { margin-top: 0; }
-  .format-options button { padding: 7px 9px; }
-  .format-options strong { font-size: 16px; }
-  .format-options small { display: none; }
   .quick-summary { padding: 10px; margin-top: 10px; }
   .panel-action { padding: 8px 12px 10px; }
   .panel-action .primary-button { min-height: 50px; font-size: 14px; }
@@ -450,7 +438,7 @@ small { display: block; }
   .home-lobby { grid-template-columns: minmax(0, 1fr) minmax(300px, 1.1fr); grid-template-rows: auto auto minmax(0, 1fr); grid-template-areas: "top top" "operator panel" "stage panel"; column-gap: 12px; }
   .home-lobby > .play-tabs { grid-area: 1 / 1 / 2 / -1; justify-self: center; }
   .play-tabs button { min-height: 46px; padding: 0 10px; font-size: 11px; letter-spacing: .08em; }
-  .operator-intro, .lobby-steps, .play-heading, .action-help, .format-note, .format-options small, .character-picker small, .field-caption { display: none; }
+  .operator-intro, .lobby-steps, .play-heading, .action-help, .format-note, .character-picker small, .field-caption { display: none; }
   .lobby-operator { padding-top: 8px; }
   .operator-fields { grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
   .operator-fields > label { font-size: 0; gap: 0; }
@@ -465,9 +453,6 @@ small { display: block; }
   .panel-body > fieldset > :first-child, .join-fields label { margin-top: 0; }
   .panel-body .field-caption { display: none; }
   .panel-body input:not([type=checkbox]), .panel-body select { padding: 8px 10px; font-size: 12px; }
-  .format-options button { padding: 5px 8px; }
-  .format-options strong { font-size: 14px; }
-  .format-options span { font-size: 10px; }
   .panel-body [role=radiogroup][aria-label=Map] { margin-top: 6px; }
   .panel-body .toggle-label { height: 36px; }
   .quick-summary { margin-top: 8px; padding: 8px; }
@@ -620,8 +605,8 @@ small { display: block; }
     background: linear-gradient(90deg, transparent, #ffffff8c, transparent); transform: translateX(-120%) skewX(-20deg); }
   .primary-button:hover:not(:disabled)::after { animation: lobby-sheen .7s ease-out; }
   .primary-button:active:not(:disabled) { transform: translateY(1px) scale(.995); }
-  .outline-button, .format-options button, .character-picker button, .room-row, .player-slot, .icon-button { transition: transform .18s cubic-bezier(.2, .8, .2, 1), border-color .15s, background .15s, color .15s; }
-  .format-options button:hover, .character-picker button:hover, .room-row:not(:disabled):hover, .open-slot:hover:not(:disabled) { transform: translateY(-2px); }
+  .outline-button, .character-picker button, .room-row, .player-slot, .icon-button { transition: transform .18s cubic-bezier(.2, .8, .2, 1), border-color .15s, background .15s, color .15s; }
+  .character-picker button:hover, .room-row:not(:disabled):hover, .open-slot:hover:not(:disabled) { transform: translateY(-2px); }
   .outline-button:hover:not(:disabled) { transform: translateX(2px); }
 }
 
@@ -716,14 +701,9 @@ small { display: block; }
 .custom-fields > .wide { grid-column: 1 / -1; }
 .choice-field { margin-top: 11px; }
 .choice-row button { min-height: 38px; padding: 0 10px; }
-.home-lobby[data-format=custom] .play-heading p { display: none; }
-.home-lobby[data-format=custom] .format-options button { padding: 7px 10px; }
 
 /* Leaner setup panel: no heading text, compact format buttons, checkboxes for private and bots. */
 .custom-fields > .choice-field:only-child { grid-column: 1 / -1; }
-.format-options button { grid-template-columns: auto minmax(0, 1fr); align-items: baseline; column-gap: 8px; padding: 8px 10px; }
-.format-options strong { font-size: 18px; }
-.format-options small { display: none; }
 .panel-body .map-picker { margin-top: 12px; }
 .room-options { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; margin-top: 12px; }
 .room-options > input { min-width: 0; height: 40px; }
@@ -749,11 +729,6 @@ small { display: block; }
 }
 
 /* Match format: the big label on top, its subtext underneath. */
-.format-options button { grid-template-columns: minmax(0, 1fr); justify-items: start; align-content: center; row-gap: 3px; min-height: 58px; padding: 8px 12px; }
-.format-options strong { font-size: 20px; line-height: 1; }
-.format-options span { font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
-.format-options button.selected span { color: var(--accent); }
-@media (max-width: 760px) and (min-height: 521px) { .format-options button { min-height: 48px; padding: 6px 9px; } .format-options strong { font-size: 17px; } }
 /* Each choice row stays on one line; the buttons share it, each at least as wide as its label. */
 .choice-row { flex-wrap: nowrap; }
 .choice-row button { flex: 1 1 0; min-width: max-content; padding: 0 6px; white-space: nowrap; }

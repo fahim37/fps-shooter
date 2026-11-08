@@ -28,7 +28,6 @@ function savedMap(): MapId {
 }
 
 type PlayTab = "friends" | "quick" | "join";
-type Format = "1v1" | "2v2" | "custom";
 
 const TABS = [["quick", "Quick play"], ["friends", "With friends"], ["join", "Join room"]] as const;
 /** Each play option gets an icon, and the operator strikes a pose to match when you switch to it. */
@@ -37,7 +36,6 @@ const TAB_ICONS: Record<PlayTab, ReactNode> = {
   friends: <><circle cx="9" cy="8" r="3.2" /><circle cx="16.5" cy="9" r="2.6" /><path d="M3 20c.5-3.8 3-5.8 6-5.8s5.5 2 6 5.8M15 14.6c3.2-.4 5.4 1.4 6 4.8" /></>,
   join: <><path d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5" /><path d="M3 12h12M11 7.5 15.5 12 11 16.5" /></>,
 };
-const TAB_POSES: Record<PlayTab, ShowoffId> = { quick: "magic", friends: "dance", join: "talk" };
 
 /** Every option on show at once, as a row of buttons, rather than hidden in a dropdown. */
 function Choices<T extends string | number>({ label, hint, value, options, onChange, wide = false }: {
@@ -50,7 +48,6 @@ function Choices<T extends string | number>({ label, hint, value, options, onCha
     </div>
   </div>;
 }
-const FORMATS = [["1v1", "Duel", "2 players"], ["2v2", "Doubles", "4 players"], ["custom", "Your rules", `Up to ${MAX_PLAYERS}`]] as const;
 
 function CharacterPicker({ value, onChange }: { value: number; onChange: (char: number) => void }) {
   return <div className="character-picker" role="radiogroup" aria-label="Character">
@@ -82,7 +79,6 @@ export default function Shooter() {
   const [mode, setMode] = useState<GameMode>("tdm");
   const [map, setMapState] = useState<MapId>(savedMap);
   const setMap = (next: MapId) => { setMapState(next); try { window.localStorage.setItem(MAP_KEY, next); } catch { /* not persisted */ } };
-  const [format, setFormat] = useState<Format>("custom");
   const [character, setCharacter] = useState(0);
   const [joinTeam, setJoinTeam] = useState<0 | 1 | 2>(0);
   const [emote, setEmote] = useState<ShowoffId>("idle");
@@ -135,8 +131,8 @@ export default function Shooter() {
     const opts: JoinOptions = { name: playerName, char: character, mode, ...(kind === "code" ? { team: joinTeam } : { map }) };
     try {
       const joined = await (kind === "code" ? joinByCode(parseRoomCode(selectedCode), opts) : kind === "quick" ? quickPlay(opts) : createRoom({
-        ...opts, mode: format === "custom" ? mode : "tdm",
-        create: { mode: format === "custom" ? mode : "tdm", map, format, lobby: true, maxPlayers: format === "1v1" ? 2 : format === "2v2" ? 4 : maxPlayers, bots: format === "custom" ? bots : 0, botSkill: 1, private: privateRoom, roomName: roomName.trim() || `${playerName}'s room`, scoreLimit: scoreLimitFor(format === "custom" ? mode : "tdm", scoreTarget) },
+        ...opts, mode,
+        create: { mode, map, format: "custom", lobby: true, maxPlayers, bots, botSkill: 1, private: privateRoom, roomName: roomName.trim() || `${playerName}'s room`, scoreLimit: scoreLimitFor(mode, scoreTarget) },
       }));
       setRoom(joined);
     } catch (e) { setError(joinErrorMessage(e)); }
@@ -151,12 +147,11 @@ export default function Shooter() {
   if (room) return <ConnectedRoom room={room} onLeave={() => void leave()} />;
 
   const visibleRooms = rooms.filter((r) => (filter !== "humans" || r.botFill === 0) && (filter !== "waiting" || r.phase === "waiting") && `${r.name} ${r.code} ${r.format}`.toLowerCase().includes(search.toLowerCase()));
-  const roomMode: GameMode = format === "custom" ? mode : "tdm";
-  const scoreSelect = <Choices wide label="SCORE TO WIN" hint="kills" value={scoreLimitFor(roomMode, scoreTarget)} onChange={setScoreTarget}
-    options={SCORE_LIMITS[roomMode].map((n) => ({ value: n, text: String(n), name: `${n} kills` }))} />;
+  const scoreSelect = <Choices wide label="SCORE TO WIN" hint="kills" value={scoreLimitFor(mode, scoreTarget)} onChange={setScoreTarget}
+    options={SCORE_LIMITS[mode].map((n) => ({ value: n, text: String(n), name: `${n} kills` }))} />;
   const modeSelect = <Choices<GameMode> wide label="MODE" value={mode} onChange={setMode}
     options={[{ value: "tdm", text: "Team DM", name: "Team Deathmatch" }, { value: "ffa", text: "Free for All" }]} />;
-  return <main className="lobby home-lobby" data-tab={tab} data-format={tab === "friends" ? format : undefined}>
+  return <main className="lobby home-lobby" data-tab={tab}>
     <LobbySounds />
     <div className="lobby-grain" aria-hidden="true" />
     <header className="lobby-top">
@@ -169,7 +164,7 @@ export default function Shooter() {
         <LobbyTools onHelp={() => setHelp(true)} onSettings={() => setSettings(true)} />
       </div>
     </header>
-    <nav className="play-tabs" role="tablist" aria-label="Play options">{TABS.map(([id, label]) => <button key={id} type="button" role="tab" id={`tab-${id}`} aria-controls="play-panel" aria-selected={tab === id} disabled={!!busy} onClick={() => { if (tab !== id) setEmote(TAB_POSES[id]); setTab(id); setError(""); }}><svg viewBox="0 0 24 24" aria-hidden="true">{TAB_ICONS[id]}</svg><span>{label}</span></button>)}</nav>
+    <nav className="play-tabs" role="tablist" aria-label="Play options">{TABS.map(([id, label]) => <button key={id} type="button" role="tab" id={`tab-${id}`} aria-controls="play-panel" aria-selected={tab === id} disabled={!!busy} onClick={() => { setTab(id); setError(""); }}><svg viewBox="0 0 24 24" aria-hidden="true">{TAB_ICONS[id]}</svg><span>{label}</span></button>)}</nav>
 
     <section className="lobby-operator" aria-label="Your operator">
       <div className="operator-intro"><span className="eyebrow">SQUAD UP. LOCK IN. STRIKE FIRST.</span><h1>Hold the <em>line</em><span className="title-dot">.</span></h1><p>Four fronts: a village, a downtown block, a freight yard and an outpost. Two squads, one scoreboard.</p></div>
@@ -186,18 +181,17 @@ export default function Shooter() {
       <div className="panel-body" key={tab}>
         <fieldset disabled={!!busy}>
           {tab === "friends" && <>
-            <div className="format-options" role="group" aria-label="Match format">{FORMATS.map(([id, label, count]) => <button key={id} type="button" className={format === id ? "selected" : ""} aria-pressed={format === id} onClick={() => setFormat(id)}><strong>{id === "custom" ? "Custom" : id}</strong><span>{label}</span><small>{count}</small></button>)}</div>
             <MapPicker value={map} onChange={setMap} />
-            <div className="custom-fields">{format === "custom" && <>{modeSelect}{scoreSelect}
+            <div className="custom-fields">{modeSelect}{scoreSelect}
               <Choices wide label="ROOM SIZE" hint={`${maxPlayers} players`} value={maxPlayers}
                 onChange={(max) => { setMaxPlayers(max); if (bots) setBots(max); }}
                 options={ROOM_SIZES.map((n) => ({ value: n, text: mode === "tdm" ? `${n / 2}v${n / 2}` : String(n), name: `${n} players` }))} />
-            </>}{format !== "custom" && scoreSelect}</div>
+            </div>
             <div className="room-options">
               <input aria-label="Room name (optional)" value={roomName} maxLength={32} placeholder={`Room name: ${name.trim() || "Operator"}'s room`} onChange={(e) => setRoomName(e.target.value)} />
               <div className="room-checks">
                 <label className="check-label" title="Only people with your invite can join."><input type="checkbox" checked={privateRoom} onChange={(e) => setPrivateRoom(e.target.checked)} /> Private room</label>
-                {format === "custom" && <label className="check-label" title="Practice bots fill the empty slots."><input type="checkbox" checked={bots > 0} onChange={(e) => setBots(e.target.checked ? maxPlayers : 0)} /> Practice bots</label>}
+                <label className="check-label" title="Practice bots fill the empty slots."><input type="checkbox" checked={bots > 0} onChange={(e) => setBots(e.target.checked ? maxPlayers : 0)} /> Practice bots</label>
               </div>
             </div>
           </>}
@@ -223,7 +217,7 @@ export default function Shooter() {
       <fieldset className="panel-action" disabled={!!busy}>
         {busy && <p role="status" className="connection-progress">{busy}</p>}
         {error && <p role="alert" className="error-text">{error}</p>}
-        {tab === "friends" && <button type="button" className="primary-button" onClick={() => void join("create")}>{busy || `CREATE ${format === "custom" ? "CUSTOM" : format.toUpperCase()} ROOM`}<span>→</span></button>}
+        {tab === "friends" && <button type="button" className="primary-button" onClick={() => void join("create")}>{busy || "CREATE ROOM"}<span>→</span></button>}
         {tab === "quick" && <button type="button" className="primary-button" onClick={() => void join("quick")}>{busy || "QUICK PLAY"}<span>→</span></button>}
         {tab === "join" && <button type="button" className="primary-button" disabled={!parseRoomCode(code)} onClick={() => void join("code")}>{busy || "JOIN ROOM →"}</button>}
       </fieldset>
