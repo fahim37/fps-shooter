@@ -8,11 +8,11 @@ The home screen previews the soldier. Waiting rooms replicate each player's show
 
 | Asset | Previous | Optimized |
 | --- | ---: | ---: |
-| Soldier, in matches (28,000 triangles, 2 materials) | 84,158 triangles, 12 materials, 31 4K maps | 1,484,728 bytes |
-| Soldier, lobby (full detail, 4K body atlas) | — | 3,049,352 bytes |
+| Soldier, in matches (26,700 triangles, 2 materials) | 84,158 triangles, 12 materials, 31 4K maps | 1,443,232 bytes |
+| Soldier, lobby (full detail, 4K body atlas) | — | 2,976,048 bytes |
 | Lobby animation set | — | 87,284 bytes |
 
-The lobby loads only the full-detail soldier; matches load only the lighter one. These are file-size measurements, not an FPS benchmark.
+The four bags hanging off the source model's belt (dangle bones Pouch1-4) are left out. The lobby loads only the full-detail soldier; matches load only the lighter one. These are file-size measurements, not an FPS benchmark.
 
 - One lobby renderer shows every human in the room together (up to 20), capped at 30 FPS and 1.25 device pixel ratio, rendering only when something moves. Up to six stand in one row; larger rooms zig-zag across a front row and a raised back row, Blue on the left and Red on the right. The camera fits the whole formation and its name tags at any aspect ratio, and tags shorten (name only, then alternating lines) as slots narrow. Joins and leaves add or remove single actors instead of rebuilding the scene.
 - No world, physics, weapons, HDR environment, postprocessing or shadow maps loaded by the preview.

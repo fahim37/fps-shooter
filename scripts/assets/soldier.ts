@@ -100,11 +100,41 @@ const SIMPLIFY: Record<string, [number, number]> = {
 interface GameJoint { name: string; parent: string | null; t: number[]; r: number[]; s: number[] }
 
 const ARM_JOINT = /^(upperarm|lowerarm|hand|thumb|index|middle|ring|pinky)_/;
+/** The four bags hanging off the belt (dangle bones Pouch1-4: both hips, beside the hands, and two behind): left out. */
+const DROPPED_BONE = /^Pouch\d+$/;
 
 /** The match model, and the lobby's full-detail one (no simplifying, a 4K body atlas). */
 export async function importSoldier() {
   await buildSoldier("soldier.glb", true, BODY);
   await buildSoldier("soldier_hq.glb", false, scaleAtlas(BODY, 2));
+}
+
+/**
+ * Triangles of every welded piece of `mesh` that any vertex ties to a DROPPED_BONE, so a bag goes
+ * whole, with the loop that holds it to the belt.
+ */
+function droppedTriangles(mesh: THREE.SkinnedMesh, index: number[]) {
+  const pos = mesh.geometry.attributes.position, si = mesh.geometry.attributes.skinIndex, sw = mesh.geometry.attributes.skinWeight;
+  const weld = new Map<string, number>();
+  const vert = Array.from({ length: pos.count }, (_, i) => {
+    const k = `${pos.getX(i).toFixed(3)},${pos.getY(i).toFixed(3)},${pos.getZ(i).toFixed(3)}`;
+    if (!weld.has(k)) weld.set(k, weld.size);
+    return weld.get(k)!;
+  });
+  const parent = Array.from({ length: weld.size }, (_, i) => i);
+  const find = (x: number): number => (parent[x] === x ? x : (parent[x] = find(parent[x])));
+  for (let t = 0; t < index.length; t += 3) {
+    const a = find(vert[index[t]]);
+    parent[find(vert[index[t + 1]])] = a;
+    parent[find(vert[index[t + 2]])] = a;
+  }
+  const doomed = new Set<number>();
+  for (let i = 0; i < pos.count; i++) {
+    for (let k = 0; k < 4; k++) {
+      if (sw.getComponent(i, k) > 0 && DROPPED_BONE.test(mesh.skeleton.bones[si.getComponent(i, k)].name.replace(/^CC_Base_/, ""))) doomed.add(find(vert[i]));
+    }
+  }
+  return Array.from({ length: index.length / 3 }, (_, t) => doomed.has(find(vert[index[t * 3]])));
 }
 
 function scaleAtlas(a: Atlas, k: number): Atlas {
@@ -240,9 +270,11 @@ async function buildSoldier(file: string, simplify: boolean, BODY: Atlas) {
       if (!top.length) { J[i * 4] = jointIndex.get("root")!; W[i * 4] = 1; }
     }
     const index = geo.index ? Array.from(geo.index.array) : Array.from({ length: count }, (_, i) => i);
+    const dropped = droppedTriangles(mesh, index);
     // Sleeves (and gloves) go to the first-person arms; the rest of the jacket stays on the body.
     const groups: { arms: boolean; tris: number[] }[] = [{ arms: false, tris: [] }, { arms: true, tris: [] }];
     for (let t = 0; t < index.length; t += 3) {
+      if (dropped[t / 3]) continue;
       const a = index[t], b = index[t + 1], c = index[t + 2];
       const isArm = part === "Gloves" || (part === "Kitel" && arm[a] > 0.5 && arm[b] > 0.5 && arm[c] > 0.5);
       groups[isArm ? 1 : 0].tris.push(a, b, c);
