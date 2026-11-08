@@ -47,19 +47,30 @@ function pistolGrip(center: V3, half: V3, pitch: number, trigger: readonly [numb
 }
 
 /**
- * Support hand cradling a handguard (or pump, or forend) from below, thumb along its left side.
- * `back` slides the palm toward the receiver, which keeps the support elbow bent.
+ * Support hand under the left of a handguard (or pump, or forend), as a shooter holds one: the hand
+ * points along the gun with the index knuckle on top, the palm turned up and in, and the fingers
+ * curled up around the far side. The forearm comes up from below, so the wrist bends (~60°) instead
+ * of running straight on from it. `back` slides the palm toward the receiver, which keeps the
+ * support elbow bent.
  */
 function cradle(center: V3, half: V3, frame?: HandFrame, back = 0): HandGrip {
+  const round = 0.012;
+  // Palm on the box's rounded lower-left edge, where its surface faces the palm.
+  const f = Math.hypot(CRADLE_FACING[0], CRADLE_FACING[1]);
+  const fx = CRADLE_FACING[0] / f, fy = CRADLE_FACING[1] / f;
+  const out = round + 0.002;
   return {
-    part: { center, half, round: 0.012 },
-    palm: [-(half[0] + 0.01), center[1] - half[1] - 0.002, center[2] + 0.02 + back],
-    facing: [0.75, 1, 0],
-    thumbSide: [-0.25, 0.1, -1],
+    part: { center, half, round },
+    palm: [center[0] - (half[0] - round) - fx * out, center[1] - (half[1] - round) - fy * out, center[2] + 0.02 + back],
+    facing: CRADLE_FACING,
+    thumbSide: CRADLE_THUMB_SIDE,
     thumb: [-0.1, 0.05, -1],
     frame,
   };
 }
+/** Cradling palm normal: up and in, tipped a little back as the hand angles in toward the gun. */
+const CRADLE_FACING: V3 = [0.6, 1, 0];
+const CRADLE_THUMB_SIDE: V3 = [-0.45, 0.3, -1];
 
 /** Support hand closed around a magazine from its left: fingers over the front, thumb behind. */
 function magGrip(center: V3, half: V3, pitch: number): HandGrip {
@@ -128,7 +139,18 @@ const GRIPS: Record<WeaponId, { right: Partial<Record<RightPose, HandGrip>> & { 
     },
     left: {
       support: cradle([0, 0.006, -0.32], [0.015, 0.025, 0.093], "pump", 0.04),
-      shell: { ...cradle(SHELL_SEATS.shotgun!.port, [0.011, 0.011, 0.03], "shell"), facing: [0.6, 1, 0] },
+      // Under the loading port, fingers across it pushing the shell up and in.
+      shell: (() => {
+        const port = SHELL_SEATS.shotgun!.port;
+        return {
+          part: { center: port, half: [0.011, 0.011, 0.03], round: 0.012 },
+          palm: [port[0] - 0.021, port[1] - 0.013, port[2] + 0.02] as V3,
+          facing: [0.6, 1, 0] as V3,
+          thumbSide: [-0.25, 0.1, -1] as V3,
+          thumb: [-0.1, 0.05, -1] as V3,
+          frame: "shell" as const,
+        };
+      })(),
     },
   },
   sniper: {
@@ -184,7 +206,10 @@ const FINGERS = ["index", "middle", "ring", "pinky"] as const;
 /** Joint limits (rad) from knuckle to tip. */
 const MAX_CURL = [1.55, 1.9, 1.35];
 const THUMB_MAX_CURL = [0.6, 0.8];
-const FINGER_RADIUS = 0.0085;
+/** Gloved finger, bone to skin. */
+const FINGER_RADIUS = 0.012;
+/** Palm centre in the hand bone's frame: between wrist and middle knuckle, on the glove's palm (4 cm out). */
+const PALM = [0.04, 0.065, -0.004] as const;
 const STEP = 0.06;
 
 export interface HandPose {
@@ -260,8 +285,7 @@ function solveGrips(template: CharacterTemplate, weapon: WeaponId): GripPose {
       _z.set(...g.thumbSide).projectOnPlane(_x).normalize();
       _y.crossVectors(_z, _x);
       bone.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(_x, _y, _z));
-      // Palm centre: between the wrist and the middle knuckle, on the palm skin.
-      const palm = _v2.set(side === "r" ? -0.02 : 0.02, 0.065, -0.004).multiply(scale).applyQuaternion(bone.quaternion);
+      const palm = _v2.set(side === "r" ? -PALM[0] : PALM[0], PALM[1], PALM[2]).multiply(scale).applyQuaternion(bone.quaternion);
       bone.position.set(...g.palm).sub(palm);
       bone.updateMatrixWorld(true);
 
