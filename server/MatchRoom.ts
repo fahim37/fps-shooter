@@ -645,7 +645,12 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     if (!def || !p.st.alive || this.state.phase === "ended" || this.state.phase === "waiting") return;
     if (m.weapon !== p.st.primary && m.weapon !== "pistol") return;
     if (t - p.lastFireAt < fireIntervalMs(def) * 0.75) return;
-    if (p.reloadingUntil) {
+    if (p.reloadingUntil && m.weapon === "pistol" && p.st.weapon === "pistol" && t < p.reloadingUntil - 150) {
+      // A shot stops the revolver's reload with the rounds loaded so far, counted with the same
+      // grace for a client a moment ahead of us.
+      this.advanceReload(p, Math.min(t + 150, p.reloadingUntil - 1));
+      p.reloadingUntil = 0;
+    } else if (p.reloadingUntil) {
       if (t < p.reloadingUntil - 150) return;
       // The client's reload ended a moment before ours: finish it now, or the shot would cancel it
       // with the rounds never put in (and an empty magazine would refuse the shot outright).

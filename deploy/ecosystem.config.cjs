@@ -20,7 +20,7 @@ module.exports = {
       cwd: "/var/www/fps-shooter",
       script: "node_modules/next/dist/bin/next",
       args: "start -H 127.0.0.1 -p 3006",
-      env: { NODE_ENV: "production", NEXT_PUBLIC_BASE_PATH: "/fps" },
+      env: { NODE_ENV: "production", NEXT_PUBLIC_GAME_SERVER_PATH: "/server" },
       max_memory_restart: "600M",
     },
     {

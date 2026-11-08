@@ -31,7 +31,7 @@ const server = defineServer({
       res.setHeader("Access-Control-Allow-Origin", "*");
       next();
     });
-    // Admin dashboard API (cookie auth; same-origin under /fps/server in production).
+    // Admin dashboard API (cookie auth; same-origin under /server in production).
     mountAdminApi(app, createAdminApi({
       config: adminConfig,
       store: () => store,

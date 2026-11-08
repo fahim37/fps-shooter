@@ -540,11 +540,17 @@ export class LocalPlayer {
 
   private tryFire(now: number) {
     const def = this.def;
-    if (now < this.switchEnd || this.reloading || this.grenadeAt || this.releasing) return;
+    // A fresh trigger pull stops the revolver's reload, keeping the rounds already loaded.
+    const interrupt = this.reloading && this.weapon === "pistol" && this.triggerReleased && this.ammo.pistol.mag > 0;
+    if (now < this.switchEnd || (this.reloading && !interrupt) || this.grenadeAt || this.releasing) return;
     if (!def.auto && !this.triggerReleased) return;
     const interval = fireIntervalMs(def);
     if (!this.cadence.ready(now, interval)) return;
     if (this.game.matchEnded) return;
+    if (interrupt) {
+      this.reloadEnd = 0;
+      audio.stopWorking();
+    }
     const a = this.ammo[this.weapon];
     if (a.mag <= 0) {
       if (this.triggerReleased) audio.dryFire();

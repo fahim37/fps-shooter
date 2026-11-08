@@ -386,7 +386,7 @@ export class AudioEngine {
     const t = ctx.currentTime + delay;
     const route = this.spatial(pos, 0.05, delay);
     if (!route) return;
-    const [out] = route;
+    const [out, , voice] = route;
     const n = this.noiseSource(t, 0.03);
     const bp = ctx.createBiquadFilter();
     bp.type = "bandpass";
@@ -395,6 +395,7 @@ export class AudioEngine {
     const g = ctx.createGain();
     this.env(g, t, level, 0.001, 0.03);
     n.connect(bp).connect(g).connect(out);
+    return voice;
   }
 
   /** Metal parts meeting: a bright clack, the ring above it and a short thud through the gun. */
@@ -439,7 +440,9 @@ export class AudioEngine {
   reload(weapon: WeaponId, durationS: number, pos?: V3, need = WEAPONS[weapon].mag) {
     if (weapon === "shotgun") return this.shotgunReload(durationS);
     if (weapon === "pistol") {
-      for (const at of roundSeats(need)) this.click(2100, 0.3, pos, durationS * at);
+      const clicks = roundSeats(need).map((at) => this.click(2100, 0.3, pos, durationS * at)).filter((v) => !!v);
+      // Your own reload's clicks can be cut short: a shot stops it with the rounds still to come.
+      if (!pos && clicks.length) this.working = { ...clicks[0], nodes: clicks.flatMap((v) => v.nodes) };
       return;
     }
     // Mag out, mag in, charging handle back, handle released: on the beats of the clip in handling.ts.

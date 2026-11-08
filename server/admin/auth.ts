@@ -142,7 +142,7 @@ export function parseCookies(raw: string | undefined): Record<string, string> {
 
 /**
  * No Path attribute: the browser scopes the cookie to the directory of the login URL
- * (`/fps/server/admin/api` in production, `/admin/api` in development), so it is never sent
+ * (`/server/admin/api` in production, `/admin/api` in development), so it is never sent
  * to the rest of the site.
  */
 export function sessionCookie(token: string, secure: boolean, maxAgeMs = SESSION_TTL_MS): string {

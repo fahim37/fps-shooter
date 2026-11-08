@@ -4,7 +4,7 @@ export class ApiError extends Error {
   constructor(readonly status: number, message: string) { super(message); }
 }
 
-/** The admin API lives on the game server (same origin under /fps/server in production). */
+/** The admin API lives on the game server (same origin under /server in production). */
 export function adminApiBase() {
   return `${gameServerHttp()}/admin/api`;
 }
