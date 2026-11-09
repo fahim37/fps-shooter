@@ -15,7 +15,10 @@ const CREASE = Math.cos(22 * Math.PI / 180);
 
 export type Look = { color: [number, number, number]; metal: number; rough: number };
 export interface Mesh { positions: Float32Array; indices: Uint32Array }
-/** Final meshes by material. A prefix ("Mag_", "Charge_", "Bolt_", "Cyl_", "Hammer_") is how the client finds a moving part. */
+/**
+ * Final meshes by material. A prefix ("Mag_", "Charge_", "Bolt_", "Cyl_", "Hammer_") is how the client finds a moving part;
+ * "Scope_" marks an optic it shows only when chosen, left out of the gun's bounds.
+ */
 export type GunPieces = Map<string, { look: Look; meshes: Mesh[] }>;
 
 /** Swaps both levels of `id` in weapons.glb and updates its bounds and muzzle point. */
@@ -75,7 +78,7 @@ function addLevel(doc: Document, id: string, pieces: GunPieces) {
   for (const [name, { look, meshes }] of pieces) {
     const { positions, normals, indices } = shade(meshes);
     tris += indices.length / 3;
-    for (const v of positions) all.push(v);
+    if (!name.startsWith("Scope_")) for (const v of positions) all.push(v);
     mesh.addPrimitive(doc.createPrimitive()
       .setAttribute("POSITION", doc.createAccessor().setType("VEC3").setArray(positions).setBuffer(buffer))
       .setAttribute("NORMAL", doc.createAccessor().setType("VEC3").setArray(normals).setBuffer(buffer))

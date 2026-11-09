@@ -70,7 +70,7 @@ export class LocalPlayer {
   private adsRaising = false;
 
   /** The drawn gun's quick-scope move over the current raise or drop (visual only). */
-  get quickScope() { return quickScope(this.weapon, this.adsProgress, this.adsRaising); }
+  get quickScope() { return quickScope(this.weapon, this.adsProgress, this.adsRaising, this.optic); }
   crouchT = 0;
   /** Peek -1 (left) .. 1 (right), already limited by nearby walls. */
   lean = 0;

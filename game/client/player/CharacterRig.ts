@@ -4,7 +4,7 @@ import { cloneWeapon, createShell, SHELL_SEATS, WEAPON_META, WEAPON_PARTS, type 
 import type { WeaponId } from "../../shared/weapons";
 import { solveTwoBone, setBoneWorldQuaternion, rotateBoneWorld } from "./ik";
 import { LEAN_ANGLE } from "../../shared/lean";
-import { DEFAULT_OPTICS, type OpticId } from "../../shared/optics";
+import { DEFAULT_OPTICS, OPTICS, type OpticId } from "../../shared/optics";
 import { createIronSights, createReflexSight } from "./ReflexSight";
 import { gripPose, type GripPose, type HandPose } from "./grip";
 import { createHandling, sampleHandling, type HandBlend, type HandKey } from "./handling";
@@ -69,6 +69,8 @@ const BOLT_TRAVEL = 0.065;
 const COCK_ANGLE = 0.75;
 /** Height of the middle of the sniper's scope above the weapon origin (m). */
 const SNIPER_SCOPE_AXIS = 0.113;
+/** Height of the rifle's rail scope's lens axis above the weapon origin (m), from its lenses in weapons.glb. */
+const AR_SCOPE_AXIS = 0.1667;
 /** How far the revolver is pushed out from the eye when aimed (m). */
 const REVOLVER_ADS_REACH = 0.58;
 /** Aim point above the top of the revolver (m): the target stands on the front sight, not behind the gun. */
@@ -178,6 +180,8 @@ interface WeaponParts {
   pump?: THREE.Object3D;
   bolt?: THREE.Object3D;
   shell?: THREE.Object3D;
+  /** An optic modelled on the gun, up only when a magnified sight is chosen. */
+  scope?: THREE.Object3D;
   cylinder?: THREE.Object3D;
   hammer?: THREE.Object3D;
 }
@@ -279,7 +283,7 @@ export class CharacterRig {
         this.irons = createIronSights();
         g.add(this.irons.object);
       }
-      const parts: WeaponParts = { mag: g.getObjectByName("mag"), pump: g.getObjectByName("pump"), bolt: g.getObjectByName("bolt"), cylinder: g.getObjectByName("cylinder"), hammer: g.getObjectByName("hammer") };
+      const parts: WeaponParts = { mag: g.getObjectByName("mag"), pump: g.getObjectByName("pump"), bolt: g.getObjectByName("bolt"), cylinder: g.getObjectByName("cylinder"), hammer: g.getObjectByName("hammer"), scope: g.getObjectByName("scope") };
       const seat = SHELL_SEATS[id];
       if (seat) {
         parts.shell = createShell(id === "pistol");
@@ -512,6 +516,9 @@ export class CharacterRig {
     sight.object.scale.setScalar(this.mode === "fpp" ? THREE.MathUtils.lerp(SIGHT_ON_GUN, 1, THREE.MathUtils.smoothstep(s.ads, 0.3, 1)) : SIGHT_ON_GUN);
     const irons = w === "ar" ? this.irons : null;
     if (irons) irons.object.visible = optic === "iron";
+    const scope = this.parts.get(w)?.scope;
+    const scoped = !!scope && OPTICS[optic].zoom > 1;
+    if (scope) scope.visible = scoped;
     const h = sampleHandling(w, s.reload, s.sinceShot ?? -1, s.sinceDraw ?? -1, this.handling);
     const [hx, hy, hz, hPitch, hYaw, hRoll] = h.gun;
     // A reload is held up in view even on the run: the sprint pose would carry it off the screen.
@@ -521,7 +528,7 @@ export class CharacterRig {
     if (this.mode === "fpp" && s.eye && s.view) {
       // View-space placement: hip at the lower right, ADS lines the sights up with the eye.
       // Eye just above the top of the receiver / rear sight.
-      const sightY = reflex ? sight.height : irons ? irons.height : pistol ? meta.max[1] + REVOLVER_HOLD : w === "sniper" ? SNIPER_SCOPE_AXIS : meta.max[1] + 0.004;
+      const sightY = reflex ? sight.height : scoped ? AR_SCOPE_AXIS : irons ? irons.height : pistol ? meta.max[1] + REVOLVER_HOLD : w === "sniper" ? SNIPER_SCOPE_AXIS : meta.max[1] + 0.004;
       const hip = pistol ? _v.set(0.13, -0.21, -0.4) : _v.set(0.15, -0.25, -0.3);
       // Keep the stock end just in front of the eye; the pistol is held out at arm's length, small enough
       // on screen not to hide a target.

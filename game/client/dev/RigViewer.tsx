@@ -76,7 +76,7 @@ function FppRig({ weapon, optic, ads, pitch, reload, orbit, shot, draw, raise }:
       speed: 0, moveYaw: 0, crouch: false, grounded: true, alive: true, sprint: 0, reload, recoil: 0, sinceShot: shot, sinceDraw: draw,
       // &raise=up|down: `ads` is the linear raise progress, drawn with the quick-scope move.
       ads: raise ? THREE.MathUtils.smoothstep(ads, 0, 1) : ads,
-      quickScope: raise ? quickScope(weapon, ads, raise === "up") : undefined,
+      quickScope: raise ? quickScope(weapon, ads, raise === "up", optic) : undefined,
     });
   });
   return null;

@@ -69,6 +69,9 @@ export const SHELL_SEATS: Partial<Record<WeaponId, { port: V3; axis: V3; scale: 
   pistol: { port: [-0.0215, 0.0688, -0.0819], axis: [0, 0, -1], scale: 0.69 },
 };
 
+/** An optic modelled on the gun ("Scope_" materials), shown only while it is the one chosen. */
+const SCOPE: Extract = { min: [-1, -1, -1], max: [1, 1, 1], material: /Scope_/ };
+
 /** Name suffix of a gun's detailed model, for the player's own hands. Not every gun has one. */
 const NEAR = "_near";
 
@@ -88,13 +91,21 @@ export function loadWeapons() {
         }
       });
       const id = child.name.replace(NEAR, "") as WeaponId;
+      const names = new Set(Object.keys(PARTS[id] ?? {}));
       for (const [part, spec] of Object.entries(PARTS[id] ?? {})) {
         const node = extractPart(child, spec.extract, spec.pivot);
         node.name = part;
         node.position.set(...spec.pivot);
         child.add(node);
       }
-      mergeFlatMeshes(child, new Set(Object.keys(PARTS[id] ?? {})));
+      const scope = extractPart(child, SCOPE, [0, 0, 0]);
+      if (scope.children.length) {
+        scope.name = "scope";
+        scope.visible = false;
+        child.add(scope);
+        names.add("scope");
+      }
+      mergeFlatMeshes(child, names);
       map.set(child.name, child);
     }
     return map;
