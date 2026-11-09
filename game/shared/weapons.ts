@@ -101,9 +101,12 @@ export function fireIntervalMs(def: WeaponDef) {
   return 60000 / def.rpm;
 }
 
-/** Current spread cone half-angle in degrees. */
-export function currentSpread(def: WeaponDef, ads: number, moving: number, airborne: boolean, crouched: boolean) {
-  const aim = def.scope ? Math.min(1, ads / SCOPE_UP) : ads;
+/**
+ * Current spread cone half-angle in degrees. `sightUp` is how far into aiming the sight is up and
+ * fully accurate (a red dot comes up early, see RED_DOT_UP); a sniper's scope uses SCOPE_UP.
+ */
+export function currentSpread(def: WeaponDef, ads: number, moving: number, airborne: boolean, crouched: boolean, sightUp = 1) {
+  const aim = Math.min(1, ads / (def.scope ? SCOPE_UP : sightUp));
   let s = def.spreadHip + (def.spreadAds - def.spreadHip) * aim;
   s += def.spreadMove * Math.min(1, Math.max(0, moving)) * (1 - aim * 0.8);
   if (airborne) s += def.spreadAir;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { quickScope } from "./quickScope";
+import { RED_DOT_ARRIVE } from "../../shared/optics";
 import type { WeaponId } from "../../shared/weapons";
 
 const GUNS: WeaponId[] = ["ar", "smg", "shotgun", "sniper", "pistol"];
@@ -44,6 +45,12 @@ describe("quick-scope move", () => {
       expect(Math.max(...path.map((s) => Math.abs(s.roll)))).toBeLessThan(0.06);
       expect(Math.abs(path[100].roll) + Math.abs(path[100].yaw) + Math.abs(path[100].dip)).toBeLessThan(1e-9);
     }
-    expect(quickScope(w, 1 / 3, true, "red-dot").lift).toBeGreaterThan(0.5);
+    expect(quickScope(w, 1 / 3, true, "red-dot").lift).toBeGreaterThan(0.85);
+    // Settled on the sights early, and held there for the rest of the raise.
+    for (const p of [RED_DOT_ARRIVE, 0.8]) {
+      const s = quickScope(w, p, true, "red-dot");
+      expect(s.lift).toBeCloseTo(1, 9);
+      expect(Math.abs(s.roll) + Math.abs(s.yaw) + Math.abs(s.dip)).toBeLessThan(1e-9);
+    }
   });
 });

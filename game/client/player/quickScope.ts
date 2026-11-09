@@ -1,5 +1,5 @@
 import type { WeaponId } from "../../shared/weapons";
-import type { OpticId } from "../../shared/optics";
+import { RED_DOT_ARRIVE, type OpticId } from "../../shared/optics";
 
 /**
  * The first-person quick-scope move, for every gun: raising the sights, the gun flicks up with a
@@ -39,11 +39,13 @@ export function quickScope(weapon: WeaponId, progress: number, raising: boolean,
   const cant = CANT[weapon];
   if (optic === "red-dot") {
     const k = RED_DOT_SWING;
-    // Cubic ease out on the way up (still fast off the hip), smoothstep on the way down.
-    const lift = raising ? 1 - (1 - p) ** 3 : p * p * (3 - 2 * p);
-    return raising
-      ? { lift, roll: cant * k * arc, yaw: -0.06 * k * arc, dip: 0.025 * k * arc }
-      : { lift, roll: -cant * 0.45 * k * arc, yaw: 0.04 * k * arc, dip: 0.035 * k * arc };
+    if (raising) {
+      // Cubic ease out, done early: on the sights by RED_DOT_ARRIVE of the raise.
+      const q = Math.min(1, p / RED_DOT_ARRIVE);
+      const up = Math.sin(Math.PI * q);
+      return { lift: 1 - (1 - q) ** 3, roll: cant * k * up, yaw: -0.06 * k * up, dip: 0.025 * k * up };
+    }
+    return { lift: p * p * (3 - 2 * p), roll: -cant * 0.45 * k * arc, yaw: 0.04 * k * arc, dip: 0.035 * k * arc };
   }
   if (raising) {
     // Back-ease out: fast off the hip, a touch past the sights, settling onto them.

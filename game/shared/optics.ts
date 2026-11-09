@@ -15,6 +15,14 @@ export const COMPATIBLE_OPTICS: Record<WeaponId, readonly OpticId[]> = {
   sniper: ["2x", "4x", "6x"],
   pistol: ["iron", "red-dot"],
 };
+/**
+ * Share of the ADS raise a red dot takes to reach the eye. It looks quick, and aiming accuracy is
+ * full from that moment, while zoom and move speed keep the gun's ADS time.
+ */
+export const RED_DOT_ARRIVE = 0.6;
+/** The same moment in eased aim (the smoothstep of the raise that `ads` is). */
+export const RED_DOT_UP = RED_DOT_ARRIVE * RED_DOT_ARRIVE * (3 - 2 * RED_DOT_ARRIVE);
+
 export const DEFAULT_OPTICS: Record<WeaponId, OpticId> = {
   ar: "red-dot", smg: "red-dot", shotgun: "iron", sniper: "6x", pistol: "iron",
 };

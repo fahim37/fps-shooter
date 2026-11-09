@@ -14,7 +14,7 @@ import { audio } from "./audio";
 import { ShotCadence } from "./cadence";
 import { RenderMotion } from "./motion";
 import { useLoadout } from "../loadout";
-import { OPTICS, opticFov } from "../../shared/optics";
+import { OPTICS, RED_DOT_UP, opticFov } from "../../shared/optics";
 import { LEAN_RATE, LEAN_ROLL, clampLean, leanOffset } from "../../shared/lean";
 import { EMOTES, type EmoteId } from "../../shared/showcase";
 
@@ -671,7 +671,7 @@ export class LocalPlayer {
   /** Shared by firing and the HUD so the displayed cone includes burst bloom. */
   get spread() {
     const moving = Math.min(1, Math.hypot(this.ms.vx, this.ms.vz) / 5);
-    return currentSpread(this.def, this.ads, moving, !this.ms.grounded, this.crouchT > 0.5)
+    return currentSpread(this.def, this.ads, moving, !this.ms.grounded, this.crouchT > 0.5, this.optic === "red-dot" ? RED_DOT_UP : 1)
       * (1 + Math.min(this.burst, 6) * 0.025);
   }
 

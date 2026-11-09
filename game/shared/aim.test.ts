@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { spreadDir, spreadRadius, zoomSensitivity } from "./aim";
 import { SCOPE_UP, currentSpread, WEAPONS } from "./weapons";
+import { RED_DOT_UP } from "./optics";
 
 describe("aim presentation and handling", () => {
   it("lets a sniper quick-scope: dead on once the scope is up, wild before it", () => {
@@ -8,6 +9,15 @@ describe("aim presentation and handling", () => {
     expect(currentSpread(sniper, SCOPE_UP, 0, false, false)).toBeCloseTo(sniper.spreadAds);
     expect(currentSpread(sniper, SCOPE_UP / 2, 0, false, false)).toBeGreaterThan(3);
     expect(currentSpread(WEAPONS.ar, SCOPE_UP, 0, false, false)).toBeGreaterThan(WEAPONS.ar.spreadAds);
+  });
+
+  it("is fully accurate behind a red dot once it reaches the eye, moving or not", () => {
+    for (const moving of [0, 1]) {
+      const full = currentSpread(WEAPONS.ar, 1, moving, false, false);
+      expect(currentSpread(WEAPONS.ar, RED_DOT_UP, moving, false, false, RED_DOT_UP)).toBeCloseTo(full);
+      expect(currentSpread(WEAPONS.ar, RED_DOT_UP, moving, false, false)).toBeGreaterThan(full);
+      expect(currentSpread(WEAPONS.ar, RED_DOT_UP / 2, moving, false, false, RED_DOT_UP)).toBeGreaterThan(full);
+    }
   });
 
   it("preserves hip sensitivity and smoothly scales through the ADS midpoint", () => {
