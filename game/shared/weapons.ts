@@ -103,7 +103,8 @@ export function fireIntervalMs(def: WeaponDef) {
 
 /**
  * Current spread cone half-angle in degrees. `sightUp` is how far into aiming the sight is up and
- * fully accurate (a red dot comes up early, see RED_DOT_UP); a sniper's scope uses SCOPE_UP.
+ * fully accurate: a red dot comes up early (RED_DOT_UP), a magnified scope once its view is up (SCOPE_UP).
+ * A sniper's scope always uses SCOPE_UP.
  */
 export function currentSpread(def: WeaponDef, ads: number, moving: number, airborne: boolean, crouched: boolean, sightUp = 1) {
   const aim = Math.min(1, ads / (def.scope ? SCOPE_UP : sightUp));

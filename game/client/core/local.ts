@@ -668,10 +668,15 @@ export class LocalPlayer {
   sinceShot(now: number) { return (now - this.lastShotAt) / 1000; }
   sinceDraw(now: number) { return (now - this.drawAt) / 1000; }
 
+  /** How far into aiming the chosen sight is up and fully accurate: early for a red dot, once the view is through a scope. */
+  private get sightUp() {
+    return this.optic === "red-dot" ? RED_DOT_UP : OPTICS[this.optic].zoom > 1 ? SCOPE_UP : 1;
+  }
+
   /** Shared by firing and the HUD so the displayed cone includes burst bloom. */
   get spread() {
     const moving = Math.min(1, Math.hypot(this.ms.vx, this.ms.vz) / 5);
-    return currentSpread(this.def, this.ads, moving, !this.ms.grounded, this.crouchT > 0.5, this.optic === "red-dot" ? RED_DOT_UP : 1)
+    return currentSpread(this.def, this.ads, moving, !this.ms.grounded, this.crouchT > 0.5, this.sightUp)
       * (1 + Math.min(this.burst, 6) * 0.025);
   }
 

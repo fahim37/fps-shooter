@@ -11,6 +11,12 @@ describe("aim presentation and handling", () => {
     expect(currentSpread(WEAPONS.ar, SCOPE_UP, 0, false, false)).toBeGreaterThan(WEAPONS.ar.spreadAds);
   });
 
+  it("is fully accurate through a magnified scope on any gun once the scope view is up", () => {
+    for (const def of [WEAPONS.ar, WEAPONS.smg]) {
+      expect(currentSpread(def, SCOPE_UP, 1, false, false, SCOPE_UP)).toBeCloseTo(currentSpread(def, 1, 1, false, false));
+    }
+  });
+
   it("is fully accurate behind a red dot once it reaches the eye, moving or not", () => {
     for (const moving of [0, 1]) {
       const full = currentSpread(WEAPONS.ar, 1, moving, false, false);
