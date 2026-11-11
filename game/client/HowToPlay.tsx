@@ -11,8 +11,8 @@ const KEYBOARD: { title: string; rows: Row[] }[] = [
     [["WASD"], "Move"],
     [["Shift"], "Sprint", "Hold while moving forward"],
     [["Space"], "Jump"],
-    [["Ctrl"], "Crouch", "Steadier aim, quieter steps"],
-    [["Shift", "Ctrl"], "Slide", "Crouch while sprinting · jump out of it to carry the speed"],
+    [["Ctrl", "X"], "Crouch", "Either key · steadier aim, quieter steps"],
+    [["Shift", "X"], "Slide", "Crouch (X or Ctrl) while sprinting · jump out of it to carry the speed"],
     [["Q", "E"], "Peek left / right", "Aims down sights while peeking"],
   ] },
   { title: "COMBAT", rows: [

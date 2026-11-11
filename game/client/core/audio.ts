@@ -29,24 +29,16 @@ const GESTURES = ["pointerdown", "pointerup", "keydown", "touchend"] as const;
 
 interface ShotVoice {
   crack: number; // high-frequency snap level
-  body: number; // level of the blast: noise closing down from bright to dark
+  body: number; // mid noise level
   thump: number; // low sine thump level
-  knock: number; // mid punch level: what is left of the thump on small speakers
   pitch: number; // filter frequency multiplier
   length: number; // seconds of the body burst
   tail: number; // reverb send
-  echo: number; // level of the report coming back off walls
-  action?: number; // level of the bolt cycling, heard on your own gun
   boom?: number; // level of a low blast rolling off under the shot
 }
 
 /** Seconds a shot's boom takes to roll off. */
 const BOOM_SECONDS = 0.65;
-/** When a shot's two echoes come back (s), and how long the later one rings. */
-const ECHOES = [0.115, 0.23] as const;
-const ECHO_SECONDS = 0.32;
-/** Overall trim of a gunshot's layers into its voice. */
-const SHOT_LEVEL = 0.8;
 /** A bullet passing within this far (m) of the listener is heard going by. */
 export const WHIZ_RANGE = 2.8;
 /** A blast within this far (m) dulls the hearing for a moment. */
@@ -75,12 +67,12 @@ const LOUD_ENOUGH = 0.3;
 interface Voice { end: number; nodes: AudioNode[]; spatial: boolean; hrtf: boolean }
 
 const SHOTS: Record<WeaponId, ShotVoice> = {
-  ar: { crack: 0.9, body: 1, thump: 0.9, knock: 0.55, pitch: 1, length: 0.17, tail: 0.55, echo: 0.5, action: 0.1 },
-  smg: { crack: 0.8, body: 0.8, thump: 0.6, knock: 0.45, pitch: 1.3, length: 0.11, tail: 0.4, echo: 0.3, action: 0.1 },
-  shotgun: { crack: 0.85, body: 1.2, thump: 1.3, knock: 0.75, pitch: 0.7, length: 0.26, tail: 0.9, echo: 0.7, boom: 0.8 },
+  ar: { crack: 0.9, body: 1, thump: 0.9, pitch: 1, length: 0.16, tail: 0.55 },
+  smg: { crack: 0.8, body: 0.8, thump: 0.6, pitch: 1.3, length: 0.11, tail: 0.4 },
+  shotgun: { crack: 0.85, body: 1.2, thump: 1.3, pitch: 0.7, length: 0.24, tail: 0.9, boom: 0.8 },
   // An anti-materiel round: the heaviest crack, and a blast rolling off long after it.
-  sniper: { crack: 1.3, body: 1.3, thump: 1.6, knock: 0.85, pitch: 0.75, length: 0.4, tail: 1.2, echo: 1, boom: 1 },
-  pistol: { crack: 1, body: 1.15, thump: 1.2, knock: 0.7, pitch: 0.8, length: 0.2, tail: 0.85, echo: 0.65, boom: 0.45 },
+  sniper: { crack: 1.3, body: 1.3, thump: 1.6, pitch: 0.75, length: 0.38, tail: 1.2, boom: 1 },
+  pistol: { crack: 1, body: 1.15, thump: 1.2, pitch: 0.8, length: 0.2, tail: 0.85, boom: 0.45 },
 };
 
 /**
@@ -359,43 +351,35 @@ export class AudioEngine {
     if (!ctx) return;
     const v = SHOTS[weapon];
     const t = ctx.currentTime + 0.001;
-    const route = this.spatial(pos, Math.max(v.length, v.boom ? BOOM_SECONDS : 0, ECHOES[1] * 1.06 + ECHO_SECONDS) + 0.05);
+    const route = this.spatial(pos, Math.max(0.2, v.length, v.boom ? BOOM_SECONDS : 0) + 0.05);
     if (!route) return;
-    const [bus, dist, voice] = route;
-    const out = ctx.createGain();
-    out.gain.value = SHOT_LEVEL;
-    out.connect(bus);
+    const [out, dist, voice] = route;
     const ally = !local && side === "ally";
     const gainMul = local ? 0.9 : ally ? 0.82 : 1;
     const crackMul = local ? 1 : ally ? 0.55 : 1.2;
     const tone = ally ? 0.86 : 1;
     const jitter = 0.94 + Math.random() * 0.12;
 
-    // Crack: the muzzle's snap, a click of bright noise with a harder band under it.
+    // Crack: very short bright noise.
     const crack = this.noiseSource(t, 0.05);
     const hp = ctx.createBiquadFilter();
     hp.type = "highpass";
     hp.frequency.value = 2400 * v.pitch * jitter * (ally ? 0.75 : local ? 1 : 1.15);
     const cg = ctx.createGain();
-    this.env(cg, t, 0.9 * v.crack * gainMul * crackMul, 0.001, 0.04);
+    this.env(cg, t, 0.9 * v.crack * gainMul * crackMul, 0.001, 0.045);
     crack.connect(hp).connect(cg).connect(out);
-    this.burst(out, "bandpass", 1900 * v.pitch * jitter * tone, 0.9, t, 0.6 * v.crack * gainMul * crackMul, 0.001, 0.028);
 
-    // Body: the blast itself, noise that starts bright and closes down dark as it rolls away.
+    // Body: band-limited noise burst.
     const body = this.noiseSource(t, v.length);
-    const cut = ctx.createBiquadFilter();
-    cut.type = "highpass";
-    cut.frequency.value = 150;
     const bp = ctx.createBiquadFilter();
-    bp.type = "lowpass";
-    bp.Q.value = 0.9;
-    bp.frequency.setValueAtTime(5200 * v.pitch * jitter * tone, t);
-    bp.frequency.exponentialRampToValueAtTime(380 * v.pitch * tone, t + v.length * 0.85);
+    bp.type = "bandpass";
+    bp.frequency.value = 900 * v.pitch * jitter * tone;
+    bp.Q.value = 0.7;
     const bg = ctx.createGain();
-    this.env(bg, t, 0.8 * v.body * gainMul, 0.002, v.length);
-    body.connect(cut).connect(bp).connect(bg).connect(out);
+    this.env(bg, t, 1.1 * v.body * gainMul, 0.002, v.length);
+    body.connect(bp).connect(bg).connect(out);
 
-    // Thump: pitched-down sine for weight, and a knock an octave up that small speakers can play.
+    // Thump: pitched-down sine for weight.
     const osc = ctx.createOscillator();
     osc.type = "sine";
     osc.frequency.setValueAtTime(140 * v.pitch, t);
@@ -405,19 +389,8 @@ export class AudioEngine {
     osc.connect(og).connect(out);
     osc.start(t);
     osc.stop(t + 0.2);
-    this.blip(out, "triangle", 330 * v.pitch * jitter, t, 0.55 * v.knock * gainMul, 0.001, 0.07, 95 * v.pitch);
-
-    // The report coming back off the walls around: two darker, quieter repeats.
-    this.burst(out, "lowpass", 1300 * tone, 0.7, t + ECHOES[0] * jitter, 0.5 * v.echo * gainMul, 0.012, 0.16);
-    this.burst(out, "lowpass", 800 * tone, 0.7, t + ECHOES[1] * jitter, 0.32 * v.echo * gainMul, 0.02, ECHO_SECONDS - 0.02);
-    // Your own gun's bolt running back and home.
-    if (local && v.action) {
-      this.burst(out, "bandpass", 3300, 3, t + 0.03, v.action, 0.001, 0.016);
-      this.burst(out, "bandpass", 2300, 3, t + 0.055, v.action * 0.8, 0.001, 0.02);
-    }
 
     // Boom: a low blast closing down from the muzzle, with a sub drop under it.
-    let boom: GainNode | null = null;
     if (v.boom) {
       const roar = this.noiseSource(t, BOOM_SECONDS);
       const lp = ctx.createBiquadFilter();
@@ -427,21 +400,17 @@ export class AudioEngine {
       const rg = ctx.createGain();
       this.env(rg, t, v.boom * gainMul, 0.003, BOOM_SECONDS - 0.02);
       roar.connect(lp).connect(rg).connect(out);
+      const roll = ctx.createGain();
+      roll.gain.value = v.tail * 0.6;
+      rg.connect(roll).connect(this.reverb);
+      voice.nodes.push(roll);
       this.blip(out, "sine", 96, t, 0.75 * v.boom * gainMul, 0.003, BOOM_SECONDS - 0.1, 30);
-      boom = ctx.createGain();
-      boom.gain.value = 0.6;
-      rg.connect(boom);
     }
 
-    // The tail: the blast (and the boom under it) ringing on in the space around, duller the
-    // further off the shot was. From far away the tail is most of what arrives.
-    const dull = ctx.createBiquadFilter();
-    dull.type = "lowpass";
-    dull.frequency.value = Math.max(700, 5200 / (1 + dist * 0.05));
+    // Echo off the village walls.
     const send = ctx.createGain();
-    send.gain.value = SHOT_LEVEL * v.tail * (0.5 + Math.min(1, dist / 60));
-    bg.connect(dull).connect(send).connect(this.reverb);
-    boom?.connect(dull);
+    send.gain.value = v.tail * (0.5 + Math.min(1, dist / 60));
+    bg.connect(send).connect(this.reverb);
     voice.nodes.push(send);
   }
 
