@@ -1,27 +1,33 @@
 /* Picture cards with the name laid over the bottom, two in a row. */
 .picker { min-width: 0; }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.card { position: relative; display: block; min-width: 0; padding: 0; overflow: hidden; border: 1px solid #ffffff24; background: #1c2023; color: #e5ebf1; text-align: left; cursor: pointer; transition: border-color .15s; }
-.card:hover:not(:disabled) { border-color: #d8d07c70; }
+.card { position: relative; display: block; min-width: 0; padding: 0; overflow: hidden; border: 1px solid #ffffff1f; background: #131a22; color: #e5ebf1; text-align: left; cursor: pointer; transition: border-color .15s; }
+.card:hover:not(:disabled) { border-color: #c8f75180; }
 .card:disabled { cursor: default; opacity: .45; }
-.card.selected, .card.selected:disabled { border-color: var(--accent); opacity: 1; box-shadow: 0 0 0 1px var(--accent), 0 0 18px #d8d07c30; }
-.preview { display: block; aspect-ratio: 16 / 7; background: #1c2023 center / cover no-repeat; filter: saturate(.7) brightness(.75); }
+.card.selected, .card.selected:disabled { border-color: var(--accent); opacity: 1; box-shadow: 0 0 0 1px var(--accent); }
+.preview { display: block; aspect-ratio: 16 / 7; background: #131a22 center / cover no-repeat; filter: saturate(.65) brightness(.7); }
 .selected .preview { filter: none; }
-.name { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 10px 7px; background: linear-gradient(transparent, #0b0e11ee 70%); font-size: 14px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.name { position: absolute; left: 0; right: 0; bottom: 0; padding: 20px 10px 7px; background: linear-gradient(transparent, #05080cf2 72%); font-family: var(--display, inherit); font-size: 14px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .selected .name { color: var(--accent); }
+/* The picked map carries a ticked lime corner. */
+.selected::after { content: ""; position: absolute; top: 0; right: 0; width: 28px; height: 28px; clip-path: polygon(0 0, 100% 0, 100% 100%); background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.6 6.3 5 8.7l4.4-5' fill='none' stroke='%230a1204' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") 15px 3px / 10px no-repeat; }
 .credit { display: block; margin-top: 5px; font-size: 8px; color: #848d95; letter-spacing: .02em; }
 
 /* Thumbnails for the room bar: the room's own rules set how many to a row. */
 .compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .compact .preview { aspect-ratio: 16 / 7; }
+.compact .selected::after { width: 22px; height: 22px; background-position: 12px 2px; background-size: 8px; }
 
 
 /* Cards lift on hover, the picture brightens, and a pick flashes in. */
 @media (prefers-reduced-motion: no-preference) {
   .card { transition: border-color .15s, transform .2s cubic-bezier(.2, .8, .2, 1), box-shadow .2s; }
-  .card:hover:not(:disabled) { transform: translateY(-3px); box-shadow: 0 8px 22px #0006; }
-  .preview { transition: filter .25s, transform .4s cubic-bezier(.2, .8, .2, 1); }
-  .card:hover:not(:disabled) .preview { transform: scale(1.06); filter: saturate(1) brightness(1); }
+  .card:hover:not(:disabled) { transform: translateY(-3px); box-shadow: 0 10px 24px #0008; }
+  .card.selected:hover:not(:disabled) { box-shadow: 0 0 0 1px var(--accent), 0 10px 24px #0008; }
+  .preview { transition: filter .25s, transform .5s cubic-bezier(.2, .8, .2, 1); }
+  .card:hover:not(:disabled) .preview { transform: scale(1.07); filter: saturate(1) brightness(1); }
   .card.selected .name { animation: card-pick .35s cubic-bezier(.2, .8, .2, 1) both; }
+  .selected::after { animation: card-tick .4s cubic-bezier(.3, 1.5, .5, 1) both; }
   @keyframes card-pick { from { opacity: 0; transform: translateY(6px); } }
+  @keyframes card-tick { from { opacity: 0; translate: 10px -10px; } }
 }

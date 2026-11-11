@@ -18,6 +18,9 @@ export const PlayerState = schema({
   primary: t.string().default("ar"),
   hp: t.uint8().default(100),
   shield: t.uint8().default(0),
+  /** Dashes in hand, and kills counted toward the next refill. */
+  dash: t.uint8().default(2),
+  dashKills: t.uint8().default(0),
   alive: t.boolean().default(false),
   protectedUntil: t.float64().default(0),
   kills: t.uint16().default(0),

@@ -4,7 +4,7 @@ import { MatchState, PlayerState, GrenadeState } from "../game/shared/schema";
 import {
   TICK_MS, MAX_REWIND_MS, MAX_HEALTH, MAX_SHIELD, SHIELD_STREAK, REGEN_DELAY_MS, REGEN_PER_SEC, RESPAWN_MS, SPAWN_PROTECTION_MS,
   GRENADES_PER_LIFE, FALL_DAMAGE_MIN_SPEED, MAX_PLAYERS, MODE_INFO, scoreLimitFor, matchMinutes, WARMUP_MS, END_SCREEN_MS, EYE_HEIGHT,
-  CROUCH_EYE_HEIGHT, SLIDE_EYE_HEIGHT, SPRINT_SPEED, ROOM_SIZES, SCORE_LIMITS, type GameMode,
+  CROUCH_EYE_HEIGHT, SLIDE_EYE_HEIGHT, SPRINT_SPEED, DASH_SPEED, DASH_SECONDS, DASH_KILLS, DASH_MAX, DASH_REFILL, ROOM_SIZES, SCORE_LIMITS, type GameMode,
 } from "../game/shared/constants";
 import { WEAPONS, PRIMARIES, GRENADE, damageAt, fireIntervalMs, reloadMs, reloadNeed, reloadedRounds, type WeaponId } from "../game/shared/weapons";
 import { GRENADE_STEP_HZ, blastDistance, createGrenadeBody, grenadeVelocity, impactSpeed } from "../game/shared/grenade";
@@ -61,6 +61,9 @@ export interface ServerPlayer {
   pose: V3;
   lastEmoteAt: number;
   lastSpotAt: number;
+  /** A dash in progress: until when, and how far past the usual speed limit it may still carry (m). */
+  dashUntil: number;
+  dashBudget: number;
   /** After a server spawn, ignore client poses until one arrives near this point. */
   expectSpawn: { x: number; z: number; until: number } | null;
   vel: V3;
@@ -202,6 +205,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       if (value !== "idle") p.lastEmoteAt = at;
     });
     this.onMessage("spot", (client, id: unknown) => this.onSpot(client, id));
+    this.onMessage("dash", (client) => this.onDash(client));
     this.onMessage("team", (client, team: unknown) => {
       const p = this.players.get(client.sessionId);
       if (!p || this.state.phase !== "waiting" || mode !== "tdm" || (team !== 1 && team !== 2) || p.st.team === team) return;
@@ -404,6 +408,8 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       pose: [st.x, st.y, st.z],
       lastEmoteAt: 0,
       lastSpotAt: 0,
+      dashUntil: 0,
+      dashBudget: 0,
       expectSpawn: null,
       vel: [0, 0, 0],
     };
@@ -575,10 +581,12 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       // Speed check: allow sprint speed with generous slack for jitter and lag bursts.
       const dt = Math.max(0.05, (t - p.lastPoseAt) / 1000);
       const dist = Math.hypot(m.x - p.pose[0], m.z - p.pose[2]);
-      if (dist > SPRINT_SPEED * dt * 1.6 + 1.2) {
+      const limit = SPRINT_SPEED * dt * 1.6 + 1.2;
+      if (dist > limit + (t < p.dashUntil ? p.dashBudget : 0)) {
         client.send("correct", { x: p.pose[0], y: p.pose[1], z: p.pose[2] });
         return;
       }
+      if (dist > limit) p.dashBudget -= dist - limit;
       p.lastPoseAt = t;
     }
     const h = this.map.half;
@@ -752,6 +760,15 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     }
   }
 
+  /** F: spends the player's dash, and lets their next poses cover its distance. */
+  private onDash(client: Client) {
+    const p = this.players.get(client.sessionId);
+    if (!p || !p.st.alive || p.st.dash < 1) return;
+    p.st.dash--;
+    p.dashUntil = now() + 1500;
+    p.dashBudget = DASH_SPEED * DASH_SECONDS * 1.25;
+  }
+
   /** A player marks the enemy in their sights: their team sees the mark follow that enemy for a while. */
   private onSpot(client: Client, id: unknown) {
     const p = this.players.get(client.sessionId), target = typeof id === "string" ? this.players.get(id) : undefined;
@@ -771,6 +788,8 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     for (const mate of this.players.values()) {
       if (mate === p || (tdm && mate.st.team === p.st.team)) mate.client?.send("spotted", event);
     }
+    // The marked player is warned, so they can break the line of sight.
+    target.client?.send("marked", { ms: SPOT_MS });
   }
 
   canDamage(a: ServerPlayer, b: ServerPlayer) {
@@ -817,6 +836,11 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       killer.st.streak++;
       killer.st.score += part === "head" ? 150 : 100;
       if (killer.st.alive && killer.st.streak % SHIELD_STREAK === 0) killer.st.shield = MAX_SHIELD;
+      // Kills refill spent dashes.
+      if (killer.st.alive && killer.st.dash < DASH_MAX && ++killer.st.dashKills >= DASH_KILLS) {
+        killer.st.dash = Math.min(DASH_MAX, killer.st.dash + DASH_REFILL);
+        killer.st.dashKills = 0;
+      }
       // Scavenge: a kill tops up the killer's reserve ammo.
       const a = killer.ammo[killer.st.weapon as WeaponId];
       if (a) a.reserve = Math.min(WEAPONS[killer.st.weapon as WeaponId].reserve * 2, a.reserve + WEAPONS[killer.st.weapon as WeaponId].mag);
@@ -897,6 +921,9 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     p.vel = [0, 0, 0];
     p.st.hp = MAX_HEALTH;
     p.st.shield = MAX_SHIELD;
+    p.st.dash = DASH_MAX;
+    p.st.dashKills = 0;
+    p.dashUntil = 0;
     p.st.alive = true;
     p.st.emote = "idle";
     p.st.flags = 0;

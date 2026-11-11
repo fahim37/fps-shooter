@@ -19,7 +19,7 @@ const BACK_Z = -0.95;
 const RISER = 0.28;
 const HEADING = 40;
 const TAG_HEIGHT: Record<TagMode, number> = { full: 36, name: 16, stagger: 30 };
-const PAD_COLORS = ["#ceca92", "#66b8ff", "#ff827c"];
+const PAD_COLORS = ["#c8f751", "#66b8ff", "#ff827c"];
 
 /**
  * Up to six stand in one row. Larger rooms zig-zag across a front row and a raised back row,

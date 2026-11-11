@@ -62,6 +62,16 @@
 .voice.room { position: relative; top: auto; left: auto; transform: none; align-items: flex-end; z-index: 6; }
 .room .panel { position: absolute; top: 100%; right: 0; }
 .room .speakers, .room .error { position: absolute; top: 100%; right: 0; width: max-content; }
+/* There it is square-cornered and lit in the pre-match accent, like the screen around it. */
+.room .bar, .room .bar button, .room .panel, .room .speakers, .room .status, .room .toggle, .room .segment, .room .segment button, .room .member button, .room .primary, .room .close { border-radius: 0; }
+.room .bar { border-color: #ffffff2b; background: #0d1219db; }
+.room .bar button:hover:not(:disabled), .room .bar .more[aria-expanded=true] { color: var(--accent); }
+.room .bar button[aria-pressed=true] { border-color: color-mix(in srgb, var(--accent) 35%, transparent); color: var(--accent); }
+.room .bar button.live { background: var(--accent); border-color: var(--accent); box-shadow: none; }
+.room .speakers, .room .status[data-on=true], .room .member button { color: var(--accent); }
+.room .member button[aria-pressed=true] { color: #ffb4a6; }
+.room .segment button[aria-checked=true], .room .primary { background: var(--accent); color: #0a1204; }
+.room .volume input { accent-color: var(--accent); }
 /* Touch: compact, so it fits between the score and the top-right tool buttons. */
 @media (pointer: coarse) { .voice { top: max(58px, calc(env(safe-area-inset-top) + 50px)); font-size: 10px; } .bar { gap: 2px; padding: 2px; } .bar button { min-width: 40px; height: 38px; } .bar .mic { min-width: 50px; } .bar .more { min-width: 28px; } .panel { max-height: calc(100dvh - 130px); } }
 

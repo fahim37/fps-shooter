@@ -26,8 +26,3 @@
 @keyframes shotPulse { 0% { transform: scale(.35); opacity: 1; } 100% { transform: scale(1); opacity: 0; } }
 .step { fill: #ff5a4d; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .shotPulse { animation: none; opacity: .5; } }
-/* An enemy marked with Z: a diamond that keeps pulsing while the mark lasts. */
-.spot { pointer-events: none; }.spotMark { fill: #ff5a47; stroke: #fff1ee; stroke-width: .55; }
-.spotPulse { fill: none; stroke: #ff7a6a; stroke-width: .7; transform-origin: 0 0; animation: spotPulse 1.1s ease-out infinite; }
-@keyframes spotPulse { 0% { transform: scale(.35); opacity: 1; } 100% { transform: scale(1); opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .spotPulse { animation: none; opacity: .5; } }

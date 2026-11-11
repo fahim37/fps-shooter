@@ -1,42 +1,46 @@
-.showcase { position: relative; isolation: isolate; container-type: size; display: flex; flex-direction: column; width: 100%; height: 100%; min-width: 0; min-height: 0; border: 1px solid #ffffff1f; background: radial-gradient(ellipse 34% 44% at 50% 44%, #56687566, transparent 72%), radial-gradient(ellipse 55% 30% at 50% 88%, #7c858d40, transparent 72%), linear-gradient(180deg, #0d1316, #17222a 72%, #0f1517); overflow: hidden; }
+/* No frame and no fill of its own: the operators stand in the lobby's 3D backdrop, lit from the floor. */
+.showcase { position: relative; isolation: isolate; container-type: size; display: flex; flex-direction: column; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
+.showcase::before { content: ""; position: absolute; z-index: -2; left: 50%; bottom: 3%; width: min(92%, 760px); height: 46%; translate: -50% 0; pointer-events: none; background: radial-gradient(ellipse 50% 50% at 50% 78%, #c8f75124, #4fb7cc14 48%, transparent 72%), radial-gradient(ellipse 34% 62% at 50% 40%, #9fd8ec12, transparent 70%); }
 .showcase button { cursor: pointer; font: inherit; color: inherit; }
-.showcase button:focus-visible { outline: 2px solid #e2de96; outline-offset: -2px; }
+.showcase button:focus-visible { outline: 2px solid #dbff7a; outline-offset: -2px; }
 .showcase button:disabled { cursor: default; opacity: .4; }
 /* Big callsign (or room name) behind the operators, like an agent-select splash; long text shrinks to fit. */
-.watermark { position: absolute; z-index: -1; left: 0; right: 0; margin-inline: auto; width: max-content; max-width: 100%; top: 22%; overflow: hidden; text-align: left; white-space: nowrap; text-transform: uppercase; font-size: clamp(32px, min(16cqi, calc(130cqi / var(--chars, 10))), 170px); font-weight: 900; line-height: 1; letter-spacing: -.03em; color: transparent; -webkit-text-stroke: 1px #d8d07c2e; pointer-events: none; user-select: none; }
+.watermark { position: absolute; z-index: -1; left: 0; right: 0; margin-inline: auto; width: max-content; max-width: 100%; top: 22%; overflow: hidden; text-align: left; white-space: nowrap; text-transform: uppercase; font-family: var(--display, inherit); font-size: clamp(32px, min(16cqi, calc(130cqi / var(--chars, 10))), 170px); font-weight: 900; line-height: 1; letter-spacing: -.01em; color: transparent; -webkit-text-stroke: 1px #c8f75140; mask-image: linear-gradient(180deg, #000 20%, #0006); pointer-events: none; user-select: none; }
 /* The second line ends under the first, clear of the ranger standing in the middle. */
 .watermark > span { display: block; }
 .watermark > span + span { text-align: right; }
-.heading { position: absolute; z-index: 2; top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 8px 8px 14px; font: 10px var(--font-geist-mono), monospace; letter-spacing: .16em; color: #bac7d3; background: linear-gradient(#0c0f12cc, transparent); }
-.tools { display: flex; align-items: center; gap: 2px; margin-left: auto; }
-.tools > button { min-height: 32px; border: 0; background: transparent; color: #adb9c4; font-size: 11px; letter-spacing: normal; padding: 4px 8px; }
-.tools > button:hover { color: var(--accent); }
+.heading { position: absolute; z-index: 2; top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 6px 8px 4px; font: 10px var(--font-geist-mono), monospace; letter-spacing: .16em; color: #c9d6e0; }
+.heading > span { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 10px; border: 1px solid #ffffff1f; background: #05080ca6; }
+.heading > span::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.tools { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.tools > button { min-height: 30px; border: 1px solid transparent; background: transparent; color: #adb9c4; font-size: 11px; letter-spacing: normal; padding: 4px 10px; transition: color .15s, background .15s, border-color .15s; }
+.tools > button:hover { border-color: #ffffff24; background: #05080ca6; color: var(--accent); }
 .viewport { position: relative; flex: 1 1 auto; width: 100%; min-height: 0; }
 .viewport canvas { display: block; }
 .canvasHost { position: absolute; inset: 0; }
 /* Horizontal drags turn the rangers; vertical ones still scroll the page on touch. */
 .canvasHost canvas { cursor: grab; touch-action: pan-y; }
 .canvasHost canvas[data-dragging] { cursor: grabbing; }
-.canvasHost canvas:focus-visible { outline: 2px solid #e2de96; outline-offset: -2px; }
+.canvasHost canvas:focus-visible { outline: 2px solid #dbff7a; outline-offset: -2px; }
 .notice { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; margin: 0; padding: 30px; color: #bfc7ce; font-size: 13px; text-align: center; z-index: 1; }
-.notice button { padding: 8px 14px; border: 1px solid #6d7f8e; background: #1e2831; }
+.notice button { padding: 8px 16px; border: 1px solid #ffffff38; background: #0d1219db; }
 /* Name tags sit under each front-row ranger's feet and above each back-row ranger's head. */
 .tags { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
 .tag { --line: 0; position: absolute; text-align: center; transform: translate(-50%, calc(6px + var(--line) * 14px)); }
 .tag[data-row="1"] { transform: translate(-50%, calc(-100% - 6px - var(--line) * 14px)); }
-.tag strong { display: inline-flex; max-width: 100%; vertical-align: top; color: #ebf0f5; font-size: 15px; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; text-shadow: 0 1px 6px #000c, 0 0 2px #000; }
+.tag strong { display: inline-flex; max-width: 100%; vertical-align: top; color: #f2f6fa; font-family: var(--display, inherit); font-size: 16px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; text-shadow: 0 1px 6px #000c, 0 0 2px #000; }
 .tag strong > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .tag strong > em { flex: none; font-style: normal; color: var(--accent); }
 .tag strong[data-me] > span { color: var(--accent); }
 .tag small { display: block; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #adbac5; font-size: 11px; text-shadow: 0 1px 4px #000c; }
-.tags:not([data-mode="full"]) strong { padding: 0 4px; border-radius: 2px; background: #0b0e10bf; }
+.tags:not([data-mode="full"]) strong { padding: 0 5px; background: #05080cc7; }
 .tags[data-mode="name"] strong { font-size: 11px; letter-spacing: .04em; line-height: 15px; }
 .tags[data-mode="stagger"] strong { font-size: 10px; letter-spacing: .02em; line-height: 13px; }
-/* Right under the ranger, on the stage itself: no bar of its own. */
-.showoffs { position: relative; z-index: 2; flex: none; display: flex; justify-content: center; gap: 4px; padding: 0 8px 8px; }
-.showoffs button { flex: 0 1 auto; min-width: 0; min-height: 30px; padding: 4px 12px; border: 1px solid #ffffff2e; background: #0a0d10b8; color: #c1ccd5; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.showoffs button:hover:not(:disabled) { border-color: #d8d07c70; }
-.showoffs button[aria-pressed="true"] { color: #0f181f; background: #d2cd86; border-color: #d2cd86; }
+/* Right under the ranger, on the stage itself: one strip of moves. */
+.showoffs { position: relative; z-index: 2; flex: none; display: flex; justify-content: center; align-self: center; max-width: calc(100% - 16px); gap: 3px; margin: 0 8px 8px; padding: 3px; border: 1px solid #ffffff1f; background: #05080cb8; }
+.showoffs button { flex: 0 1 auto; min-width: 0; min-height: 30px; padding: 4px 14px; border: 0; background: transparent; color: #c1ccd5; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: background .18s, color .18s, box-shadow .18s; }
+.showoffs button:hover:not(:disabled) { background: #ffffff14; color: #fff; }
+.showoffs button[aria-pressed="true"] { color: #0a1204; font-weight: 700; background: linear-gradient(135deg, #dbff7a, #c8f751); box-shadow: inset 0 1px 0 #ffffff80; }
 /* A short stage drops the line under the name, or it runs into the showoff buttons. */
 @container (max-height: 360px) {
   .tag small { display: none; }
@@ -50,8 +54,15 @@
   .showoffs button { font-size: 11px; }
 }
 @media (max-height: 520px), (max-width: 760px) {
-  .showoffs button { min-height: 30px; padding: 3px 8px; }
+  .showoffs { margin-bottom: 6px; }
+  .showoffs button { min-height: 28px; padding: 3px 9px; }
   .tags[data-mode="full"] strong { font-size: 13px; }
   .tags[data-mode="full"] small { font-size: 10px; }
   .tools > button { min-height: 28px; font-size: 10px; padding: 3px 6px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .showcase::before { animation: floor-breathe 6s ease-in-out infinite alternate; }
+  @keyframes floor-breathe { from { opacity: .7; } to { opacity: 1; } }
+  .showoffs button[aria-pressed="true"] { animation: move-pick .3s cubic-bezier(.3, 1.4, .5, 1); }
+  @keyframes move-pick { from { transform: scale(.9); } }
 }

@@ -43,10 +43,10 @@ async function main() {
     await page.waitForTimeout(150);
     assert.ok(front.equals(await stage()), "Double-click faces the character forward again");
     await page.getByRole("button", { name: "Hide preview", exact: true }).click();
-    assert.equal(await page.locator("canvas").count(), 0, "Hiding disposes the renderer");
+    assert.equal(await page.locator("canvas:not([data-backdrop])").count(), 0, "Hiding disposes the renderer");
     await page.getByRole("button", { name: "Show preview", exact: true }).click();
     await page.locator('[data-stage-status="ready"]').waitFor();
-    assert.equal(await page.locator("canvas").count(), 1);
+    assert.equal(await page.locator("canvas:not([data-backdrop])").count(), 1);
     // A fresh context cannot borrow a successful asset request from the first preview.
     const offlineContext = await browser.newContext();
     const offline = await offlineContext.newPage();

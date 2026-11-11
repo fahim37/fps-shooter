@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import dynamic from "next/dynamic";
 import Image from "next/image";
 import { assetUrl } from "./assets/url";
 import { useUpdateCheck } from "./updateCheck";
@@ -21,6 +22,9 @@ import type { MapId } from "../shared/map/types";
 import { MapPicker } from "./MapPicker";
 import { HowToPlay } from "./HowToPlay";
 import { NAME_MAX, randomName } from "../shared/names";
+
+/** The 3D backdrop loads after the lobby itself, so three.js never holds up the first paint. */
+const LobbyBackdrop = dynamic(() => import("./LobbyBackdrop"), { ssr: false });
 
 const MAP_KEY = "hollowmere.map";
 /** Last chosen map, per browser (storage may be unavailable). */
@@ -141,6 +145,7 @@ export default function Shooter() {
     options={[{ value: "tdm", text: "Team DM", name: "Team Deathmatch" }, { value: "ffa", text: "Free for All" }]} />;
   return <main className="lobby home-lobby" data-tab={tab}>
     <LobbySounds />
+    <LobbyBackdrop pulse={tab} />
     <div className="lobby-grain" aria-hidden="true" />
     <header className="lobby-top">
       <span className="wordmark" aria-label="Strikeline">

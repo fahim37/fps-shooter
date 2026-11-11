@@ -10,7 +10,7 @@
 .close:hover { background: #ffffff10; }
 .closeHint { font: 10px var(--font-geist-mono), monospace; letter-spacing: .1em; color: #b0bac3; }
 .goal { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 20px 0 6px; }
-.goal > div { padding: 12px 14px; border-left: 2px solid var(--accent); background: #d8d07c08; }
+.goal > div { padding: 12px 14px; border-left: 2px solid var(--accent); background: #c8f75108; }
 .goal strong { font-size: 13px; }
 .goal p { margin: 5px 0 0; font-size: 12px; line-height: 1.55; color: #b0bac3; }
 .columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 26px; }
@@ -21,7 +21,7 @@
 .row dt i { margin: 0 3px; font-style: normal; color: #757f88; font-size: 10px; }
 .row dd { margin: 0; font-size: 12px; }
 .row dd small { display: block; margin-top: 2px; font-size: 10px; color: #939da6; }
-.panel kbd { display: inline-block; min-width: 22px; padding: 3px 6px; border: 1px solid #d8d07c55; border-bottom-width: 2px; border-radius: 3px; background: #ffffff08; color: var(--accent); font: 10px var(--font-geist-mono), monospace; text-align: center; white-space: nowrap; }
+.panel kbd { display: inline-block; min-width: 22px; padding: 3px 6px; border: 1px solid #c8f75155; border-bottom-width: 2px; border-radius: 3px; background: #ffffff08; color: var(--accent); font: 10px var(--font-geist-mono), monospace; text-align: center; white-space: nowrap; }
 .tips { margin: 0; padding-left: 16px; font-size: 12px; line-height: 1.55; color: #c1cad2; }
 .tips li { margin-bottom: 7px; }
 @media (max-width: 640px) {

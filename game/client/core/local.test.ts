@@ -16,7 +16,7 @@ beforeEach(() => {
 
 function player(): LocalPlayer {
   return Object.assign(Object.create(LocalPlayer.prototype), {
-    alive: true, primary: "ar", weapon: "ar", ads: 1, adsProgress: 1, thirdPerson: true, rush: 0, slideT: 0, strafeRoll: 0,
+    alive: true, primary: "ar", weapon: "ar", ads: 1, adsProgress: 1, thirdPerson: true, rush: 0, slideT: 0, dashT: 0, strafeRoll: 0,
     kickPitch: 0.2, kickYaw: 0.1, burst: 5, reloadEnd: 1000, pendingShots: [{ shot: 14, weapon: "smg" }],
     ammo: { ar: { mag: 11, reserve: 50 }, smg: { mag: 31, reserve: 100 } }, cadence: new ShotCadence(),
     game: { send: vi.fn() }, ms: { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 },

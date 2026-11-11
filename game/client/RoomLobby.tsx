@@ -20,6 +20,7 @@ import { audio } from "./core/audio";
 import { LobbySounds } from "./lobbyAudio";
 import { VoiceChat, useVoiceSession } from "./VoiceChat";
 const GameView = dynamic(() => import("./GameView"), { ssr: false, loading: () => <main className="boot-screen">Loading the match…</main> });
+const LobbyBackdrop = dynamic(() => import("./LobbyBackdrop"), { ssr: false });
 
 function snapshot(room: GameRoom) {
   const s = room.state;
@@ -90,6 +91,7 @@ export function ConnectedRoom({ room, onLeave }: { room: GameRoom; onLeave: () =
   const manage = (message: ManagePlayerMsg) => send("managePlayer", message);
   return <main className="waiting-room" data-mode={s.mode}>
     <LobbySounds />
+    <LobbyBackdrop pulse={`${meReady}-${s.map}`} />
     <div className="lobby-grain" aria-hidden="true" />
     <header className="lobby-top room-top">
       <button type="button" className="text-button leave-button" onClick={onLeave}>← Leave room</button>

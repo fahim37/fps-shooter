@@ -4,7 +4,7 @@ import { CharacterRig } from "../player/CharacterRig";
 import type { CharacterTemplate } from "../assets/characters";
 import type { WeaponId } from "../../shared/weapons";
 import { WEAPONS, reloadClipAt, reloadMs } from "../../shared/weapons";
-import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_RELOAD_SKIP_SHIFT, F_SLIDE, F_SPRINT } from "../../shared/messages";
+import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_RELOAD_SKIP_SHIFT, F_SLIDE, F_DASH, F_SPRINT } from "../../shared/messages";
 import type { PlayerState } from "../../shared/schema";
 import { MOVING_SPEED, rayVsPose, slideYaw, type Pose, type PoseHit } from "../../shared/hitboxes";
 import { HitShapes } from "../player/hitShapes";
@@ -40,11 +40,12 @@ export class RemotePlayer {
   lean = 0;
   flags = 0;
   emote = "idle";
-  private vel = new THREE.Vector3();
+  readonly vel = new THREE.Vector3();
   private reloadT = -1;
   private reloadSkip = 0;
   private stepDist = 0;
   private sliding = false;
+  private dashing = false;
   private speed = 0;
   recoil = 0;
   /** Seconds since this player last fired / drew the current gun, for the rig's handling. */
@@ -225,6 +226,9 @@ export class RemotePlayer {
     const sliding = this.alive && (this.flags & F_SLIDE) !== 0;
     if (sliding && !this.sliding && this.pos.distanceTo(listener) < 30) audio.slideAt(this.pos);
     this.sliding = sliding;
+    const dashing = this.alive && (this.flags & F_DASH) !== 0;
+    if (dashing && !this.dashing && this.pos.distanceTo(listener) < 45) audio.dash(this.pos);
+    this.dashing = dashing;
   }
 
   /**

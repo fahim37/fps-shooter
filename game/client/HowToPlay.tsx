@@ -11,8 +11,8 @@ const KEYBOARD: { title: string; rows: Row[] }[] = [
     [["WASD"], "Move"],
     [["Shift"], "Sprint", "Hold while moving forward"],
     [["Space"], "Jump"],
-    [["Ctrl", "X"], "Crouch", "Either key · steadier aim, quieter steps"],
-    [["Shift", "X"], "Slide", "Tap crouch (X or Ctrl) while sprinting · tap again to stop early · jump out of it to carry the speed"],
+    [["Ctrl", "C"], "Crouch", "Either key · steadier aim, quieter steps"],
+    [["Shift", "C"], "Slide", "Tap crouch (C or Ctrl) while sprinting · sideways too (Shift + A or D) · tap again to stop early · jump out of it to carry the speed"],
     [["Q", "E"], "Peek left / right", "Aims down sights while peeking"],
   ] },
   { title: "COMBAT", rows: [
@@ -20,8 +20,9 @@ const KEYBOARD: { title: string; rows: Row[] }[] = [
     [["Right click"], "Aim down sights"],
     [["R"], "Reload"],
     [["1", "2"], "Primary / sidearm", "Mouse wheel swaps too"],
-    [["Z"], "Mark enemy", "Look at an enemy and press: a mark follows them for your team for a few seconds, on screen and on the minimap"],
-    [["C"], "Grenade", "Press to pull the pin (the fuse starts), hold to aim along the arc, release to throw · it blows up in your hand if held too long · right mouse lobs"],
+    [["F"], "Dash", "A very fast burst the way you are moving (straight ahead if standing still) · look up to rise a little · two per life · every 2 kills refill 2 (2 held at most)"],
+    [["Z"], "Mark enemy", "Look at an enemy and press: a mark follows them on screen for your team for a few seconds · they get a MARKED warning"],
+    [["X"], "Grenade", "Press to pull the pin (the fuse starts), hold to aim along the arc, release to throw · it blows up in your hand if held too long · right mouse lobs"],
   ] },
   { title: "GAME", rows: [
     [["B"], "Loadout", "Weapon and sights for your next spawn"],

@@ -56,8 +56,10 @@ export const F_RELOADING = 16;
 export const F_RELOAD_SKIP_SHIFT = 5;
 /** Sliding out of a sprint (the crouch bit is set with it). */
 export const F_SLIDE = 256;
+/** Mid-dash. */
+export const F_DASH = 512;
 /** Every flag bit a client may set. */
-export const F_MASK = 0x1ff;
+export const F_MASK = 0x3ff;
 
 // ----- client → server -----
 

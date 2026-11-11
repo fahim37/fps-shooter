@@ -55,3 +55,14 @@ export const SpotLayer = memo(function SpotLayer() {
     </div>
   </div>)}</>;
 });
+
+/** Shown to a player an enemy has marked: a warning under the match clock that drains as the mark runs out. */
+export function MarkedWarning({ until, now }: { until: number; now: number }) {
+  const left = Math.max(0, until - now);
+  if (left <= 0) return null;
+  return <div key={until} className={styles.marked} role="alert" style={{ ["--left" as string]: `${Math.round(left)}ms` }}>
+    <svg viewBox="-12 -12 24 24" aria-hidden="true"><path d="M-10 0Q0-9 10 0 0 9-10 0Z" /><circle r="2.6" /></svg>
+    <span><b>MARKED</b><small>AN ENEMY CAN SEE YOU · BREAK LINE OF SIGHT</small></span>
+    <i />
+  </div>;
+}

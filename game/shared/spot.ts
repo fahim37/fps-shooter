@@ -7,10 +7,10 @@ export const SPOT_COOLDOWN_MS = 700;
 /** How far off an enemy can be marked (m). */
 export const SPOT_RANGE = 160;
 /** An enemy within this far of the crosshair (rad) is marked; up close, anyone within SPOT_NEAR m of the line of sight. */
-export const SPOT_CONE = 0.07;
-export const SPOT_NEAR = 0.9;
+export const SPOT_CONE = 0.16;
+export const SPOT_NEAR = 1.8;
 /** The server allows for the target having moved since the marker saw them. */
-export const SPOT_SERVER_CONE = 0.35;
+export const SPOT_SERVER_CONE = 0.5;
 
 export interface SpotTarget { id: string; points: V3[] }
 

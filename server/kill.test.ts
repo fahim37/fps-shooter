@@ -42,6 +42,23 @@ describe("elimination snapshots", () => {
     expect(broadcast.mock.calls[0][1].killerInfo).toBeUndefined();
   });
 
+  it("gives two dashes back every two kills, only while below the two a player can hold", () => {
+    const killer = player("Killer", 30), room = { state: { phase: "live", mode: "ffa" }, players: new Map([[killer.id, killer]]), broadcast: vi.fn(), checkScoreLimit: vi.fn() };
+    const kill = () => MatchRoom.prototype.damage.call(room as unknown as MatchRoom, player("Victim", 0), 100, killer, "ar", "body", [0, 0, 0]);
+    const st = killer.st as unknown as { dash: number; dashKills: number };
+    st.dash = 2; st.dashKills = 0;
+    kill(); kill();
+    expect([st.dash, st.dashKills]).toEqual([2, 0]);
+    st.dash = 0;
+    kill();
+    expect([st.dash, st.dashKills]).toEqual([0, 1]);
+    kill();
+    expect([st.dash, st.dashKills]).toEqual([2, 0]);
+    st.dash = 1;
+    kill(); kill();
+    expect(st.dash).toBe(2);
+  });
+
   it("refills the killer's shield every third kill in a row, unless the killer has died", () => {
     const killer = player("Killer", 30), room = { state: { phase: "live", mode: "ffa" }, players: new Map([[killer.id, killer]]), broadcast: vi.fn(), checkScoreLimit: vi.fn() };
     const kill = () => MatchRoom.prototype.damage.call(room as unknown as MatchRoom, player("Victim", 0), 100, killer, "ar", "body", [0, 0, 0]);

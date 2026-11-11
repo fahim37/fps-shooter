@@ -88,7 +88,7 @@ export function toFrame(point: { x: number; y: number }, inset = 4) {
  */
 export interface MapMark {
   key: string;
-  kind: "shot" | "step" | "spot";
+  kind: "shot" | "step";
   x: number;
   z: number;
   /** Direction of travel (player yaw convention), for footprints. */
@@ -98,7 +98,7 @@ export interface MapMark {
   at: number;
 }
 
-export const MARK_MS: Record<MapMark["kind"], number> = { shot: 2800, step: 2000, spot: 500 };
+export const MARK_MS: Record<MapMark["kind"], number> = { shot: 2800, step: 2000 };
 /** Gunfire shows from anywhere on the map; footsteps only when the sprinter is this close. */
 export const STEP_REVEAL_RANGE = 40;
 const MAX_MARKS = 48;

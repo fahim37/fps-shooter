@@ -97,6 +97,13 @@ export interface HudState {
   mapMarks: MapMark[];
   /** Enemies marked with Z, by you or a teammate. */
   spots: Spot[];
+  /** An enemy has marked this player until then (performance.now), or 0. */
+  markedUntil: number;
+  /** Dashes in hand, kills toward the next, and when the last one was used and earned back (performance.now, or 0). */
+  dash: number;
+  dashKills: number;
+  dashAt: number;
+  dashReadyAt: number;
   squad: SquadMember[];
   /** Latched peek side for the touch buttons: -1, 0 or 1. */
   peek: number;
@@ -172,6 +179,11 @@ export const useHud = create<HudState>((set, get) => ({
   mapPlayers: [],
   mapMarks: [],
   spots: [],
+  markedUntil: 0,
+  dash: 2,
+  dashKills: 0,
+  dashAt: 0,
+  dashReadyAt: 0,
   squad: [],
   peek: 0,
   emoteMenu: false,

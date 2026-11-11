@@ -7,13 +7,13 @@ import { CharacterRig, type RigState } from "../player/CharacterRig";
 import { gripPose } from "../player/grip";
 import { getMap } from "../../shared/map/maps";
 import { lineOfSight, raycastWorld, type Rapier, type World } from "../../shared/physics";
-import { INTERP_DELAY_MS, MAX_SHIELD, RESPAWN_MS, type GameMode } from "../../shared/constants";
+import { DASH_MAX, INTERP_DELAY_MS, MAX_SHIELD, RESPAWN_MS, type GameMode } from "../../shared/constants";
 import { GRENADE, WEAPONS, type WeaponId } from "../../shared/weapons";
 import { GRENADE_BODY, grenadeFlight } from "../../shared/grenade";
 import { spreadRadius } from "../../shared/aim";
 import type { MatchState } from "../../shared/schema";
 import type { AmmoEvent, DamagedEvent, ExplosionEvent, GrenadeHitEvent, HitConfirm, KillEvent, LoadoutEvent, Pong, ShotEvent, SpawnEvent, SpotEvent } from "../../shared/messages";
-import { F_SLIDE } from "../../shared/messages";
+import { F_DASH, F_SLIDE } from "../../shared/messages";
 import { loadClientWorld } from "./physics";
 import { LocalPlayer, THROW_RELEASE } from "./local";
 import { ThrownGrenades, createGrenadeParts } from "./thrownGrenades";
@@ -38,6 +38,8 @@ const _viewProjection = new THREE.Matrix4();
 const _bounds = new THREE.Sphere(new THREE.Vector3(), 1.9);
 const _arcNormal = new THREE.Vector3();
 const _spot = new THREE.Vector3(), _spotDir = new THREE.Vector3();
+/** After a dash, how long the next press is ignored and the server's count of dashes is not yet believed (ms). */
+const DASH_LOCK_MS = 700;
 const _armEuler = new THREE.Euler();
 /**
  * The right hand bone's resting turn in view space while holding a grenade (the bone's +Y runs
@@ -242,6 +244,7 @@ export class Game {
       room.onMessage<LoadoutEvent>("loadout", (ev) => this.local?.applyLoadout(ev)),
       room.onMessage<ShotEvent>("shot", (ev) => this.remoteShot(ev)),
       room.onMessage<SpotEvent>("spotted", (ev) => this.onSpotted(ev)),
+      room.onMessage<{ ms: number }>("marked", (ev) => { hud().set({ markedUntil: performance.now() + ev.ms }); audio.marked(); }),
       room.onMessage<HitConfirm>("hit", (ev) => {
         hud().set({ hitmarker: { at: performance.now(), head: ev.part === "head", kill: ev.killed, confirmed: true, damage: ev.damage } });
         if (!ev.killed) audio.hitmarker(ev.part === "head");
@@ -276,7 +279,7 @@ export class Game {
     this.local.spawn(ev);
     this.local.updateView();
     this.deathCamera.start(this.local.eye, null);
-    hud().set({ alive: true, hp: 100, shield: MAX_SHIELD, shieldAt: 0, regenerating: false, hurtAt: 0, threats: [], killedBy: null, respawnAt: 0, killerMarker: null, deathCam: "environment" });
+    hud().set({ alive: true, markedUntil: 0, hp: 100, shield: MAX_SHIELD, shieldAt: 0, regenerating: false, hurtAt: 0, threats: [], killedBy: null, respawnAt: 0, killerMarker: null, deathCam: "environment" });
   }
 
   private syncLife(alive: boolean) {
@@ -323,7 +326,12 @@ export class Game {
     // Only a streak raises the shield mid-life; the refill at spawn comes with a streak of 0.
     const shieldBack = !!me && me.shield > hud().shield && me.streak > 0;
     if (shieldBack) audio.shieldUp();
+    // The server may not have heard of a dash just made: until it has, the dash stays spent here.
+    const dash = performance.now() - this.dashAt < DASH_LOCK_MS ? Math.min(hud().dash, me?.dash ?? DASH_MAX) : me?.dash ?? DASH_MAX;
+    const dashBack = dash > hud().dash && !!me && me.streak > 0;
+    if (dashBack) audio.dashReady();
     hud().set({
+      dash, dashKills: me?.dashKills ?? 0, dashReadyAt: dashBack ? performance.now() : hud().dashReadyAt,
       myTeam: me?.team ?? 0, hp: me?.hp ?? 100, protectedUntil: me?.protectedUntil ?? 0,
       shield: me?.shield ?? MAX_SHIELD, shieldAt: shieldBack ? performance.now() : hud().shieldAt,
       regenerating: !!me?.alive && me.hp < 100 && me.hp >= hud().hp && (hud().regenerating || me.hp > hud().hp),
@@ -454,6 +462,19 @@ export class Game {
       if (d < best) { best = d; _whizAt.copy(at); }
     }
     if (best < WHIZ_RANGE) audio.whiz(_whizAt, 1 - best / WHIZ_RANGE);
+  }
+
+  private dashAt = -1e9;
+
+  /** F: spends a dash. The server takes it off the player; kills or a new life bring more. */
+  private tryDash(now: number) {
+    if (now - this.dashAt < DASH_LOCK_MS || !this.local) return;
+    if (hud().dash < 1) { audio.spotMiss(); return; }
+    this.dashAt = now;
+    this.local.dash();
+    this.send("dash", 1);
+    hud().set({ dash: hud().dash - 1, dashAt: now });
+    audio.dash();
   }
 
   /** Z: marks the enemy in the sights for the team. */
@@ -695,8 +716,14 @@ export class Game {
       remote.setReadability(useSettings.getState().quality === "low" && (hud().mode !== "tdm" || remote.team !== hud().myTeam));
       remote.update(dt, this.clock.now() - INTERP_DELAY_MS, this.camera.position);
       remote.updateTag(this.scene, hud().mode === "tdm" && remote.team === hud().myTeam);
+      if (remote.alive && (remote.flags & F_DASH)) this.effects.dashTrail(remote.pos, remote.vel, dt);
     }
+    // Read before the local player's update, which clears the frame's presses.
+    const spotPressed = this.input.consume("KeyZ");
+    if (this.input.consume("KeyF") && active && local.alive) this.tryDash(now);
     local.update(dt, this.input, now);
+    // In third person the player sees their own wake.
+    if (local.alive && local.thirdPerson && local.ms.dashTime > 0) this.effects.dashTrail(_spot.set(local.ms.x, local.ms.y, local.ms.z), _spotDir.set(local.ms.vx, 0, local.ms.vz), dt);
     local.updateView();
     if (local.alive) local.camera(this.camera, dt);
     else {
@@ -716,7 +743,7 @@ export class Game {
     liveView.x = local.motion.position.x; liveView.z = local.motion.position.z; liveView.yaw = local.yaw; liveView.alive = local.alive;
     const fov = local.alive ? local.currentFov() : 62;
     if (this.camera.fov !== fov) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
-    if (active && local.alive && this.input.consume("KeyZ")) this.trySpot(now);
+    if (active && local.alive && spotPressed) this.trySpot(now);
     // Characters are skinned with culling off (their bounds don't follow the animation), so cull
     // them here, against this frame's camera, with a sphere covering a gun, a peek or an emote.
     // Off-screen ones are neither animated nor drawn unless they may cast a shadow into view.
@@ -780,11 +807,6 @@ export class Game {
           mapPlayers.push({ id, name: remote.name, x: remote.pos.x, y: remote.pos.y, z: remote.pos.z, yaw: remote.yaw,
             relation, slot: squad.find((member) => member.id === id)?.slot });
         }
-      }
-      // A marked enemy shows on the minimap for as long as the mark lasts.
-      for (const spot of hud().spots) {
-        const remote = this.remotes.get(spot.id);
-        if (remote?.alive) this.mark({ key: spot.id, kind: "spot", x: remote.pos.x, z: remote.pos.z, yaw: remote.yaw, at: now });
       }
       let enemyInSight = false;
       if (active && local.alive) {

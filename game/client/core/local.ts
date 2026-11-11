@@ -6,7 +6,7 @@ import { WEAPONS, GRENADE, SCOPE_UP, currentSpread, fireIntervalMs, reloadClipAt
 import { quickScope } from "../player/quickScope";
 import { grenadeVelocity } from "../../shared/grenade";
 import { EYE_HEIGHT, CROUCH_EYE_HEIGHT, SLIDE_EYE_HEIGHT, GRENADES_PER_LIFE, INTERP_DELAY_MS, JUMP_BUFFER_MS, SPRINT_SPEED } from "../../shared/constants";
-import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_RELOAD_SKIP_SHIFT, F_SLIDE, F_SPRINT, type AmmoEvent, type GrenadeMsg, type LoadoutEvent, type PoseMsg, type SpawnEvent } from "../../shared/messages";
+import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_RELOAD_SKIP_SHIFT, F_SLIDE, F_DASH, F_SPRINT, type AmmoEvent, type GrenadeMsg, type LoadoutEvent, type PoseMsg, type SpawnEvent } from "../../shared/messages";
 import type { Input } from "./input";
 import type { Game } from "./game";
 import { useSettings } from "../settings";
@@ -38,6 +38,8 @@ export const THROW_RELEASE = 0.14;
 const TPP_SPRINT_FOV = 5;
 const FPP_SPRINT_FOV = 2.5;
 const SLIDE_FOV = 5;
+/** How much a dash widens the view (degrees). */
+const DASH_FOV = 17;
 /** View roll (rad) through a slide, and at a full-speed strafe. */
 const SLIDE_ROLL = 0.05;
 const STRAFE_ROLL = 0.011;
@@ -113,6 +115,9 @@ export class LocalPlayer {
   private stepEase = 0;
   /** 0..1 through a slide, eased: the view rolls and widens, the gun cants over. */
   slideT = 0;
+  /** 0..1 dash blend: snaps in, eases out. */
+  dashT = 0;
+  private dashQueued = false;
   /** View roll (rad) from strafing. */
   private strafeRoll = 0;
   /** The hip gun trailing the body's movement (view space, m), and its dip on landing. */
@@ -201,7 +206,8 @@ export class LocalPlayer {
     this.sendAt = 0;
     this.acc = this.pendingLand = this.landDip = this.stepEase = this.crouchT = this.recoil = this.burst = 0;
     this.lean = this.leanLatch = 0;
-    this.slideT = this.strafeRoll = this.lagX = this.lagY = this.gunDrop = this.rush = 0;
+    this.dashQueued = false;
+    this.slideT = this.dashT = this.strafeRoll = this.lagX = this.lagY = this.gunDrop = this.rush = 0;
     this.jumpBufferUntil = 0;
     audio.slide(false);
     this.peeking = false;
@@ -232,6 +238,12 @@ export class LocalPlayer {
     this.releasing = false;
     audio.stopWorking();
     audio.slide(false);
+  }
+
+  /** Dashes on the next movement step. */
+  dash() {
+    this.dashQueued = true;
+    this.gunDrop = 0.05;
   }
 
   cancelActions() {
@@ -308,7 +320,7 @@ export class LocalPlayer {
 
     // Grenade: pressing C (or G) pulls the pin and the fuse starts burning; hold to aim along the
     // arc, release to throw. Right mouse switches to an underhand lob.
-    const draw = input.consume("KeyC") || input.consume("KeyG");
+    const draw = input.consume("KeyX") || input.consume("KeyG");
     if (draw && this.grenades > 0 && !this.grenadeAt && !this.releasing) {
       this.endEmote(now);
       this.grenadeAt = this.fuseAt = now;
@@ -318,7 +330,7 @@ export class LocalPlayer {
     }
     if (this.grenadeAt) {
       this.lob = input.ads;
-      const held = input.held("KeyC") || input.held("KeyG") || input.held("TouchGrenade");
+      const held = input.held("KeyX") || input.held("KeyG") || input.held("TouchGrenade");
       const left = this.fuseAt ? GRENADE.fuseMs - (now - this.fuseAt) : Infinity;
       // Like PUBG, hold a cooked grenade too long and it goes off in your hand.
       if (left <= 60) this.throwGrenade(now, true);
@@ -359,8 +371,9 @@ export class LocalPlayer {
       const { x, y, z, grounded, vy } = this.ms;
       this.mover.step(this.ms, {
         forward: fwd, right, yaw: this.yaw, jump: input.jump || now < this.jumpBufferUntil, crouch: input.crouch, sprint: wantsSprint,
-        ads: this.ads, speedMult: def.moveMult * (1 - Math.abs(this.lean) * 0.2),
+        ads: this.ads, speedMult: def.moveMult * (1 - Math.abs(this.lean) * 0.2), dash: this.dashQueued, pitch: this.pitch,
       }, STEP);
+      this.dashQueued = false;
       if (this.ms.vy > 1 && vy <= 0.5 && !this.ms.grounded) {
         jumped = true;
         this.jumpBufferUntil = 0;
@@ -389,6 +402,8 @@ export class LocalPlayer {
     this.landDip = Math.max(0, this.landDip - dt * 0.6);
     this.crouchT += ((input.crouch || this.ms.sliding ? 1 : 0) - this.crouchT) * Math.min(1, dt * 12);
     this.slideT += ((this.ms.sliding ? 1 : 0) - this.slideT) * Math.min(1, dt * (this.ms.sliding ? 14 : 8));
+    const dashing = this.ms.dashTime > 0;
+    this.dashT += ((dashing ? 1 : 0) - this.dashT) * Math.min(1, dt * (dashing ? 34 : 6));
     // A slide stands a peek back up, as a sprint does.
     this.updateLean(dt, input, s.leanToggle, this.ms.sliding || wantsSprint && fwd >= 0 && Math.hypot(fwd, right) > 0.12);
 
@@ -507,7 +522,7 @@ export class LocalPlayer {
     const base = useSettings.getState().fov;
     const target = opticFov(this.weapon, this.optic, base);
     // Speed widens the view; aiming takes that back, so a zoom stays exact.
-    const speed = this.rush * (this.thirdPerson ? TPP_SPRINT_FOV : FPP_SPRINT_FOV) + this.slideT * SLIDE_FOV;
+    const speed = this.rush * (this.thirdPerson ? TPP_SPRINT_FOV : FPP_SPRINT_FOV) + this.slideT * SLIDE_FOV + this.dashT * DASH_FOV;
     return base + (target - base) * this.ads + speed * (1 - this.ads);
   }
 
@@ -731,7 +746,7 @@ export class LocalPlayer {
 
   private sendPose() {
     const flags = (this.crouchT > 0.5 || this.ms.sliding ? F_CROUCH : 0) | (this.ads > 0.5 ? F_ADS : 0) | (this.ms.sprinting ? F_SPRINT : 0)
-      | (this.ms.grounded ? F_GROUNDED : 0) | (this.ms.sliding ? F_SLIDE : 0)
+      | (this.ms.grounded ? F_GROUNDED : 0) | (this.ms.sliding ? F_SLIDE : 0) | (this.ms.dashTime > 0 ? F_DASH : 0)
       | (this.reloading ? F_RELOADING | (reloadSkip(this.weapon, this.reloadNeed) << F_RELOAD_SKIP_SHIFT) : 0);
     const msg: PoseMsg = {
       x: round(this.ms.x), y: round(this.ms.y), z: round(this.ms.z),

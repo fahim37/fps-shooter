@@ -876,6 +876,41 @@ export class AudioEngine {
     this.blip(bus, "sine", 3740, t + 0.07, level * 0.3, 0.002, 0.1);
   }
   /** Z with no enemy in the sights. */
+  /** A dash: air torn past over a low kick, with a quick rising edge. Without `pos` it is the player's own. */
+  dash(pos?: V3) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const route = this.spatial(pos, 0.7);
+    if (!route) return;
+    const out = route[0], t = ctx.currentTime, k = pos ? 1.3 : 1;
+    this.burst(out, "bandpass", 700, 0.7, t, 0.4 * k, 0.025, 0.3);
+    this.burst(out, "bandpass", 2600, 1.1, t + 0.015, 0.22 * k, 0.04, 0.2);
+    this.blip(out, "sine", 170, t, 0.12 * k, 0.005, 0.2, 52);
+    this.blip(out, "triangle", 420, t, 0.04 * k, 0.03, 0.24, 1700);
+  }
+
+  /** The dash is back after three kills: two quick rising notes. */
+  dashReady() {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const [bus] = this.eventBus(this.sfx, 0.5);
+    const t = ctx.currentTime + 0.001;
+    this.blip(bus, "triangle", 660, t, 0.07, 0.004, 0.12, 990);
+    this.blip(bus, "triangle", 990, t + 0.09, 0.07, 0.004, 0.2, 1480);
+    this.blip(bus, "sine", 1980, t + 0.09, 0.025, 0.004, 0.3);
+  }
+
+  /** An enemy marked the player: a low double warning tone. */
+  marked() {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const [bus] = this.eventBus(this.sfx, 0.5);
+    const t = ctx.currentTime + 0.001;
+    this.blip(bus, "square", 440, t, 0.035, 0.003, 0.11, 330);
+    this.blip(bus, "square", 440, t + 0.16, 0.035, 0.003, 0.16, 294);
+    this.blip(bus, "sine", 147, t, 0.06, 0.004, 0.3);
+  }
+
   spotMiss() {
     const ctx = this.ctx;
     if (!ctx) return;

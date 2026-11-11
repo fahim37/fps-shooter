@@ -71,12 +71,6 @@ export const Minimap = memo(function Minimap({ now, map }: { now: number; map: M
         if (strength <= 0) return null;
         const point = viewPoint(mark.x, mark.z, cx, cz);
         if (point.x < -4 || point.x > 104 || point.y < -4 || point.y > 104) return null;
-        if (mark.kind === "spot") {
-          return <g key={mark.key} transform={`translate(${point.x} ${point.y})`} opacity={strength} className={styles.spot} aria-label="Marked enemy">
-            <circle r="5" className={styles.spotPulse} />
-            <path d="M0-2.6 2.6 0 0 2.6-2.6 0Z" className={styles.spotMark} />
-          </g>;
-        }
         if (mark.kind === "shot") {
           return <g key={mark.key} transform={`translate(${point.x} ${point.y})`} opacity={strength} className={styles.shot} aria-label="Enemy gunfire">
             <circle key={mark.at} r="4.5" className={styles.shotPulse} />

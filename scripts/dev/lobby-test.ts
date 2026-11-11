@@ -28,7 +28,7 @@ async function main() {
     await host.getByRole("button", { name: "CREATE 1V1 ROOM" }).click();
     await host.getByRole("button", { name: "READY UP", exact: true }).waitFor();
     await host.locator('[data-stage-status="ready"]').waitFor({ timeout: 60000 });
-    assert.equal(await host.locator("canvas").count(), 1, "Staging uses one lightweight character renderer");
+    assert.equal(await host.locator("canvas:not([data-backdrop])").count(), 1, "Staging uses one lightweight character renderer");
     assert.ok(!assets.some((url) => /village|weapons|anims\.glb/.test(url.replace("lobby-anims.glb", ""))), "Lobby must not load the village, weapons or combat clips");
     assert.ok(await host.getByRole("button", { name: "START MATCH" }).isDisabled());
     const invite = await host.getByLabel("Invite link", { exact: true }).inputValue();

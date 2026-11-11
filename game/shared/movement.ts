@@ -4,6 +4,7 @@ import { GROUP_CHARACTER, QUERY_MOVE } from "./physics";
 import {
   PLAYER_RADIUS, PLAYER_HEIGHT, WALK_SPEED, SPRINT_SPEED, CROUCH_SPEED, ADS_SPEED_MULT,
   GROUND_ACCEL, AIR_ACCEL, FRICTION, JUMP_VELOCITY, GRAVITY,
+  DASH_SPEED, DASH_SECONDS, DASH_LIFT,
   SLIDE_SPEED, SLIDE_FRICTION, SLIDE_END_SPEED, SLIDE_MIN_ENTRY, SLIDE_MAX_SECONDS, SLIDE_COOLDOWN, SLIDE_STEER,
 } from "./constants";
 
@@ -20,6 +21,10 @@ export interface MoveInput {
   ads: number;
   /** Weapon handling multiplier on speed. */
   speedMult: number;
+  /** Starts a dash on this step. */
+  dash?: boolean;
+  /** Look pitch (rad, up is positive): a dash started looking up rises a little. */
+  pitch?: number;
 }
 
 export interface MoveState {
@@ -38,12 +43,18 @@ export interface MoveState {
   /** Crouch was held last step (a slide starts on the press), or pressed in the air to slide on landing. */
   crouchHeld: boolean;
   slideQueued: boolean;
+  /** Seconds left of a dash, and the way it goes. */
+  dashTime: number;
+  dashX: number;
+  dashZ: number;
+  /** Upward share of the dash's speed (0 when it flies level). */
+  dashY: number;
 }
 
 export function newMoveState(x: number, y: number, z: number): MoveState {
   return {
     x, y, z, vx: 0, vy: 0, vz: 0, grounded: false, airTime: 0, landSpeed: 0, sprinting: false,
-    sliding: false, slideTime: 0, slideCooldown: 0, crouchHeld: false, slideQueued: false,
+    sliding: false, slideTime: 0, slideCooldown: 0, crouchHeld: false, slideQueued: false, dashTime: 0, dashX: 0, dashZ: 0, dashY: 0,
   };
 }
 
@@ -85,7 +96,7 @@ export class Mover {
     s.x = x; s.y = y; s.z = z;
     s.vx = s.vy = s.vz = 0;
     s.grounded = s.sprinting = s.sliding = s.slideQueued = false;
-    s.slideTime = s.slideCooldown = 0;
+    s.slideTime = s.slideCooldown = s.dashTime = 0;
     s.airTime = 1;
     s.landSpeed = 0;
     this.collider.setTranslation({ x, y: y + CENTER, z });
@@ -99,6 +110,17 @@ export class Mover {
     const len = Math.hypot(wx, wz);
     if (len > 1) { wx /= len; wz /= len; }
 
+    // A dash goes the way the keys point, or straight ahead, and takes over from a slide.
+    if (inp.dash && s.dashTime <= 0) {
+      s.dashTime = DASH_SECONDS;
+      s.dashX = len > 0.12 ? wx / len : -sin;
+      s.dashZ = len > 0.12 ? wz / len : -cos;
+      // Level until the look is clearly upward, then up to about 1.8 m of rise; never downward.
+      s.dashY = Math.max(0, Math.min(0.5, Math.sin(inp.pitch ?? 0) - 0.08)) * DASH_LIFT;
+      s.sliding = s.slideQueued = false;
+    }
+    const dashing = s.dashTime > 0;
+
     // Crouching out of a sprint slides. Pressed in the air, it slides on landing instead.
     const pressedCrouch = inp.crouch && !s.crouchHeld;
     let started = false;
@@ -106,7 +128,7 @@ export class Mover {
     if (pressedCrouch && s.sprinting && !s.grounded) s.slideQueued = true;
     s.slideCooldown = Math.max(0, s.slideCooldown - dt);
     const entry = Math.hypot(s.vx, s.vz);
-    if (!s.sliding && s.grounded && s.slideCooldown <= 0 && entry > SLIDE_MIN_ENTRY && (s.slideQueued || pressedCrouch && s.sprinting)) {
+    if (!dashing && !s.sliding && s.grounded && s.slideCooldown <= 0 && entry > SLIDE_MIN_ENTRY && (s.slideQueued || pressedCrouch && s.sprinting)) {
       started = true;
       s.sliding = true;
       s.slideTime = 0;
@@ -122,7 +144,7 @@ export class Mover {
     speed *= 1 - (1 - ADS_SPEED_MULT) * inp.ads;
     speed *= inp.speedMult;
 
-    const jumping = inp.jump && (s.grounded || s.airTime < 0.12) && s.vy <= 0.5;
+    const jumping = !dashing && inp.jump && (s.grounded || s.airTime < 0.12) && s.vy <= 0.5;
     const slideJump = s.sliding && jumping;
     if (s.sliding) {
       s.slideTime += dt;
@@ -136,7 +158,7 @@ export class Mover {
         slide(s, wx, wz, hv, dt);
       }
     }
-    if (!s.sliding && !slideJump) {
+    if (!s.sliding && !slideJump && !dashing) {
       if (s.grounded) {
         // Friction then acceleration toward the wish velocity.
         const hv = Math.hypot(s.vx, s.vz);
@@ -150,7 +172,14 @@ export class Mover {
       }
     }
 
-    s.vy -= GRAVITY * dt;
+    if (dashing) {
+      // Flies at full speed, level or a little upward, then comes out of it at a sprint with a touch of the rise left.
+      s.dashTime -= dt;
+      const v = s.dashTime > 0 ? DASH_SPEED : SPRINT_SPEED;
+      s.vx = s.dashX * v; s.vz = s.dashZ * v; s.vy = DASH_SPEED * s.dashY * (s.dashTime > 0 ? 1 : 0.35);
+    } else {
+      s.vy -= GRAVITY * dt;
+    }
     if (jumping) {
       s.vy = JUMP_VELOCITY;
       s.grounded = false;

@@ -503,6 +503,20 @@ export class Effects {
     (tr.trail.material as THREE.MeshBasicMaterial).opacity = 0.15 * fade;
   }
 
+  /** A dashing player's wake: pale streaks left hanging along the way they went, for this frame's travel. */
+  dashTrail(pos: THREE.Vector3, vel: THREE.Vector3, dt: number) {
+    const n = Math.max(1, Math.round(110 * dt * this.budget.density));
+    for (let i = 0; i < n; i++) {
+      const back = Math.random() * dt;
+      this.glow.spawn({
+        x: pos.x - vel.x * back + (Math.random() - 0.5) * 0.5, y: pos.y + 0.3 + Math.random() * 1.3, z: pos.z - vel.z * back + (Math.random() - 0.5) * 0.5,
+        vx: vel.x * 0.05, vy: 0.2, vz: vel.z * 0.05,
+        max: 0.26 + Math.random() * 0.22, s0: 0.17, s1: 0.02, r: 0.55, g: 0.9, b: 1, a0: 0.75, grav: 0, drag: 2,
+      });
+    }
+    this.smoke.spawn({ x: pos.x, y: pos.y + 0.9, z: pos.z, vx: 0, vy: 0.3, vz: 0, max: 0.45, s0: 0.5, s1: 1.2, r: 0.8, g: 0.92, b: 0.97, a0: 0.16, grav: 0, drag: 2 });
+  }
+
   impact(point: THREE.Vector3, normal: THREE.Vector3, soft: boolean) {
     const n = normal;
     const col = soft ? [0.42, 0.36, 0.26] : [0.62, 0.6, 0.56];

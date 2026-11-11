@@ -1,6 +1,6 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { ADS_SPEED_MULT, CROUCH_SPEED, JUMP_VELOCITY, SLIDE_COOLDOWN, SLIDE_END_SPEED, SLIDE_SPEED, SPRINT_SPEED, WALK_SPEED } from "./constants";
+import { ADS_SPEED_MULT, CROUCH_SPEED, DASH_SECONDS, DASH_SPEED, JUMP_VELOCITY, SLIDE_COOLDOWN, SLIDE_END_SPEED, SLIDE_SPEED, SPRINT_SPEED, WALK_SPEED } from "./constants";
 import { Mover, newMoveState, type MoveInput, type MoveState } from "./movement";
 
 beforeAll(async () => { await RAPIER.init(); });
@@ -27,6 +27,37 @@ describe.each([30, 60, 120])("sprint steering at %i Hz", (rate) => {
   });
 
   afterEach(() => { vi.restoreAllMocks(); mover.dispose(); world.free(); });
+
+  it("dashes about 12 m the way the keys point, then carries on at a sprint", () => {
+    input.forward = 0; input.right = 1;
+    const dt = 1 / rate;
+    mover.step(state, { ...input, dash: true }, dt);
+    let steps = 1;
+    while (state.dashTime > 0 && steps < rate) { mover.step(state, input, dt); steps++; }
+    expect(steps * dt).toBeLessThan(DASH_SECONDS + 2 * dt);
+    expect(state.x).toBeGreaterThan(DASH_SPEED * DASH_SECONDS - 1);
+    expect(state.x).toBeLessThan(DASH_SPEED * DASH_SECONDS + 2);
+    expect(Math.abs(state.z)).toBeLessThan(0.01);
+    expect(Math.hypot(state.vx, state.vz)).toBeLessThanOrEqual(SPRINT_SPEED + 1e-6);
+  });
+
+  it.each([[1, "right"], [-1, "left"]])("slides sideways out of a sideways sprint (%i: %s)", (side) => {
+    input.forward = 0; input.right = side;
+    for (let i = 0; i < rate; i++) mover.step(state, input, 1 / rate);
+    expect(state.sprinting).toBe(true);
+    input.crouch = true;
+    mover.step(state, input, 1 / rate);
+    expect(state.sliding).toBe(true);
+    expect(state.vx * side).toBeGreaterThan(SLIDE_SPEED * 0.9);
+    expect(Math.abs(state.vz)).toBeLessThan(0.01);
+  });
+
+  it("dashes straight ahead with no key held", () => {
+    input.forward = 0; input.sprint = false;
+    mover.step(state, { ...input, dash: true }, 1 / rate);
+    expect(state.vz).toBeCloseTo(-DASH_SPEED);
+    expect(state.vx).toBeCloseTo(0);
+  });
 
   const speed = (state: MoveState) => Math.hypot(state.vx, state.vz);
   function run(seconds = 0.5) {
@@ -197,9 +228,9 @@ describe.each([30, 60, 120])("slides and air momentum at %i Hz", (rate) => {
     let seconds = 0;
     while (state.sliding && seconds < 3) { step(); seconds += 1 / rate; }
     expect(seconds).toBeGreaterThan(0.8);
-    expect(seconds).toBeLessThan(1.5);
-    expect(from - state.z).toBeGreaterThan(7.5);
-    expect(from - state.z).toBeLessThan(10);
+    expect(seconds).toBeLessThan(1.75);
+    expect(from - state.z).toBeGreaterThan(9);
+    expect(from - state.z).toBeLessThan(12);
     run(0.3);
     expect(speed()).toBeCloseTo(CROUCH_SPEED, 5);
   });

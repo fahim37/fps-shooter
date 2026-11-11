@@ -31,15 +31,24 @@ export const GRAVITY = 20;
  * about 7 m later. A jump out of it carries the speed through the air.
  */
 export const SLIDE_SPEED = 10.4;
-export const SLIDE_FRICTION = 5.2;
+export const SLIDE_FRICTION = 4.4;
 export const SLIDE_END_SPEED = 3.6;
 /** Ground speed a sprint must have for a slide to start. */
 export const SLIDE_MIN_ENTRY = 6.5;
 /** Longest a slide lasts, and the wait after one before the next (s). */
-export const SLIDE_MAX_SECONDS = 1.45;
+export const SLIDE_MAX_SECONDS = 1.7;
 export const SLIDE_COOLDOWN = 0.55;
 /** How fast a slide's direction follows the keys (rad/s at full input). */
 export const SLIDE_STEER = 1.1;
+/** Dash (F): a very fast, level burst the way the keys point (straight ahead with none held). About 12 m. */
+export const DASH_SPEED = 46;
+export const DASH_SECONDS = 0.26;
+/** Looking up lifts a dash a little: the share of its speed that goes upward at the steepest look that counts. */
+export const DASH_LIFT = 0.3;
+/** A life starts with DASH_MAX dashes, the most held at once. Below that, every DASH_KILLS kills give DASH_REFILL more. */
+export const DASH_MAX = 2;
+export const DASH_KILLS = 2;
+export const DASH_REFILL = 2;
 /** A jump pressed this long before landing still happens on landing (ms). */
 export const JUMP_BUFFER_MS = 130;
 
