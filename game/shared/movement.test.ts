@@ -197,9 +197,9 @@ describe.each([30, 60, 120])("slides and air momentum at %i Hz", (rate) => {
     let seconds = 0;
     while (state.sliding && seconds < 3) { step(); seconds += 1 / rate; }
     expect(seconds).toBeGreaterThan(0.8);
-    expect(seconds).toBeLessThan(1.3);
-    expect(from - state.z).toBeGreaterThan(6);
-    expect(from - state.z).toBeLessThan(9);
+    expect(seconds).toBeLessThan(1.5);
+    expect(from - state.z).toBeGreaterThan(7.5);
+    expect(from - state.z).toBeLessThan(10);
     run(0.3);
     expect(speed()).toBeCloseTo(CROUCH_SPEED, 5);
   });
@@ -216,9 +216,14 @@ describe.each([30, 60, 120])("slides and air momentum at %i Hz", (rate) => {
     input.crouch = true;
     step();
     expect(state.sliding).toBe(true);
+    // A tap is enough: the slide runs on with the key released, until crouch is pressed again.
     input.crouch = false;
+    run(0.2);
+    expect(state.sliding).toBe(true);
+    input.crouch = true;
     step();
     expect(state.sliding).toBe(false);
+    input.crouch = false;
     // Back at a sprint within the cooldown: crouching just crouches.
     run(SLIDE_COOLDOWN * 0.5);
     expect(state.sprinting).toBe(true);

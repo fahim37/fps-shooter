@@ -29,6 +29,7 @@ import { ScopeSight } from "./ScopeSight";
 import { DeathRecap, EliminationNotice, KillFeed } from "./CombatHud";
 import { EmoteHint, EmoteMenu } from "./EmoteMenu";
 import { Minimap } from "./Minimap";
+import { SpotLayer } from "./SpotLayer";
 import { HealthBar } from "./HealthBar";
 import { SquadPanel } from "./SquadPanel";
 import { DamageIndicator, GrenadeWarning } from "./DamageIndicator";
@@ -121,6 +122,7 @@ function MatchHud({ game, map, onLeave }: { game: Game | null; map: MapId; onLea
       {h.ready && h.alive && !paused && !scoreboard && !h.loadoutOpen && !h.customizingControls && h.conn === "connected" && <MatchStats />}
       {h.ready && !paused && !scoreboard && !h.loadoutOpen && <EliminationNotice h={h} now={now} />}
       {h.ready && h.alive && !paused && !scoreboard && <>
+        <SpotLayer />
         {!clearView && h.ads > 0.1 && !h.scoped && <div className="ads-vignette" style={{ opacity: h.ads * 0.45 }} />}
         {h.emote ? <EmoteHint emote={h.emote} /> : h.scoped ? <ScopeSight optic={optic} enemy={h.enemyInSight} ads={h.ads} zoom={Math.tan(baseFov * Math.PI / 360) / Math.tan(h.cameraFov * Math.PI / 360)} /> : h.ads > 0.3 && optic === "red-dot" ? <RedDotSight enemy={h.enemyInSight} ads={h.ads} /> : <div aria-label={h.enemyInSight ? "Enemy in sights" : "Crosshair"} className={`crosshair ${h.enemyInSight ? "enemy-sighted" : ""} ${h.ads > 0.5 ? "aiming" : ""}`} style={{ width: h.crosshairRadius * 2, height: h.crosshairRadius * 2 }}><i /><b /><em /><span /></div>}
         {h.hitmarker.at > 0 && now - h.hitmarker.at < 200 && <div className={`hitmarker ${h.hitmarker.kill ? "kill" : h.hitmarker.head ? "head" : ""} ${h.hitmarker.confirmed ? "confirmed" : "predicted"}`}>×</div>}

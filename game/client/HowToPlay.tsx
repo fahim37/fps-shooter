@@ -12,7 +12,7 @@ const KEYBOARD: { title: string; rows: Row[] }[] = [
     [["Shift"], "Sprint", "Hold while moving forward"],
     [["Space"], "Jump"],
     [["Ctrl", "X"], "Crouch", "Either key · steadier aim, quieter steps"],
-    [["Shift", "X"], "Slide", "Crouch (X or Ctrl) while sprinting · jump out of it to carry the speed"],
+    [["Shift", "X"], "Slide", "Tap crouch (X or Ctrl) while sprinting · tap again to stop early · jump out of it to carry the speed"],
     [["Q", "E"], "Peek left / right", "Aims down sights while peeking"],
   ] },
   { title: "COMBAT", rows: [
@@ -20,6 +20,7 @@ const KEYBOARD: { title: string; rows: Row[] }[] = [
     [["Right click"], "Aim down sights"],
     [["R"], "Reload"],
     [["1", "2"], "Primary / sidearm", "Mouse wheel swaps too"],
+    [["Z"], "Mark enemy", "Look at an enemy and press: a mark follows them for your team for a few seconds, on screen and on the minimap"],
     [["C"], "Grenade", "Press to pull the pin (the fuse starts), hold to aim along the arc, release to throw · it blows up in your hand if held too long · right mouse lobs"],
   ] },
   { title: "GAME", rows: [

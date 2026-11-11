@@ -387,7 +387,7 @@ export class LocalPlayer {
       this.ms.landSpeed = 0;
     }
     this.landDip = Math.max(0, this.landDip - dt * 0.6);
-    this.crouchT += ((input.crouch ? 1 : 0) - this.crouchT) * Math.min(1, dt * 12);
+    this.crouchT += ((input.crouch || this.ms.sliding ? 1 : 0) - this.crouchT) * Math.min(1, dt * 12);
     this.slideT += ((this.ms.sliding ? 1 : 0) - this.slideT) * Math.min(1, dt * (this.ms.sliding ? 14 : 8));
     // A slide stands a peek back up, as a sprint does.
     this.updateLean(dt, input, s.leanToggle, this.ms.sliding || wantsSprint && fwd >= 0 && Math.hypot(fwd, right) > 0.12);

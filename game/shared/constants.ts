@@ -31,12 +31,12 @@ export const GRAVITY = 20;
  * about 7 m later. A jump out of it carries the speed through the air.
  */
 export const SLIDE_SPEED = 10.4;
-export const SLIDE_FRICTION = 6.5;
+export const SLIDE_FRICTION = 5.2;
 export const SLIDE_END_SPEED = 3.6;
 /** Ground speed a sprint must have for a slide to start. */
 export const SLIDE_MIN_ENTRY = 6.5;
 /** Longest a slide lasts, and the wait after one before the next (s). */
-export const SLIDE_MAX_SECONDS = 1.25;
+export const SLIDE_MAX_SECONDS = 1.45;
 export const SLIDE_COOLDOWN = 0.55;
 /** How fast a slide's direction follows the keys (rad/s at full input). */
 export const SLIDE_STEER = 1.1;

@@ -11,13 +11,14 @@ import { GRENADE_STEP_HZ, blastDistance, createGrenadeBody, grenadeVelocity, imp
 import { PoseHistory } from "../game/shared/lagcomp";
 import { MOVING_SPEED, rayVsPose, slideYaw, type HitPart, type Pose } from "../game/shared/hitboxes";
 import { claimFits } from "../game/shared/hitclaim";
+import { pickSpot, SPOT_COOLDOWN_MS, SPOT_MS, SPOT_SERVER_CONE } from "../game/shared/spot";
 
 const HIT_PARTS: HitPart[] = ["head", "body", "legs"];
 import { clampLean, leanOffset } from "../game/shared/lean";
 import { raycastWorld, lineOfSight, type World } from "../game/shared/physics";
 import {
   F_CROUCH, F_GROUNDED, F_MASK, F_SLIDE, type JoinOptions, type PoseMsg, type FireMsg, type GrenadeMsg, type GrenadeHitEvent, type LoadoutMsg, type ShotEvent,
-  type HitConfirm, type DamagedEvent, type KillEvent, type SpawnEvent, type RoomMeta, type AmmoEvent, type LoadoutEvent,
+  type HitConfirm, type DamagedEvent, type KillEvent, type SpawnEvent, type RoomMeta, type AmmoEvent, type LoadoutEvent, type SpotEvent,
 } from "../game/shared/messages";
 import { createRoomWorld, RAPIER } from "./world";
 import { getMap, isMapId } from "../game/shared/map/maps";
@@ -59,6 +60,7 @@ export interface ServerPlayer {
   /** Where the client last reported being; `st` carries it forward between poses. */
   pose: V3;
   lastEmoteAt: number;
+  lastSpotAt: number;
   /** After a server spawn, ignore client poses until one arrives near this point. */
   expectSpawn: { x: number; z: number; until: number } | null;
   vel: V3;
@@ -199,6 +201,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       p.st.emote = value as string;
       if (value !== "idle") p.lastEmoteAt = at;
     });
+    this.onMessage("spot", (client, id: unknown) => this.onSpot(client, id));
     this.onMessage("team", (client, team: unknown) => {
       const p = this.players.get(client.sessionId);
       if (!p || this.state.phase !== "waiting" || mode !== "tdm" || (team !== 1 && team !== 2) || p.st.team === team) return;
@@ -400,6 +403,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       lastPoseAt: 0,
       pose: [st.x, st.y, st.z],
       lastEmoteAt: 0,
+      lastSpotAt: 0,
       expectSpawn: null,
       vel: [0, 0, 0],
     };
@@ -745,6 +749,27 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     for (let n = 2; ; n++) {
       const candidate = `${name.slice(0, NAME_MAX - String(n).length)}${n}`;
       if (!taken.has(candidate.toLowerCase())) return candidate;
+    }
+  }
+
+  /** A player marks the enemy in their sights: their team sees the mark follow that enemy for a while. */
+  private onSpot(client: Client, id: unknown) {
+    const p = this.players.get(client.sessionId), target = typeof id === "string" ? this.players.get(id) : undefined;
+    const at = now();
+    if (!p || !target || target === p || this.state.phase === "waiting" || !p.st.alive || !target.st.alive) return;
+    if (at - p.lastSpotAt < SPOT_COOLDOWN_MS * 0.8) return;
+    const tdm = this.state.mode === "tdm";
+    if (tdm && target.st.team === p.st.team) return;
+    p.lastSpotAt = at;
+    // The marker has to be looking roughly at the enemy, with a clear line to their head or chest.
+    const eye = this.eyePos(p), cp = Math.cos(p.st.pitch);
+    const dir: V3 = [-Math.sin(p.st.yaw) * cp, Math.sin(p.st.pitch), -Math.cos(p.st.yaw) * cp];
+    const points: V3[] = [this.eyePos(target), [target.st.x, target.st.y + ((target.st.flags & F_SLIDE) ? 0.4 : 1), target.st.z]];
+    const seen = pickSpot(eye, dir, [{ id: target.id, points }], (from, to) => lineOfSight(RAPIER, this.world, from, to), SPOT_SERVER_CONE);
+    if (!seen) return;
+    const event: SpotEvent = { id: target.id, by: p.id, ms: SPOT_MS };
+    for (const mate of this.players.values()) {
+      if (mate === p || (tdm && mate.st.team === p.st.team)) mate.client?.send("spotted", event);
     }
   }
 

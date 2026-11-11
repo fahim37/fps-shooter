@@ -3,6 +3,7 @@ import type { WeaponId } from "../../shared/weapons";
 import { MAX_SHIELD, type GameMode } from "../../shared/constants";
 import type { MapMark, MapPlayer, Threat } from "./minimap";
 import type { SquadMember } from "./squad";
+import type { Spot } from "./spots";
 
 export interface KillFeedEntry {
   key: number;
@@ -94,6 +95,8 @@ export interface HudState {
   mapPlayers: MapPlayer[];
   /** Enemy gunfire and sprint footprints on the minimap. */
   mapMarks: MapMark[];
+  /** Enemies marked with Z, by you or a teammate. */
+  spots: Spot[];
   squad: SquadMember[];
   /** Latched peek side for the touch buttons: -1, 0 or 1. */
   peek: number;
@@ -168,6 +171,7 @@ export const useHud = create<HudState>((set, get) => ({
   players: [],
   mapPlayers: [],
   mapMarks: [],
+  spots: [],
   squad: [],
   peek: 0,
   emoteMenu: false,

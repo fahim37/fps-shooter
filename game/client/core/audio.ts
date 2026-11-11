@@ -864,6 +864,24 @@ export class AudioEngine {
   }
 
   /** Switching tabs: a quick downward slide and a light tick. */
+  /** An enemy marked (Z): a rising two-note call, brighter when the mark is your own. */
+  spot(mine: boolean) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime + 0.001;
+    const [bus] = this.eventBus(this.sfx, 0.3);
+    const level = mine ? 0.09 : 0.07;
+    this.blip(bus, "triangle", 1250, t, level, 0.002, 0.07);
+    this.blip(bus, "triangle", 1870, t + 0.07, level, 0.002, 0.14);
+    this.blip(bus, "sine", 3740, t + 0.07, level * 0.3, 0.002, 0.1);
+  }
+  /** Z with no enemy in the sights. */
+  spotMiss() {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const [bus] = this.eventBus(this.sfx, 0.12);
+    this.blip(bus, "triangle", 520, ctx.currentTime + 0.001, 0.05, 0.002, 0.06, 380);
+  }
   uiTab() {
     const ctx = this.ctx;
     if (!ctx) return;

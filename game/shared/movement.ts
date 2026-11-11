@@ -101,12 +101,13 @@ export class Mover {
 
     // Crouching out of a sprint slides. Pressed in the air, it slides on landing instead.
     const pressedCrouch = inp.crouch && !s.crouchHeld;
+    let started = false;
     s.crouchHeld = inp.crouch;
     if (pressedCrouch && s.sprinting && !s.grounded) s.slideQueued = true;
-    if (!inp.crouch) s.slideQueued = false;
     s.slideCooldown = Math.max(0, s.slideCooldown - dt);
     const entry = Math.hypot(s.vx, s.vz);
     if (!s.sliding && s.grounded && s.slideCooldown <= 0 && entry > SLIDE_MIN_ENTRY && (s.slideQueued || pressedCrouch && s.sprinting)) {
+      started = true;
       s.sliding = true;
       s.slideTime = 0;
       const k = Math.max(entry, SLIDE_SPEED * inp.speedMult) / entry;
@@ -128,7 +129,7 @@ export class Mover {
       const hv = Math.hypot(s.vx, s.vz);
       // Standing up, running out of speed or time, leaving the ground or jumping ends it. The jump
       // keeps the slide's speed: the air neither brakes nor adds to it.
-      if (!inp.crouch || jumping || hv < SLIDE_END_SPEED || s.slideTime > SLIDE_MAX_SECONDS || !s.grounded && s.airTime > 0.15) {
+      if (pressedCrouch && !started || jumping || hv < SLIDE_END_SPEED || s.slideTime > SLIDE_MAX_SECONDS || !s.grounded && s.airTime > 0.15) {
         s.sliding = false;
         s.slideCooldown = SLIDE_COOLDOWN;
       } else if (s.grounded) {

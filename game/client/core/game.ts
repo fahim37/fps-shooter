@@ -12,7 +12,8 @@ import { GRENADE, WEAPONS, type WeaponId } from "../../shared/weapons";
 import { GRENADE_BODY, grenadeFlight } from "../../shared/grenade";
 import { spreadRadius } from "../../shared/aim";
 import type { MatchState } from "../../shared/schema";
-import type { AmmoEvent, DamagedEvent, ExplosionEvent, GrenadeHitEvent, HitConfirm, KillEvent, LoadoutEvent, Pong, ShotEvent, SpawnEvent } from "../../shared/messages";
+import type { AmmoEvent, DamagedEvent, ExplosionEvent, GrenadeHitEvent, HitConfirm, KillEvent, LoadoutEvent, Pong, ShotEvent, SpawnEvent, SpotEvent } from "../../shared/messages";
+import { F_SLIDE } from "../../shared/messages";
 import { loadClientWorld } from "./physics";
 import { LocalPlayer, THROW_RELEASE } from "./local";
 import { ThrownGrenades, createGrenadeParts } from "./thrownGrenades";
@@ -27,6 +28,8 @@ import { useLoadout } from "../loadout";
 import { DeathCamera } from "./deathcam";
 import { bearingYaw, liveView, MARK_MS, THREAT_MS, addMark, addThreat, mapRelation, relativeBearing, type MapMark, type MapPlayer } from "./minimap";
 import { buildSquad } from "./squad";
+import { liveSpots, screenSpot } from "./spots";
+import { pickSpot, SPOT_COOLDOWN_MS, type SpotTarget } from "../../shared/spot";
 import { updateSightMotion } from "./sightMotion";
 
 const _frustum = new THREE.Frustum();
@@ -34,6 +37,7 @@ const _viewProjection = new THREE.Matrix4();
 /** Covers a character with arms and gun out, peeking or emoting, around its waist. */
 const _bounds = new THREE.Sphere(new THREE.Vector3(), 1.9);
 const _arcNormal = new THREE.Vector3();
+const _spot = new THREE.Vector3(), _spotDir = new THREE.Vector3();
 const _armEuler = new THREE.Euler();
 /**
  * The right hand bone's resting turn in view space while holding a grenade (the bone's +Y runs
@@ -160,6 +164,8 @@ export class Game {
   /** Camera shake from nearby explosions, 0..1. */
   private shake = 0;
   private markSeq = 0;
+  /** No marking an enemy (Z) again before this. */
+  private spotAt = 0;
 
   constructor(readonly room: GameRoom, readonly scene: THREE.Scene, readonly camera: THREE.PerspectiveCamera, element: HTMLElement) {
     useHud.setState({ ...useHud.getInitialState(), myId: room.sessionId, code: room.roomId, conn: "connected" });
@@ -235,6 +241,7 @@ export class Game {
       room.onMessage<AmmoEvent>("ammo", (ev) => this.local?.reconcileAmmo(ev)),
       room.onMessage<LoadoutEvent>("loadout", (ev) => this.local?.applyLoadout(ev)),
       room.onMessage<ShotEvent>("shot", (ev) => this.remoteShot(ev)),
+      room.onMessage<SpotEvent>("spotted", (ev) => this.onSpotted(ev)),
       room.onMessage<HitConfirm>("hit", (ev) => {
         hud().set({ hitmarker: { at: performance.now(), head: ev.part === "head", kill: ev.killed, confirmed: true, damage: ev.damage } });
         if (!ev.killed) audio.hitmarker(ev.part === "head");
@@ -447,6 +454,46 @@ export class Game {
       if (d < best) { best = d; _whizAt.copy(at); }
     }
     if (best < WHIZ_RANGE) audio.whiz(_whizAt, 1 - best / WHIZ_RANGE);
+  }
+
+  /** Z: marks the enemy in the sights for the team. */
+  private trySpot(now: number) {
+    if (now < this.spotAt || !this.world) return;
+    this.spotAt = now + SPOT_COOLDOWN_MS;
+    const world = this.world, tdm = hud().mode === "tdm", myTeam = hud().myTeam;
+    const targets: SpotTarget[] = [];
+    for (const [id, remote] of this.remotes) {
+      if (!remote.alive || (tdm && remote.team === myTeam)) continue;
+      targets.push({ id, points: [remote.head.toArray() as V3, [remote.pos.x, remote.pos.y + ((remote.flags & F_SLIDE) ? 0.4 : 1), remote.pos.z]] });
+    }
+    const origin = this.camera.position.toArray() as V3;
+    const dir = this.camera.getWorldDirection(new THREE.Vector3()).toArray() as V3;
+    const id = pickSpot(origin, dir, targets, (from, to) => lineOfSight(this.R, world, from, to));
+    if (id) this.send("spot", id);
+    else audio.spotMiss();
+  }
+
+  private onSpotted(ev: SpotEvent) {
+    const at = performance.now(), mine = ev.by === this.room.sessionId;
+    hud().set({ spots: [...hud().spots.filter((spot) => spot.id !== ev.id && spot.until > at), { id: ev.id, at, until: at + ev.ms, mine }] });
+    audio.spot(mine);
+  }
+
+  /** Keeps each mark on its enemy: where it is on screen this frame, and gone once they are down or it runs out. */
+  private updateSpots(now: number) {
+    const spots = hud().spots;
+    if (!spots.length) { if (liveSpots.size) liveSpots.clear(); return; }
+    let stale = false;
+    for (const spot of spots) {
+      const remote = this.remotes.get(spot.id);
+      if (!remote?.alive || now >= spot.until) { stale = true; liveSpots.delete(spot.id); continue; }
+      _spot.copy(remote.head); _spot.y += 0.34;
+      const distance = _spot.distanceTo(this.camera.position);
+      const behind = _spot.clone().sub(this.camera.position).dot(this.camera.getWorldDirection(_spotDir)) <= 0;
+      _spot.project(this.camera);
+      liveSpots.set(spot.id, { ...screenSpot(_spot.x, _spot.y, behind), distance });
+    }
+    if (stale) hud().set({ spots: spots.filter((spot) => liveSpots.has(spot.id)) });
   }
 
   private mark(mark: MapMark) {
@@ -669,6 +716,7 @@ export class Game {
     liveView.x = local.motion.position.x; liveView.z = local.motion.position.z; liveView.yaw = local.yaw; liveView.alive = local.alive;
     const fov = local.alive ? local.currentFov() : 62;
     if (this.camera.fov !== fov) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
+    if (active && local.alive && this.input.consume("KeyZ")) this.trySpot(now);
     // Characters are skinned with culling off (their bounds don't follow the animation), so cull
     // them here, against this frame's camera, with a sphere covering a gun, a peek or an emote.
     // Off-screen ones are neither animated nor drawn unless they may cast a shadow into view.
@@ -680,6 +728,7 @@ export class Game {
       _bounds.center.set(remote.pos.x, remote.pos.y + 1, remote.pos.z);
       remote.animate(dt, _frustum.intersectsSphere(_bounds) || remote.pos.distanceTo(this.camera.position) < shadowReach);
     }
+    this.updateSpots(now);
     if (local.alive && local.ads > 0.4) updateSightMotion(dt, {
       swayX: local.sway.x, swayY: local.sway.y, bobX: local.bob.x, bobY: local.bob.y,
       strafe: local.ms.vx * Math.cos(local.yaw) - local.ms.vz * Math.sin(local.yaw), vy: local.ms.vy,
@@ -731,6 +780,11 @@ export class Game {
           mapPlayers.push({ id, name: remote.name, x: remote.pos.x, y: remote.pos.y, z: remote.pos.z, yaw: remote.yaw,
             relation, slot: squad.find((member) => member.id === id)?.slot });
         }
+      }
+      // A marked enemy shows on the minimap for as long as the mark lasts.
+      for (const spot of hud().spots) {
+        const remote = this.remotes.get(spot.id);
+        if (remote?.alive) this.mark({ key: spot.id, kind: "spot", x: remote.pos.x, z: remote.pos.z, yaw: remote.yaw, at: now });
       }
       let enemyInSight = false;
       if (active && local.alive) {
