@@ -15,7 +15,7 @@ export class PoseHistory {
   constructor(private capacity = 48) {}
 
   push(t: number, p: Pose) {
-    const s = { t, x: p.x, y: p.y, z: p.z, crouch: p.crouch, yaw: p.yaw ?? 0, lean: p.lean ?? 0, pitch: p.pitch ?? 0, moving: p.moving ?? 0 };
+    const s = { t, x: p.x, y: p.y, z: p.z, crouch: p.crouch, yaw: p.yaw ?? 0, lean: p.lean ?? 0, pitch: p.pitch ?? 0, moving: p.moving ?? 0, slide: p.slide ?? null };
     if (this.buf.length < this.capacity) this.buf.push(s);
     else this.buf[this.head] = s;
     this.head = (this.head + 1) % this.capacity;
@@ -51,6 +51,7 @@ export class PoseHistory {
           lean: (a.lean ?? 0) + ((b.lean ?? 0) - (a.lean ?? 0)) * k,
           pitch: (a.pitch ?? 0) + ((b.pitch ?? 0) - (a.pitch ?? 0)) * k,
           moving: (a.moving ?? 0) + ((b.moving ?? 0) - (a.moving ?? 0)) * k,
+          slide: k < 0.5 ? a.slide : b.slide,
         };
       }
     }

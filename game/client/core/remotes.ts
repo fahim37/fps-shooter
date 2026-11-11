@@ -4,9 +4,9 @@ import { CharacterRig } from "../player/CharacterRig";
 import type { CharacterTemplate } from "../assets/characters";
 import type { WeaponId } from "../../shared/weapons";
 import { WEAPONS, reloadClipAt, reloadMs } from "../../shared/weapons";
-import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_RELOAD_SKIP_SHIFT, F_SPRINT } from "../../shared/messages";
+import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_RELOAD_SKIP_SHIFT, F_SLIDE, F_SPRINT } from "../../shared/messages";
 import type { PlayerState } from "../../shared/schema";
-import { MOVING_SPEED, rayVsPose, type Pose, type PoseHit } from "../../shared/hitboxes";
+import { MOVING_SPEED, rayVsPose, slideYaw, type Pose, type PoseHit } from "../../shared/hitboxes";
 import { HitShapes } from "../player/hitShapes";
 import { audio } from "./audio";
 import { setEnemyReadability } from "../assets/readability";
@@ -44,6 +44,7 @@ export class RemotePlayer {
   private reloadT = -1;
   private reloadSkip = 0;
   private stepDist = 0;
+  private sliding = false;
   private speed = 0;
   recoil = 0;
   /** Seconds since this player last fired / drew the current gun, for the rig's handling. */
@@ -117,7 +118,8 @@ export class RemotePlayer {
   /** Pose of the shared hitboxes, for a character not drawn this frame. */
   pose(): Pose {
     return { x: this.pos.x, y: this.pos.y, z: this.pos.z, crouch: (this.flags & F_CROUCH) !== 0, yaw: this.yaw, lean: this.lean,
-      pitch: this.pitch, moving: this.speed > MOVING_SPEED ? 1 : 0 };
+      pitch: this.pitch, moving: this.speed > MOVING_SPEED ? 1 : 0,
+      slide: (this.flags & F_SLIDE) ? slideYaw(this.yaw, this.vel.x, this.vel.z) : null };
   }
 
   /**
@@ -208,17 +210,21 @@ export class RemotePlayer {
     this.sinceDraw += dt;
 
     // Footsteps for nearby players.
-    if (this.alive && speed > 0.6 && (this.flags & F_GROUNDED)) {
+    if (this.alive && speed > 0.6 && (this.flags & F_GROUNDED) && !(this.flags & F_SLIDE)) {
       this.stepDist += speed * dt;
       if (this.stepDist > (speed > 6 ? 2.6 : 2.1)) {
         this.stepDist = 0;
         this.stepped = true;
         this.footLeft = !this.footLeft;
         if (this.pos.distanceTo(listener) < 30 && !(this.flags & F_CROUCH)) {
-          audio.footstep(Math.abs(this.pos.z) < 3 || Math.abs(this.pos.x) < 3 || this.pos.y > 0.05, this.pos, 0.3);
+          audio.footstep(Math.abs(this.pos.z) < 3 || Math.abs(this.pos.x) < 3 || this.pos.y > 0.05, this.pos, 0.3, speed > 6 ? 1 : 0.5);
         }
       }
     }
+    // A slide is heard as it starts, from where it starts.
+    const sliding = this.alive && (this.flags & F_SLIDE) !== 0;
+    if (sliding && !this.sliding && this.pos.distanceTo(listener) < 30) audio.slideAt(this.pos);
+    this.sliding = sliding;
   }
 
   /**
@@ -235,6 +241,7 @@ export class RemotePlayer {
       yaw: this.yaw, pitch: this.pitch, lean: this.alive ? this.lean : 0,
       speed, moveYaw: Math.atan2(-this.vel.x, -this.vel.z),
       crouch: (this.flags & F_CROUCH) !== 0,
+      slide: (this.flags & F_SLIDE) ? 1 : 0,
       grounded: (this.flags & F_GROUNDED) !== 0 || speed < 0.1,
       alive: this.alive,
       sprint: (this.flags & F_SPRINT) ? 1 : 0,
@@ -245,7 +252,7 @@ export class RemotePlayer {
     });
     const headBone = this.posed ? this.rig.inst?.bones.get("Head") : undefined;
     if (headBone) headBone.getWorldPosition(this.head).y += 0.1;
-    else this.head.set(this.pos.x, this.pos.y + ((this.flags & F_CROUCH) ? 1.15 : 1.64), this.pos.z);
+    else this.head.set(this.pos.x, this.pos.y + ((this.flags & F_SLIDE) ? 0.7 : (this.flags & F_CROUCH) ? 1.15 : 1.64), this.pos.z);
   }
 
   /** Shows this player's name above their head while `show` (a living teammate), hides it otherwise. */

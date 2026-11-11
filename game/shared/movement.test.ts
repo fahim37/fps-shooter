@@ -1,6 +1,6 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { ADS_SPEED_MULT, CROUCH_SPEED, SPRINT_SPEED, WALK_SPEED } from "./constants";
+import { ADS_SPEED_MULT, CROUCH_SPEED, JUMP_VELOCITY, SLIDE_COOLDOWN, SLIDE_END_SPEED, SLIDE_SPEED, SPRINT_SPEED, WALK_SPEED } from "./constants";
 import { Mover, newMoveState, type MoveInput, type MoveState } from "./movement";
 
 beforeAll(async () => { await RAPIER.init(); });
@@ -150,6 +150,131 @@ describe.each([30, 60, 120])("sprint steering at %i Hz", (rate) => {
     input.sprint = true;
     mover.step(state, input, 1 / rate);
     expect(state.sprinting).toBe(false);
+  });
+});
+
+describe.each([30, 60, 120])("slides and air momentum at %i Hz", (rate) => {
+  let world: RAPIER.World;
+  let mover: Mover;
+  let state: MoveState;
+  let input: MoveInput;
+  let grounded: boolean;
+
+  beforeEach(() => {
+    world = new RAPIER.World({ x: 0, y: -20, z: 0 });
+    mover = new Mover(RAPIER, world);
+    // A flat floor at y = 0 without contact resolution: falls stop there.
+    const kcc = (mover as unknown as { kcc: RAPIER.KinematicCharacterController }).kcc;
+    let movement = { x: 0, y: 0, z: 0 };
+    grounded = true;
+    vi.spyOn(kcc, "computeColliderMovement").mockImplementation((_collider, desired) => {
+      const y = Math.max(desired.y, -state.y);
+      grounded = state.y + y <= 1e-9 && desired.y <= 0;
+      movement = { ...desired, y };
+    });
+    vi.spyOn(kcc, "computedMovement").mockImplementation(() => movement);
+    vi.spyOn(kcc, "computedGrounded").mockImplementation(() => grounded);
+    touching(kcc, { x: 0, y: 1, z: 0 });
+    state = newMoveState(0, 0, 0);
+    state.grounded = true;
+    input = { forward: 1, right: 0, yaw: 0, jump: false, sprint: true, crouch: false, ads: 0, speedMult: 1 };
+  });
+
+  afterEach(() => { vi.restoreAllMocks(); mover.dispose(); world.free(); });
+
+  const speed = () => Math.hypot(state.vx, state.vz);
+  const step = () => mover.step(state, input, 1 / rate);
+  const run = (seconds: number) => { for (let i = 0; i < rate * seconds; i++) step(); };
+
+  it("slides out of a sprint: a burst of speed that the ground drags down to a crouch", () => {
+    run(0.5);
+    input.crouch = true;
+    step();
+    expect(state.sliding).toBe(true);
+    expect(speed()).toBeGreaterThan(SPRINT_SPEED + 1);
+    expect(speed()).toBeLessThanOrEqual(SLIDE_SPEED);
+    const from = state.z;
+    let seconds = 0;
+    while (state.sliding && seconds < 3) { step(); seconds += 1 / rate; }
+    expect(seconds).toBeGreaterThan(0.8);
+    expect(seconds).toBeLessThan(1.3);
+    expect(from - state.z).toBeGreaterThan(6);
+    expect(from - state.z).toBeLessThan(9);
+    run(0.3);
+    expect(speed()).toBeCloseTo(CROUCH_SPEED, 5);
+  });
+
+  it("only slides from a sprint, and not again straight away", () => {
+    input.sprint = false;
+    run(0.5);
+    input.crouch = true;
+    step();
+    expect(state.sliding).toBe(false);
+    input.crouch = false;
+    input.sprint = true;
+    run(0.5);
+    input.crouch = true;
+    step();
+    expect(state.sliding).toBe(true);
+    input.crouch = false;
+    step();
+    expect(state.sliding).toBe(false);
+    // Back at a sprint within the cooldown: crouching just crouches.
+    run(SLIDE_COOLDOWN * 0.5);
+    expect(state.sprinting).toBe(true);
+    input.crouch = true;
+    step();
+    expect(state.sliding).toBe(false);
+  });
+
+  it("carries a slide's speed through a jump, without gaining any in the air", () => {
+    run(0.5);
+    input.crouch = true;
+    step();
+    input.jump = true;
+    step();
+    input.jump = false;
+    expect(state.sliding).toBe(false);
+    expect(state.vy).toBeGreaterThan(JUMP_VELOCITY - 20 / rate - 1e-6);
+    const launch = speed();
+    expect(launch).toBeGreaterThan(SPRINT_SPEED + 1);
+    // Strafing and turning through the air steers, and never adds speed.
+    input.crouch = false;
+    for (let i = 0; i < rate * 0.4; i++) {
+      input.right = i % 2 ? 1 : -1;
+      input.yaw += 0.6 / rate;
+      step();
+      expect(speed()).toBeLessThanOrEqual(launch + 1e-6);
+    }
+    expect(speed()).toBeGreaterThan(launch - 0.5);
+  });
+
+  it("keeps a jump's momentum with the keys released, and brakes against it", () => {
+    run(0.5);
+    input.jump = true;
+    step();
+    input.jump = false;
+    input.forward = 0;
+    run(0.3);
+    expect(state.grounded).toBe(false);
+    expect(speed()).toBeCloseTo(SPRINT_SPEED, 5);
+    input.forward = -1;
+    run(0.2);
+    expect(speed()).toBeLessThan(SPRINT_SPEED - 1.5);
+  });
+
+  it("slides on landing when crouch is pressed in the air during a sprint", () => {
+    run(0.5);
+    input.jump = true;
+    step();
+    input.jump = false;
+    run(0.2);
+    input.crouch = true;
+    let slid = false;
+    for (let i = 0; i < rate && !slid; i++) { step(); slid = state.sliding; }
+    expect(slid).toBe(true);
+    expect(state.grounded).toBe(true);
+    expect(speed()).toBeGreaterThan(SLIDE_END_SPEED);
   });
 });
 

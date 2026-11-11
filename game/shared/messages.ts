@@ -54,6 +54,10 @@ export const F_GROUNDED = 8;
 export const F_RELOADING = 16;
 /** Bits 5-7: revolver rounds the reload skips (it already held them), so others see the same short reload. */
 export const F_RELOAD_SKIP_SHIFT = 5;
+/** Sliding out of a sprint (the crouch bit is set with it). */
+export const F_SLIDE = 256;
+/** Every flag bit a client may set. */
+export const F_MASK = 0x1ff;
 
 // ----- client → server -----
 

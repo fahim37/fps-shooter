@@ -4,6 +4,7 @@ import { GROUP_CHARACTER, QUERY_MOVE } from "./physics";
 import {
   PLAYER_RADIUS, PLAYER_HEIGHT, WALK_SPEED, SPRINT_SPEED, CROUCH_SPEED, ADS_SPEED_MULT,
   GROUND_ACCEL, AIR_ACCEL, FRICTION, JUMP_VELOCITY, GRAVITY,
+  SLIDE_SPEED, SLIDE_FRICTION, SLIDE_END_SPEED, SLIDE_MIN_ENTRY, SLIDE_MAX_SECONDS, SLIDE_COOLDOWN, SLIDE_STEER,
 } from "./constants";
 
 export interface MoveInput {
@@ -30,10 +31,20 @@ export interface MoveState {
   /** Impact speed of the most recent landing (for fall damage and camera dip), cleared by the caller. */
   landSpeed: number;
   sprinting: boolean;
+  /** Sliding on the ground out of a sprint, for how long, and the wait left before the next (s). */
+  sliding: boolean;
+  slideTime: number;
+  slideCooldown: number;
+  /** Crouch was held last step (a slide starts on the press), or pressed in the air to slide on landing. */
+  crouchHeld: boolean;
+  slideQueued: boolean;
 }
 
 export function newMoveState(x: number, y: number, z: number): MoveState {
-  return { x, y, z, vx: 0, vy: 0, vz: 0, grounded: false, airTime: 0, landSpeed: 0, sprinting: false };
+  return {
+    x, y, z, vx: 0, vy: 0, vz: 0, grounded: false, airTime: 0, landSpeed: 0, sprinting: false,
+    sliding: false, slideTime: 0, slideCooldown: 0, crouchHeld: false, slideQueued: false,
+  };
 }
 
 const HALF = PLAYER_HEIGHT / 2 - PLAYER_RADIUS;
@@ -73,7 +84,8 @@ export class Mover {
   teleport(s: MoveState, x: number, y: number, z: number) {
     s.x = x; s.y = y; s.z = z;
     s.vx = s.vy = s.vz = 0;
-    s.grounded = s.sprinting = false;
+    s.grounded = s.sprinting = s.sliding = s.slideQueued = false;
+    s.slideTime = s.slideCooldown = 0;
     s.airTime = 1;
     s.landSpeed = 0;
     this.collider.setTranslation({ x, y: y + CENTER, z });
@@ -87,6 +99,21 @@ export class Mover {
     const len = Math.hypot(wx, wz);
     if (len > 1) { wx /= len; wz /= len; }
 
+    // Crouching out of a sprint slides. Pressed in the air, it slides on landing instead.
+    const pressedCrouch = inp.crouch && !s.crouchHeld;
+    s.crouchHeld = inp.crouch;
+    if (pressedCrouch && s.sprinting && !s.grounded) s.slideQueued = true;
+    if (!inp.crouch) s.slideQueued = false;
+    s.slideCooldown = Math.max(0, s.slideCooldown - dt);
+    const entry = Math.hypot(s.vx, s.vz);
+    if (!s.sliding && s.grounded && s.slideCooldown <= 0 && entry > SLIDE_MIN_ENTRY && (s.slideQueued || pressedCrouch && s.sprinting)) {
+      s.sliding = true;
+      s.slideTime = 0;
+      const k = Math.max(entry, SLIDE_SPEED * inp.speedMult) / entry;
+      s.vx *= k; s.vz *= k;
+    }
+    if (s.grounded) s.slideQueued = false;
+
     // A sprint starts on the ground but carries through the air: dropping off a curb or
     // jumping must not fall back to walking speed and then have to build the sprint again.
     s.sprinting = inp.sprint && len > 0.12 && inp.forward >= 0 && !inp.crouch && inp.ads < 0.3 && (s.grounded || s.sprinting);
@@ -94,21 +121,36 @@ export class Mover {
     speed *= 1 - (1 - ADS_SPEED_MULT) * inp.ads;
     speed *= inp.speedMult;
 
-    const targetX = wx * speed, targetZ = wz * speed;
-    if (s.grounded) {
-      // Friction then acceleration toward the wish velocity.
+    const jumping = inp.jump && (s.grounded || s.airTime < 0.12) && s.vy <= 0.5;
+    const slideJump = s.sliding && jumping;
+    if (s.sliding) {
+      s.slideTime += dt;
       const hv = Math.hypot(s.vx, s.vz);
-      if (hv > 0) {
-        const drop = Math.max(hv - FRICTION * dt * Math.max(hv, 2), 0) / hv;
-        if (len < 0.01) { s.vx *= drop; s.vz *= drop; }
+      // Standing up, running out of speed or time, leaving the ground or jumping ends it. The jump
+      // keeps the slide's speed: the air neither brakes nor adds to it.
+      if (!inp.crouch || jumping || hv < SLIDE_END_SPEED || s.slideTime > SLIDE_MAX_SECONDS || !s.grounded && s.airTime > 0.15) {
+        s.sliding = false;
+        s.slideCooldown = SLIDE_COOLDOWN;
+      } else if (s.grounded) {
+        slide(s, wx, wz, hv, dt);
       }
-      accelerate(s, targetX, targetZ, GROUND_ACCEL * dt, s.sprinting);
-    } else {
-      accelerate(s, targetX, targetZ, AIR_ACCEL * dt);
+    }
+    if (!s.sliding && !slideJump) {
+      if (s.grounded) {
+        // Friction then acceleration toward the wish velocity.
+        const hv = Math.hypot(s.vx, s.vz);
+        if (hv > 0) {
+          const drop = Math.max(hv - FRICTION * dt * Math.max(hv, 2), 0) / hv;
+          if (len < 0.01) { s.vx *= drop; s.vz *= drop; }
+        }
+        accelerate(s, wx * speed, wz * speed, GROUND_ACCEL * dt, s.sprinting);
+      } else {
+        airAccelerate(s, wx, wz, speed, AIR_ACCEL * dt);
+      }
     }
 
     s.vy -= GRAVITY * dt;
-    if (inp.jump && (s.grounded || s.airTime < 0.12) && s.vy <= 0.5) {
+    if (jumping) {
       s.vy = JUMP_VELOCITY;
       s.grounded = false;
       s.airTime = 1;
@@ -208,4 +250,35 @@ function accelerate(s: MoveState, tx: number, tz: number, maxDelta: number, pres
     s.vx *= speedFloor / speed;
     s.vz *= speedFloor / speed;
   }
+}
+
+/**
+ * In the air nothing brakes: a jump keeps the speed it left the ground with. The keys steer that
+ * speed around and can build up to `wishSpeed` from less, or push against it to slow down, but
+ * never add to a speed already past it (no gaining speed by strafing through the air).
+ */
+function airAccelerate(s: MoveState, wx: number, wz: number, wishSpeed: number, maxDelta: number) {
+  const len = Math.hypot(wx, wz);
+  if (len < 0.01) return;
+  const dx = wx / len, dz = wz / len;
+  const before = Math.hypot(s.vx, s.vz);
+  const target = wishSpeed * Math.min(1, len);
+  const add = Math.min(maxDelta, target - (s.vx * dx + s.vz * dz));
+  if (add <= 0) return;
+  s.vx += dx * add; s.vz += dz * add;
+  const cap = Math.max(before, target), now = Math.hypot(s.vx, s.vz);
+  if (now > cap) { s.vx *= cap / now; s.vz *= cap / now; }
+}
+
+/** One step of a slide at speed `hv`: the ground drags it down, and the keys bend its direction a little. */
+function slide(s: MoveState, wx: number, wz: number, hv: number, dt: number) {
+  if (hv <= 0) return;
+  let dx = s.vx / hv, dz = s.vz / hv;
+  const turn = (dx * wz - dz * wx) * SLIDE_STEER * dt;
+  if (Math.abs(turn) > 1e-6) {
+    const c = Math.cos(turn), sn = Math.sin(turn);
+    [dx, dz] = [dx * c - dz * sn, dx * sn + dz * c];
+  }
+  const next = Math.max(0, hv - SLIDE_FRICTION * dt);
+  s.vx = dx * next; s.vz = dz * next;
 }

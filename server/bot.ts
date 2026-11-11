@@ -3,7 +3,7 @@ import { lineOfSight } from "../game/shared/physics";
 import { leanOffset } from "../game/shared/lean";
 import { aimDir, lookAt, spreadDir, angleBetween } from "../game/shared/aim";
 import { WEAPONS, currentSpread, fireIntervalMs, type WeaponId } from "../game/shared/weapons";
-import { F_CROUCH, F_ADS, F_SPRINT, F_GROUNDED, F_RELOADING } from "../game/shared/messages";
+import { F_CROUCH, F_ADS, F_SPRINT, F_GROUNDED, F_RELOADING, F_SLIDE } from "../game/shared/messages";
 import type { SpawnPoint } from "../game/shared/map/types";
 import { RAPIER, getNav } from "./world";
 import type { MatchRoom, ServerPlayer } from "./MatchRoom";
@@ -162,7 +162,8 @@ export class Bot {
       }
       const tgt = this.target.st;
       const crouched = (tgt.flags & F_CROUCH) !== 0;
-      const aimHeight = (crouched ? 0.95 : 1.3) + (Math.random() < 0.15 ? 0.3 : 0);
+      // A slider is flat along the ground: aim for the chest laid back over the hips.
+      const aimHeight = (tgt.flags & F_SLIDE) ? 0.42 : (crouched ? 0.95 : 1.3) + (Math.random() < 0.15 ? 0.3 : 0);
       // Track a peeking target's exposed upper body rather than the hidden hips.
       const lean = leanOffset(tgt.lean, tgt.yaw, crouched ? 1 : 0, aimHeight);
       const la = lookAt(eye, [tgt.x + lean[0], tgt.y + aimHeight + lean[1], tgt.z + lean[2]]);
@@ -226,7 +227,7 @@ export class Bot {
     st.x = this.ms.x; st.y = this.ms.y; st.z = this.ms.z;
     st.yaw = this.yaw; st.pitch = this.pitch;
     st.flags = (crouch ? F_CROUCH : 0) | (ads ? F_ADS : 0) | (this.ms.sprinting ? F_SPRINT : 0)
-      | (this.ms.grounded ? F_GROUNDED : 0) | (reloading ? F_RELOADING : 0);
+      | (this.ms.grounded ? F_GROUNDED : 0) | (reloading ? F_RELOADING : 0) | (this.ms.sliding ? F_SLIDE : 0);
     this.p.vel = [this.ms.vx, this.ms.vy, this.ms.vz];
   }
 

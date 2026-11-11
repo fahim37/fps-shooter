@@ -11,7 +11,7 @@ export const PlayerState = schema({
   z: t.float32().default(0),
   yaw: t.float32().default(0),
   pitch: t.float32().default(0),
-  flags: t.uint8().default(0),
+  flags: t.uint16().default(0),
   /** Peek: -1 full left .. 1 full right. */
   lean: t.float32().default(0),
   weapon: t.string().default("ar"),

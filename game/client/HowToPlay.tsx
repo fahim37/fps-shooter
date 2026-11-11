@@ -12,6 +12,7 @@ const KEYBOARD: { title: string; rows: Row[] }[] = [
     [["Shift"], "Sprint", "Hold while moving forward"],
     [["Space"], "Jump"],
     [["Ctrl"], "Crouch", "Steadier aim, quieter steps"],
+    [["Shift", "Ctrl"], "Slide", "Crouch while sprinting · jump out of it to carry the speed"],
     [["Q", "E"], "Peek left / right", "Aims down sights while peeking"],
   ] },
   { title: "COMBAT", rows: [
@@ -61,6 +62,8 @@ const TIPS = [
   "Play in fullscreen (Enter fullscreen match): in a window, shortcuts like Ctrl+W can close the tab.",
   "Headshots hit much harder than body shots.",
   "Standing still or crouching tightens your spread; running and jumping widen it.",
+  "A slide gets you across an open gap fast and low, and you can fire through it. Enemies hear it.",
+  "Listen: a bullet cracking past your ear came from the side you hear it on.",
   "Out of the fight for a few seconds, your health comes back on its own.",
   "Every elimination refills part of your reserve ammo.",
   "Damage an enemy that a teammate finishes within 10 seconds and you earn an assist.",

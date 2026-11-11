@@ -4,19 +4,19 @@ import { MatchState, PlayerState, GrenadeState } from "../game/shared/schema";
 import {
   TICK_MS, MAX_REWIND_MS, MAX_HEALTH, MAX_SHIELD, SHIELD_STREAK, REGEN_DELAY_MS, REGEN_PER_SEC, RESPAWN_MS, SPAWN_PROTECTION_MS,
   GRENADES_PER_LIFE, FALL_DAMAGE_MIN_SPEED, MAX_PLAYERS, MODE_INFO, scoreLimitFor, matchMinutes, WARMUP_MS, END_SCREEN_MS, EYE_HEIGHT,
-  CROUCH_EYE_HEIGHT, SPRINT_SPEED, ROOM_SIZES, SCORE_LIMITS, type GameMode,
+  CROUCH_EYE_HEIGHT, SLIDE_EYE_HEIGHT, SPRINT_SPEED, ROOM_SIZES, SCORE_LIMITS, type GameMode,
 } from "../game/shared/constants";
 import { WEAPONS, PRIMARIES, GRENADE, damageAt, fireIntervalMs, reloadMs, reloadNeed, reloadedRounds, type WeaponId } from "../game/shared/weapons";
 import { GRENADE_STEP_HZ, blastDistance, createGrenadeBody, grenadeVelocity, impactSpeed } from "../game/shared/grenade";
 import { PoseHistory } from "../game/shared/lagcomp";
-import { MOVING_SPEED, rayVsPose, type HitPart, type Pose } from "../game/shared/hitboxes";
+import { MOVING_SPEED, rayVsPose, slideYaw, type HitPart, type Pose } from "../game/shared/hitboxes";
 import { claimFits } from "../game/shared/hitclaim";
 
 const HIT_PARTS: HitPart[] = ["head", "body", "legs"];
 import { clampLean, leanOffset } from "../game/shared/lean";
 import { raycastWorld, lineOfSight, type World } from "../game/shared/physics";
 import {
-  F_CROUCH, F_GROUNDED, type JoinOptions, type PoseMsg, type FireMsg, type GrenadeMsg, type GrenadeHitEvent, type LoadoutMsg, type ShotEvent,
+  F_CROUCH, F_GROUNDED, F_MASK, F_SLIDE, type JoinOptions, type PoseMsg, type FireMsg, type GrenadeMsg, type GrenadeHitEvent, type LoadoutMsg, type ShotEvent,
   type HitConfirm, type DamagedEvent, type KillEvent, type SpawnEvent, type RoomMeta, type AmmoEvent, type LoadoutEvent,
 } from "../game/shared/messages";
 import { createRoomWorld, RAPIER } from "./world";
@@ -584,7 +584,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     p.pose = [p.st.x, p.st.y, p.st.z];
     p.st.yaw = m.yaw;
     p.st.pitch = clamp(m.pitch, -1.55, 1.55);
-    p.st.flags = m.flags & 0xff;
+    p.st.flags = m.flags & F_MASK;
     // Re-check the peek against the map so a modified client cannot lean through walls.
     const lean = typeof m.lean === "number" && finite(m.lean) ? clamp(m.lean, -1, 1) : 0;
     const crouch = (p.st.flags & F_CROUCH) ? 1 : 0;
@@ -614,14 +614,15 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
 
   eyePos(p: ServerPlayer): V3 {
     const crouch = (p.st.flags & F_CROUCH) !== 0;
-    const height = crouch ? CROUCH_EYE_HEIGHT : EYE_HEIGHT;
+    const height = (p.st.flags & F_SLIDE) ? SLIDE_EYE_HEIGHT : crouch ? CROUCH_EYE_HEIGHT : EYE_HEIGHT;
     const o = leanOffset(p.st.lean, p.st.yaw, crouch ? 1 : 0, height);
     return [p.st.x + o[0], p.st.y + height + o[1], p.st.z + o[2]];
   }
 
   livePose(p: ServerPlayer): Pose {
     return { x: p.st.x, y: p.st.y, z: p.st.z, crouch: (p.st.flags & F_CROUCH) !== 0, yaw: p.st.yaw, lean: p.st.lean,
-      pitch: p.st.pitch, moving: p.vel && Math.hypot(p.vel[0], p.vel[2]) > MOVING_SPEED ? 1 : 0 };
+      pitch: p.st.pitch, moving: p.vel && Math.hypot(p.vel[0], p.vel[2]) > MOVING_SPEED ? 1 : 0,
+      slide: p.vel && (p.st.flags & F_SLIDE) ? slideYaw(p.st.yaw, p.vel[0], p.vel[2]) : null };
   }
 
   // ---------------------------------------------------------------- combat

@@ -29,7 +29,7 @@ function template(): CharacterTemplate {
     const hand = add(lower, `hand_${side}`, 0, -0.24);
     add(hand, `middle_01_${side}`, 0, -0.07);
   }
-  const names: ClipName[] = ["idle", "walk", "jog", "sprint", "crouchIdle", "crouchWalk", "jumpLoop", "aimNeutral", "aimUp", "aimDown", "death", "dance"];
+  const names: ClipName[] = ["idle", "walk", "jog", "sprint", "crouchIdle", "crouchWalk", "jumpLoop", "slideLoop", "aimNeutral", "aimUp", "aimDown", "death", "dance"];
   const full = new Map<ClipName, THREE.AnimationClip>();
   const lower = new Map<ClipName, THREE.AnimationClip>();
   const upper = new Map<ClipName, THREE.AnimationClip>();

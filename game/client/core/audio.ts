@@ -29,16 +29,28 @@ const GESTURES = ["pointerdown", "pointerup", "keydown", "touchend"] as const;
 
 interface ShotVoice {
   crack: number; // high-frequency snap level
-  body: number; // mid noise level
+  body: number; // level of the blast: noise closing down from bright to dark
   thump: number; // low sine thump level
+  knock: number; // mid punch level: what is left of the thump on small speakers
   pitch: number; // filter frequency multiplier
   length: number; // seconds of the body burst
   tail: number; // reverb send
+  echo: number; // level of the report coming back off walls
+  action?: number; // level of the bolt cycling, heard on your own gun
   boom?: number; // level of a low blast rolling off under the shot
 }
 
 /** Seconds a shot's boom takes to roll off. */
 const BOOM_SECONDS = 0.65;
+/** When a shot's two echoes come back (s), and how long the later one rings. */
+const ECHOES = [0.115, 0.23] as const;
+const ECHO_SECONDS = 0.32;
+/** Overall trim of a gunshot's layers into its voice. */
+const SHOT_LEVEL = 0.8;
+/** A bullet passing within this far (m) of the listener is heard going by. */
+export const WHIZ_RANGE = 2.8;
+/** A blast within this far (m) dulls the hearing for a moment. */
+const DEAFEN_RANGE = 9;
 
 /** One metal part meeting another: its ring (Hz), level and the thud through the gun (Hz). */
 type Clack = [freq: number, level: number, thud: number];
@@ -63,12 +75,12 @@ const LOUD_ENOUGH = 0.3;
 interface Voice { end: number; nodes: AudioNode[]; spatial: boolean; hrtf: boolean }
 
 const SHOTS: Record<WeaponId, ShotVoice> = {
-  ar: { crack: 0.9, body: 1, thump: 0.9, pitch: 1, length: 0.16, tail: 0.55 },
-  smg: { crack: 0.8, body: 0.8, thump: 0.6, pitch: 1.3, length: 0.11, tail: 0.4 },
-  shotgun: { crack: 0.85, body: 1.2, thump: 1.3, pitch: 0.7, length: 0.24, tail: 0.9, boom: 0.8 },
+  ar: { crack: 0.9, body: 1, thump: 0.9, knock: 0.55, pitch: 1, length: 0.17, tail: 0.55, echo: 0.5, action: 0.1 },
+  smg: { crack: 0.8, body: 0.8, thump: 0.6, knock: 0.45, pitch: 1.3, length: 0.11, tail: 0.4, echo: 0.3, action: 0.1 },
+  shotgun: { crack: 0.85, body: 1.2, thump: 1.3, knock: 0.75, pitch: 0.7, length: 0.26, tail: 0.9, echo: 0.7, boom: 0.8 },
   // An anti-materiel round: the heaviest crack, and a blast rolling off long after it.
-  sniper: { crack: 1.3, body: 1.3, thump: 1.6, pitch: 0.75, length: 0.38, tail: 1.2, boom: 1 },
-  pistol: { crack: 1, body: 1.15, thump: 1.2, pitch: 0.8, length: 0.2, tail: 0.85, boom: 0.45 },
+  sniper: { crack: 1.3, body: 1.3, thump: 1.6, knock: 0.85, pitch: 0.75, length: 0.4, tail: 1.2, echo: 1, boom: 1 },
+  pistol: { crack: 1, body: 1.15, thump: 1.2, knock: 0.7, pitch: 0.8, length: 0.2, tail: 0.85, echo: 0.65, boom: 0.45 },
 };
 
 /**
@@ -94,6 +106,12 @@ export class AudioEngine {
   private voices: Voice[] = [];
   /** The local gun's pump, bolt or shell-loading sounds still to play. */
   private working: Voice | null = null;
+  /** Your own slide scraping along the ground, until it ends. */
+  private sliding: { voice: Voice; gain: GainNode } | null = null;
+  /** Everything but the menu bed passes through this: it closes for a moment after a blast close by. */
+  private ears: BiquadFilterNode | null = null;
+  /** When the last bullet was heard going by, so a burst doesn't stack them (s). */
+  private whizAt = -1;
   /** The menu theme: its bytes fetched as soon as the lobby wants it, decoded once audio is unlocked. */
   private themeBytes: Promise<ArrayBuffer> | null = null;
   private theme: Promise<AudioBuffer> | null = null;
@@ -118,17 +136,31 @@ export class AudioEngine {
     this.listenerSynced = false;
     this.master = ctx.createGain();
     this.master.gain.value = this.volume;
+    // Gunfire is far louder than everything else: the compressor lets a shot through and pulls the
+    // mix back up quickly after it, and the clipper rounds off what still overshoots instead of
+    // letting the output clip hard.
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -14;
+    comp.knee.value = 8;
     comp.ratio.value = 4;
-    this.master.connect(comp).connect(ctx.destination);
+    comp.attack.value = 0.002;
+    comp.release.value = 0.14;
+    const clip = ctx.createWaveShaper();
+    clip.curve = softClip();
+    clip.oversample = "2x";
+    this.master.connect(comp).connect(clip).connect(ctx.destination);
+    this.ears = ctx.createBiquadFilter();
+    this.ears.type = "lowpass";
+    this.ears.frequency.value = 20000;
+    this.ears.Q.value = 0.5;
+    this.ears.connect(this.master);
     this.sfx = ctx.createGain();
-    this.sfx.connect(this.master);
+    this.sfx.connect(this.ears);
     this.reverb = ctx.createConvolver();
     this.reverb.buffer = this.impulse(2.2, 2.6);
     this.reverbGain = ctx.createGain();
     this.reverbGain.gain.value = 0.35;
-    this.reverb.connect(this.reverbGain).connect(this.master);
+    this.reverb.connect(this.reverbGain).connect(this.ears);
     const len = ctx.sampleRate * 2;
     this.noise = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = this.noise.getChannelData(0);
@@ -164,6 +196,7 @@ export class AudioEngine {
     this.applyBed();
     for (const v of this.voices) for (const n of v.nodes) n.disconnect();
     this.voices = [];
+    this.sliding = null;
     this.listenerSynced = false;
   }
 
@@ -326,35 +359,43 @@ export class AudioEngine {
     if (!ctx) return;
     const v = SHOTS[weapon];
     const t = ctx.currentTime + 0.001;
-    const route = this.spatial(pos, Math.max(0.2, v.length, v.boom ? BOOM_SECONDS : 0) + 0.05);
+    const route = this.spatial(pos, Math.max(v.length, v.boom ? BOOM_SECONDS : 0, ECHOES[1] * 1.06 + ECHO_SECONDS) + 0.05);
     if (!route) return;
-    const [out, dist, voice] = route;
+    const [bus, dist, voice] = route;
+    const out = ctx.createGain();
+    out.gain.value = SHOT_LEVEL;
+    out.connect(bus);
     const ally = !local && side === "ally";
     const gainMul = local ? 0.9 : ally ? 0.82 : 1;
     const crackMul = local ? 1 : ally ? 0.55 : 1.2;
     const tone = ally ? 0.86 : 1;
     const jitter = 0.94 + Math.random() * 0.12;
 
-    // Crack: very short bright noise.
+    // Crack: the muzzle's snap, a click of bright noise with a harder band under it.
     const crack = this.noiseSource(t, 0.05);
     const hp = ctx.createBiquadFilter();
     hp.type = "highpass";
     hp.frequency.value = 2400 * v.pitch * jitter * (ally ? 0.75 : local ? 1 : 1.15);
     const cg = ctx.createGain();
-    this.env(cg, t, 0.9 * v.crack * gainMul * crackMul, 0.001, 0.045);
+    this.env(cg, t, 0.9 * v.crack * gainMul * crackMul, 0.001, 0.04);
     crack.connect(hp).connect(cg).connect(out);
+    this.burst(out, "bandpass", 1900 * v.pitch * jitter * tone, 0.9, t, 0.6 * v.crack * gainMul * crackMul, 0.001, 0.028);
 
-    // Body: band-limited noise burst.
+    // Body: the blast itself, noise that starts bright and closes down dark as it rolls away.
     const body = this.noiseSource(t, v.length);
+    const cut = ctx.createBiquadFilter();
+    cut.type = "highpass";
+    cut.frequency.value = 150;
     const bp = ctx.createBiquadFilter();
-    bp.type = "bandpass";
-    bp.frequency.value = 900 * v.pitch * jitter * tone;
-    bp.Q.value = 0.7;
+    bp.type = "lowpass";
+    bp.Q.value = 0.9;
+    bp.frequency.setValueAtTime(5200 * v.pitch * jitter * tone, t);
+    bp.frequency.exponentialRampToValueAtTime(380 * v.pitch * tone, t + v.length * 0.85);
     const bg = ctx.createGain();
-    this.env(bg, t, 1.1 * v.body * gainMul, 0.002, v.length);
-    body.connect(bp).connect(bg).connect(out);
+    this.env(bg, t, 0.8 * v.body * gainMul, 0.002, v.length);
+    body.connect(cut).connect(bp).connect(bg).connect(out);
 
-    // Thump: pitched-down sine for weight.
+    // Thump: pitched-down sine for weight, and a knock an octave up that small speakers can play.
     const osc = ctx.createOscillator();
     osc.type = "sine";
     osc.frequency.setValueAtTime(140 * v.pitch, t);
@@ -364,8 +405,19 @@ export class AudioEngine {
     osc.connect(og).connect(out);
     osc.start(t);
     osc.stop(t + 0.2);
+    this.blip(out, "triangle", 330 * v.pitch * jitter, t, 0.55 * v.knock * gainMul, 0.001, 0.07, 95 * v.pitch);
+
+    // The report coming back off the walls around: two darker, quieter repeats.
+    this.burst(out, "lowpass", 1300 * tone, 0.7, t + ECHOES[0] * jitter, 0.5 * v.echo * gainMul, 0.012, 0.16);
+    this.burst(out, "lowpass", 800 * tone, 0.7, t + ECHOES[1] * jitter, 0.32 * v.echo * gainMul, 0.02, ECHO_SECONDS - 0.02);
+    // Your own gun's bolt running back and home.
+    if (local && v.action) {
+      this.burst(out, "bandpass", 3300, 3, t + 0.03, v.action, 0.001, 0.016);
+      this.burst(out, "bandpass", 2300, 3, t + 0.055, v.action * 0.8, 0.001, 0.02);
+    }
 
     // Boom: a low blast closing down from the muzzle, with a sub drop under it.
+    let boom: GainNode | null = null;
     if (v.boom) {
       const roar = this.noiseSource(t, BOOM_SECONDS);
       const lp = ctx.createBiquadFilter();
@@ -375,22 +427,29 @@ export class AudioEngine {
       const rg = ctx.createGain();
       this.env(rg, t, v.boom * gainMul, 0.003, BOOM_SECONDS - 0.02);
       roar.connect(lp).connect(rg).connect(out);
-      const roll = ctx.createGain();
-      roll.gain.value = v.tail * 0.6;
-      rg.connect(roll).connect(this.reverb);
-      voice.nodes.push(roll);
       this.blip(out, "sine", 96, t, 0.75 * v.boom * gainMul, 0.003, BOOM_SECONDS - 0.1, 30);
+      boom = ctx.createGain();
+      boom.gain.value = 0.6;
+      rg.connect(boom);
     }
 
-    // Echo off the village walls.
+    // The tail: the blast (and the boom under it) ringing on in the space around, duller the
+    // further off the shot was. From far away the tail is most of what arrives.
+    const dull = ctx.createBiquadFilter();
+    dull.type = "lowpass";
+    dull.frequency.value = Math.max(700, 5200 / (1 + dist * 0.05));
     const send = ctx.createGain();
-    send.gain.value = v.tail * (0.5 + Math.min(1, dist / 60));
-    bg.connect(send).connect(this.reverb);
+    send.gain.value = SHOT_LEVEL * v.tail * (0.5 + Math.min(1, dist / 60));
+    bg.connect(dull).connect(send).connect(this.reverb);
+    boom?.connect(dull);
     voice.nodes.push(send);
   }
 
+  /** The hammer falling on an empty chamber. */
   dryFire() {
-    this.click(3200, 0.25);
+    const ctx = this.ctx;
+    if (!ctx) return;
+    this.clack(this.spatial(undefined, 0.1)![0], ctx.currentTime, [3000, 0.24, 520]);
   }
 
   click(freq = 2000, level = 0.3, pos?: V3, delay = 0) {
@@ -458,61 +517,213 @@ export class AudioEngine {
       if (!pos && clicks.length) this.working = { ...clicks[0], nodes: clicks.flatMap((v) => v.nodes) };
       return;
     }
-    // Mag out, mag in, charging handle back, handle released: on the beats of the clip in handling.ts.
-    this.click(1500, 0.35, pos, durationS * 0.2);
-    this.click(900, 0.4, pos, durationS * 0.62);
-    this.click(2600, 0.3, pos, durationS * 0.83);
-    this.click(1800, 0.35, pos, durationS * 0.862);
+    // On the beats of the clip in handling.ts: the magazine dropping out, the fresh one going in
+    // and seating, the charging handle hauled back and let go.
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const route = this.spatial(pos, durationS);
+    if (!route) return;
+    const [out, , voice] = route;
+    if (!pos) this.working = voice;
+    const t = ctx.currentTime;
+    this.clack(out, t + durationS * 0.2, [1500, 0.12, 190]);
+    this.burst(out, "bandpass", 2100, 1.2, t + durationS * 0.2 + 0.02, 0.07, 0.01, 0.07);
+    this.burst(out, "bandpass", 1700, 1.2, t + durationS * 0.6, 0.06, 0.015, 0.04);
+    this.clack(out, t + durationS * 0.635, [950, 0.17, 150]);
+    this.clack(out, t + durationS * 0.83, [2600, 0.12, 300]);
+    this.clack(out, t + durationS * 0.862, [1800, 0.17, 240]);
   }
 
+  /** One gun put away and the other brought up: cloth and sling, then the hands closing on it. */
   switchWeapon() {
-    this.click(1200, 0.25);
-    this.click(2400, 0.2, undefined, 0.08);
-  }
-
-  footstep(stone: boolean, pos?: V3, level = 0.18) {
     const ctx = this.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
-    const route = this.spatial(pos, 0.12);
-    if (!route) return;
-    const [out] = route;
-    const n = this.noiseSource(t, 0.08);
-    const f = ctx.createBiquadFilter();
-    f.type = stone ? "bandpass" : "lowpass";
-    f.frequency.value = stone ? 1400 + Math.random() * 500 : 700 + Math.random() * 300;
-    f.Q.value = stone ? 1.2 : 0.7;
-    const g = ctx.createGain();
-    this.env(g, t, level, 0.003, stone ? 0.06 : 0.09);
-    n.connect(f).connect(g).connect(out);
+    const out = this.spatial(undefined, 0.3)![0];
+    this.burst(out, "bandpass", 700, 0.8, t, 0.09, 0.03, 0.1);
+    this.clack(out, t + 0.1, [1300, 0.09, 200]);
+    this.clack(out, t + 0.17, [2400, 0.06, 320]);
   }
 
+  /**
+   * One footfall: the heel's weight, then the sole on the ground (a hard tap with grit on stone, a
+   * soft crunch on earth) and the foot rolling off it. `gait` is 0 creeping .. 1 sprinting.
+   */
+  footstep(stone: boolean, pos?: V3, level = 0.18, gait = 0.5) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const route = this.spatial(pos, 0.14);
+    if (!route) return;
+    const [out] = route;
+    const weight = 0.7 + gait * 0.6, vary = 0.88 + Math.random() * 0.24;
+    this.blip(out, "sine", (stone ? 170 : 130) * vary, t, level * 0.22 * weight, 0.003, 0.045, 70);
+    this.burst(out, "lowpass", (stone ? 520 : 380) * vary, 0.8, t, level * 1.1 * weight, 0.003, stone ? 0.045 : 0.065);
+    if (stone) {
+      this.burst(out, "bandpass", 1500 * vary + Math.random() * 500, 1.3, t + 0.004, level * 1.5, 0.001, 0.03);
+      this.burst(out, "highpass", 3600, 0.7, t + 0.006, level * 0.3 * weight, 0.001, 0.012);
+    } else {
+      for (let i = 0; i < 3; i++) {
+        this.burst(out, "bandpass", 650 + Math.random() * 750, 0.9, t + 0.004 + i * (0.011 + Math.random() * 0.01), level * 1.1, 0.002, 0.04);
+      }
+    }
+    if (gait > 0.2) this.burst(out, "bandpass", stone ? 1150 * vary : 560 * vary, 1, t + 0.05 + (1 - gait) * 0.03, level * 0.6, 0.004, 0.035);
+  }
+
+  /** Landing: both feet taking the weight, and the kit settling a moment after a hard one. */
   land(level: number) {
     const ctx = this.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
-    const n = this.noiseSource(t, 0.15);
-    const f = ctx.createBiquadFilter();
-    f.type = "lowpass";
-    f.frequency.value = 500;
-    const g = ctx.createGain();
-    this.env(g, t, 0.25 * level, 0.003, 0.12);
-    n.connect(f).connect(g).connect(this.spatial(undefined, 0.2)![0]);
+    const out = this.spatial(undefined, 0.3)![0];
+    this.blip(out, "sine", 120, t, 0.1 * level, 0.003, 0.11, 55);
+    this.burst(out, "lowpass", 480, 0.8, t, 0.5 * level, 0.003, 0.12);
+    this.burst(out, "bandpass", 1300, 1, t + 0.005, 0.2 * level, 0.002, 0.05);
+    if (level > 0.45) {
+      this.burst(out, "bandpass", 2700, 3, t + 0.05, 0.1 * level, 0.001, 0.02);
+      this.burst(out, "bandpass", 3500, 3, t + 0.095, 0.07 * level, 0.001, 0.02);
+    }
   }
 
+  /** Pushing off into a jump: a boot leaving the ground and cloth pulling tight. */
+  jump() {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const out = this.spatial(undefined, 0.2)![0];
+    this.burst(out, "lowpass", 420, 0.8, t, 0.22, 0.003, 0.05);
+    this.whoosh(out, t + 0.01, 0.13, 600, 1500, 0.9, 0.09);
+  }
+
+  /**
+   * Your own slide: boots and kit scraping along the ground, loud as it starts and fading as the
+   * slide slows. `on` false ends it wherever it has got to.
+   */
+  slide(on: boolean) {
+    const ctx = this.ctx;
+    const was = this.sliding;
+    this.sliding = null;
+    if (ctx && was) {
+      const t = ctx.currentTime;
+      was.gain.gain.cancelScheduledValues(t);
+      was.gain.gain.setTargetAtTime(0, t, 0.035);
+      was.voice.end = t + 0.25;
+    }
+    if (!ctx || !on) return;
+    const t = ctx.currentTime;
+    const [out, , voice] = this.spatial(undefined, 1.4)!;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(1, t + 0.04);
+    gain.gain.linearRampToValueAtTime(0.25, t + 1.3);
+    gain.connect(out);
+    this.scrape(gain, t, 1.35, 0.055);
+    this.blip(gain, "sine", 110, t, 0.05, 0.004, 0.1, 55);
+    this.sliding = { voice, gain };
+  }
+
+  /** Someone else sliding, heard from where they are. */
+  slideAt(pos: V3) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const route = this.spatial(pos, 0.9);
+    if (!route) return;
+    const t = ctx.currentTime;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(1, t + 0.04);
+    gain.gain.linearRampToValueAtTime(0, t + 0.85);
+    gain.connect(route[0]);
+    this.scrape(gain, t, 0.9, 0.08);
+  }
+
+  /** Grit under a boot: a dull drag and a rough, wavering hiss over it. */
+  private scrape(out: AudioNode, t: number, seconds: number, level: number) {
+    const ctx = this.ctx!;
+    const low = ctx.createBiquadFilter();
+    low.type = "lowpass";
+    low.frequency.value = 600;
+    const lg = ctx.createGain();
+    lg.gain.value = level * 1.4;
+    this.noiseLoop(t, seconds, 0.7).connect(low).connect(lg).connect(out);
+    const grit = ctx.createBiquadFilter();
+    grit.type = "bandpass";
+    grit.Q.value = 0.8;
+    grit.frequency.setValueAtTime(2600, t);
+    grit.frequency.exponentialRampToValueAtTime(1300, t + seconds);
+    const gg = ctx.createGain();
+    gg.gain.value = level * 0.5;
+    this.noiseLoop(t, seconds).connect(grit).connect(gg).connect(out);
+  }
+
+  /** Filtered noise swept from `from` Hz to `to` Hz over `seconds`, swelling and dying away. */
+  private whoosh(out: AudioNode, t: number, seconds: number, from: number, to: number, q: number, peak: number) {
+    const ctx = this.ctx!;
+    const f = ctx.createBiquadFilter();
+    f.type = "bandpass";
+    f.Q.value = q;
+    f.frequency.setValueAtTime(from, t);
+    f.frequency.exponentialRampToValueAtTime(to, t + seconds);
+    const g = ctx.createGain();
+    this.env(g, t, peak, seconds * 0.35, seconds * 0.65);
+    this.noiseLoop(t, seconds).connect(f).connect(g).connect(out);
+  }
+
+  /**
+   * A bullet striking the map: a hard smack and the surface's dull answer, a spit of dirt off
+   * the ground, and now and then the round whining away off something hard.
+   */
+  impact(pos: V3, ground = false) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const whine = !ground && Math.random() < 0.18;
+    const route = this.spatial(pos, whine ? 0.4 : 0.12);
+    if (!route) return;
+    const [out] = route;
+    const t = ctx.currentTime, vary = 0.85 + Math.random() * 0.3;
+    this.burst(out, "bandpass", (ground ? 900 : 2300) * vary, 1.1, t, 1.1, 0.001, ground ? 0.05 : 0.025);
+    this.burst(out, "lowpass", (ground ? 300 : 520) * vary, 0.8, t, ground ? 1.6 : 0.45, 0.002, 0.06);
+    if (!ground) this.burst(out, "highpass", 4500, 0.7, t + 0.002, 0.2, 0.001, 0.015);
+    if (whine) {
+      const from = 2600 + Math.random() * 1800;
+      this.blip(out, "sine", from, t + 0.01, 0.07, 0.01, 0.3, from * 0.45);
+      this.blip(out, "sine", from * 1.51, t + 0.01, 0.025, 0.01, 0.2, from * 0.7);
+    }
+  }
+
+  /**
+   * A bullet going past: the crack of it at `pos` (the nearest point of its flight) and the hiss
+   * dropping away behind it. `closeness` is 0 at WHIZ_RANGE .. 1 past the ear.
+   */
+  whiz(pos: V3, closeness: number) {
+    const ctx = this.ctx;
+    if (!ctx || ctx.currentTime - this.whizAt < 0.07) return;
+    const route = this.spatial(pos, 0.3);
+    if (!route) return;
+    this.whizAt = ctx.currentTime;
+    const [out] = route;
+    const t = ctx.currentTime, k = 0.45 + 0.55 * Math.max(0, Math.min(1, closeness));
+    this.burst(out, "highpass", 3200, 0.7, t, 1.1 * k, 0.0005, 0.012);
+    this.burst(out, "bandpass", 1800, 1, t, 0.7 * k, 0.001, 0.02);
+    this.whoosh(out, t + 0.004, 0.24, 3400 + Math.random() * 800, 650, 2.2, 0.55 * k);
+  }
+
+  /** A hit on someone else, confirmed: a dry tick you can count, with a struck-helmet knock for the head. */
   hitmarker(head: boolean) {
     const ctx = this.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
     const o = ctx.createOscillator();
     o.type = "triangle";
-    o.frequency.value = head ? 2600 : 1700;
+    o.frequency.setValueAtTime(head ? 2600 : 1500, t);
+    if (!head) o.frequency.exponentialRampToValueAtTime(1050, t + 0.05);
     const g = ctx.createGain();
-    this.env(g, t, head ? 0.28 : 0.2, 0.001, 0.05);
+    this.env(g, t, head ? 0.26 : 0.22, 0.001, head ? 0.05 : 0.04);
     const out = this.spatial(undefined, head ? 0.25 : 0.1)![0];
     o.connect(g).connect(out);
     o.start(t);
     o.stop(t + 0.08);
+    this.burst(out, "bandpass", head ? 3400 : 2400, 2, t, head ? 0.2 : 0.32, 0.0005, 0.014);
     // A headshot knocks like a struck helmet, damped short, so it can't be mistaken for a body hit.
     if (head) {
       this.blip(out, "sine", 2200, t + 0.004, 0.15, 0.001, 0.11);
@@ -555,19 +766,24 @@ export class AudioEngine {
     if (head) tone(2640, 0.012, 0.05, 0.1, "sine");
   }
 
+  /** Taking a hit: the round's smack, a thud through the body, and a dull knock that small speakers can play. */
   hurt() {
     const ctx = this.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
+    const out = this.spatial(undefined, 0.3)![0];
     const o = ctx.createOscillator();
     o.type = "sine";
-    o.frequency.setValueAtTime(90, t);
+    o.frequency.setValueAtTime(95, t);
     o.frequency.exponentialRampToValueAtTime(45, t + 0.2);
     const g = ctx.createGain();
-    this.env(g, t, 0.5, 0.003, 0.22);
-    o.connect(g).connect(this.spatial(undefined, 0.3)![0]);
+    this.env(g, t, 0.42, 0.003, 0.22);
+    o.connect(g).connect(out);
     o.start(t);
     o.stop(t + 0.3);
+    this.blip(out, "triangle", 260, t, 0.2, 0.002, 0.08, 120);
+    this.burst(out, "lowpass", 900, 0.8, t, 0.8, 0.002, 0.07);
+    this.burst(out, "bandpass", 2600, 1.2, t, 0.16, 0.001, 0.02);
   }
 
   explosion(pos: V3) {
@@ -577,6 +793,10 @@ export class AudioEngine {
     const route = this.spatial(pos, 2.4);
     if (!route) return;
     const [out, dist, voice] = route;
+    // The detonation's own crack and punch, ahead of the roar.
+    this.burst(out, "highpass", 1800, 0.7, t, 0.9, 0.001, 0.04);
+    this.burst(out, "bandpass", 320, 0.8, t, 1.4, 0.002, 0.16);
+    if (dist < DEAFEN_RANGE) this.deafen(1 - dist / DEAFEN_RANGE);
     // Blast: a bright crack that closes down into a long rumble.
     const n = this.noiseSource(t, 2.3);
     const lp = ctx.createBiquadFilter();
@@ -606,6 +826,24 @@ export class AudioEngine {
     voice.nodes.push(send);
   }
 
+  /**
+   * A blast close by: everything goes dull and comes back over a couple of seconds, with a thin
+   * ringing in the ears. `amount` is 0 at the edge of DEAFEN_RANGE .. 1 at the blast.
+   */
+  private deafen(amount: number) {
+    const ctx = this.ctx!;
+    if (!this.ears?.frequency.cancelScheduledValues) return;
+    const t = ctx.currentTime, k = Math.max(0, Math.min(1, amount));
+    const f = this.ears.frequency;
+    f.cancelScheduledValues(t);
+    f.setValueAtTime(20000, t + 0.05);
+    f.exponentialRampToValueAtTime(2600 - 2000 * k, t + 0.12);
+    f.exponentialRampToValueAtTime(20000, t + 0.9 + 1.6 * k);
+    const [bus] = this.eventBus(this.master, 2.4);
+    this.blip(bus, "sine", 3800, t + 0.08, 0.035 * k, 0.05, 2.1);
+    this.blip(bus, "sine", 5350, t + 0.08, 0.012 * k, 0.05, 1.4);
+  }
+
   /** A grenade striking the map: a metal clink you can place by ear, louder the harder it hit. */
   grenadeHit(pos: V3, speed: number) {
     const level = Math.min(0.45, 0.14 + speed * 0.025);
@@ -624,9 +862,14 @@ export class AudioEngine {
     this.click(4200, 0.18, undefined, 0.06);
   }
 
+  /** The arm coming over and the lever springing off as the grenade leaves the hand. */
   grenadeThrow() {
-    this.click(700, 0.3);
-    this.click(3000, 0.15, undefined, 0.05);
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const out = this.spatial(undefined, 0.3)![0];
+    this.whoosh(out, t, 0.2, 500, 1700, 0.9, 0.11);
+    this.clack(out, t + 0.05, [3000, 0.09, 600]);
   }
 
   ui() {
@@ -1208,9 +1451,26 @@ export class AudioEngine {
         const early = i < ctx.sampleRate * 0.12 && Math.random() < 0.004 ? 1.5 : 0;
         d[i] = ((Math.random() * 2 - 1) * 0.6 + early * (Math.random() * 2 - 1)) * Math.pow(1 - t, decay);
       }
+      // Open ground swallows the highs first: the tail darkens as it dies, instead of hissing.
+      let y = 0;
+      for (let i = 0; i < len; i++) {
+        const a = 0.75 * Math.pow(1 - i / len, 2.2) + 0.06;
+        y += a * (d[i] - y);
+        d[i] = y * (1 + 1.1 * (i / len));
+      }
     }
     return buf;
   }
+}
+
+/** A transfer curve that is straight for quiet signals and bends smoothly to a ceiling for loud ones. */
+function softClip() {
+  const n = 2049, curve = new Float32Array(n), knee = 0.6;
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1, a = Math.abs(x);
+    curve[i] = a <= knee ? x : Math.sign(x) * (knee + (1 - knee) * Math.tanh((a - knee) / (1 - knee)) * 0.92);
+  }
+  return curve;
 }
 
 export const audio = new AudioEngine();

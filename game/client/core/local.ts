@@ -5,8 +5,8 @@ import { aimDir, spreadDir, zoomSensitivity } from "../../shared/aim";
 import { WEAPONS, GRENADE, SCOPE_UP, currentSpread, fireIntervalMs, reloadClipAt, reloadMs, reloadNeed, reloadSkip, reloadedRounds, type WeaponId } from "../../shared/weapons";
 import { quickScope } from "../player/quickScope";
 import { grenadeVelocity } from "../../shared/grenade";
-import { EYE_HEIGHT, CROUCH_EYE_HEIGHT, GRENADES_PER_LIFE, INTERP_DELAY_MS } from "../../shared/constants";
-import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_RELOAD_SKIP_SHIFT, F_SPRINT, type AmmoEvent, type GrenadeMsg, type LoadoutEvent, type PoseMsg, type SpawnEvent } from "../../shared/messages";
+import { EYE_HEIGHT, CROUCH_EYE_HEIGHT, SLIDE_EYE_HEIGHT, GRENADES_PER_LIFE, INTERP_DELAY_MS, JUMP_BUFFER_MS, SPRINT_SPEED } from "../../shared/constants";
+import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_RELOAD_SKIP_SHIFT, F_SLIDE, F_SPRINT, type AmmoEvent, type GrenadeMsg, type LoadoutEvent, type PoseMsg, type SpawnEvent } from "../../shared/messages";
 import type { Input } from "./input";
 import type { Game } from "./game";
 import { useSettings } from "../settings";
@@ -34,8 +34,13 @@ function onStone(x: number, z: number, y: number) {
 const THROW_ANIM_RATE = 2.4;
 /** Share of a throw's animation at which the grenade leaves the hand. */
 export const THROW_RELEASE = 0.14;
-/** Third person widens the view this much (degrees) at a sprint. */
+/** A sprint widens the view this much (degrees): in third person, in first person; a slide adds more. */
 const TPP_SPRINT_FOV = 5;
+const FPP_SPRINT_FOV = 2.5;
+const SLIDE_FOV = 5;
+/** View roll (rad) through a slide, and at a full-speed strafe. */
+const SLIDE_ROLL = 0.05;
+const STRAFE_ROLL = 0.011;
 
 export class LocalPlayer {
   readonly ms: MoveState;
@@ -106,6 +111,17 @@ export class LocalPlayer {
    * climbs those in one tick, and the view eases the rest of the way instead of jolting.
    */
   private stepEase = 0;
+  /** 0..1 through a slide, eased: the view rolls and widens, the gun cants over. */
+  slideT = 0;
+  /** View roll (rad) from strafing. */
+  private strafeRoll = 0;
+  /** The hip gun trailing the body's movement (view space, m), and its dip on landing. */
+  private lagX = 0;
+  private lagY = 0;
+  private gunDrop = 0;
+  /** Jump was held last frame; a press shortly before landing still jumps on landing. */
+  private jumpHeld = false;
+  private jumpBufferUntil = 0;
   private bobPhase = 0;
   private bobAmount = 0;
   private stepDist = 0;
@@ -122,10 +138,11 @@ export class LocalPlayer {
   readonly bob = new THREE.Vector2();
   readonly sway = new THREE.Vector2();
   private tppDist = 2.6;
-  /** Third person: the camera's eased height, its roll-free turn, and 0..1 sprint widening the view. */
+  /** Third person: the camera's eased height and its roll-free turn. */
   private tppY = NaN;
   private tppQuat = new THREE.Quaternion();
-  private tppSprint = 0;
+  /** 0..1 sprint widening the view. */
+  private rush = 0;
 
   constructor(private game: Game, private R: Rapier, private world: World) {
     this.ms = newMoveState(0, 0, 0);
@@ -184,6 +201,9 @@ export class LocalPlayer {
     this.sendAt = 0;
     this.acc = this.pendingLand = this.landDip = this.stepEase = this.crouchT = this.recoil = this.burst = 0;
     this.lean = this.leanLatch = 0;
+    this.slideT = this.strafeRoll = this.lagX = this.lagY = this.gunDrop = this.rush = 0;
+    this.jumpBufferUntil = 0;
+    audio.slide(false);
     this.peeking = false;
     this.emote = null;
     this.emoteMenu = false;
@@ -211,6 +231,7 @@ export class LocalPlayer {
     this.grenadeAt = this.fuseAt = 0;
     this.releasing = false;
     audio.stopWorking();
+    audio.slide(false);
   }
 
   cancelActions() {
@@ -327,15 +348,23 @@ export class LocalPlayer {
     const wantsSprint = input.sprint && now > this.sprintBlockUntil && !input.fire && !input.ads;
     const adsHeld = input.ads;
     this.acc += Math.min(dt, 0.1);
-    const wasGrounded = this.ms.grounded;
+    const wasGrounded = this.ms.grounded, wasSliding = this.ms.sliding;
+    // A jump pressed just before landing is kept for the landing.
+    if (input.jump && !this.jumpHeld) this.jumpBufferUntil = now + JUMP_BUFFER_MS;
+    this.jumpHeld = input.jump;
+    let jumped = false;
     while (this.acc >= STEP) {
       this.acc -= STEP;
       this.motion.beforeStep(this.ms);
-      const { x, y, z, grounded } = this.ms;
+      const { x, y, z, grounded, vy } = this.ms;
       this.mover.step(this.ms, {
-        forward: fwd, right, yaw: this.yaw, jump: input.jump, crouch: input.crouch, sprint: wantsSprint,
+        forward: fwd, right, yaw: this.yaw, jump: input.jump || now < this.jumpBufferUntil, crouch: input.crouch, sprint: wantsSprint,
         ads: this.ads, speedMult: def.moveMult * (1 - Math.abs(this.lean) * 0.2),
       }, STEP);
+      if (this.ms.vy > 1 && vy <= 0.5 && !this.ms.grounded) {
+        jumped = true;
+        this.jumpBufferUntil = 0;
+      }
       // A step: on the ground throughout, rising or dropping faster than a walkable slope.
       const dy = this.ms.y - y;
       if (grounded && this.ms.grounded && Math.abs(dy) > 0.02 && Math.abs(dy) > 1.3 * Math.hypot(this.ms.x - x, this.ms.z - z)) {
@@ -346,9 +375,12 @@ export class LocalPlayer {
     this.stepEase *= Math.exp(-dt * 22);
     this.motion.sample(this.ms, this.acc / STEP);
     if (wasSprinting && input.fire) this.switchEnd = Math.max(this.switchEnd, now + 150);
+    if (jumped) audio.jump();
+    if (this.ms.sliding !== wasSliding) audio.slide(this.ms.sliding);
     if (this.ms.landSpeed > 0) {
       if (!wasGrounded || this.ms.landSpeed > 4) {
         this.landDip = Math.min(0.16, this.ms.landSpeed * 0.012);
+        this.gunDrop = Math.min(0.045, this.ms.landSpeed * 0.005);
         audio.land(Math.min(1, this.ms.landSpeed / 10));
       }
       this.pendingLand = Math.max(this.pendingLand, this.ms.landSpeed);
@@ -356,7 +388,9 @@ export class LocalPlayer {
     }
     this.landDip = Math.max(0, this.landDip - dt * 0.6);
     this.crouchT += ((input.crouch ? 1 : 0) - this.crouchT) * Math.min(1, dt * 12);
-    this.updateLean(dt, input, s.leanToggle, wantsSprint && fwd >= 0 && Math.hypot(fwd, right) > 0.12);
+    this.slideT += ((this.ms.sliding ? 1 : 0) - this.slideT) * Math.min(1, dt * (this.ms.sliding ? 14 : 8));
+    // A slide stands a peek back up, as a sprint does.
+    this.updateLean(dt, input, s.leanToggle, this.ms.sliding || wantsSprint && fwd >= 0 && Math.hypot(fwd, right) > 0.12);
 
     // ---- ADS (peeking raises the sights too)
     const adsTarget = (adsHeld || this.peeking) && !this.reloading && !this.grenadeAt && now > this.switchEnd ? 1 : 0;
@@ -386,17 +420,28 @@ export class LocalPlayer {
     const moving = this.ms.grounded && speed > 0.5;
     this.bobAmount += ((moving ? Math.min(1, speed / 6) : 0) - this.bobAmount) * Math.min(1, dt * 8);
     this.bobPhase += dt * (moving ? 5 + speed * 1.2 : 2);
-    const bobScale = (1 - this.ads * 0.85) * this.bobAmount;
+    const bobScale = (1 - this.ads * 0.85) * this.bobAmount * (1 - this.slideT);
     this.bob.set(Math.cos(this.bobPhase) * 0.012 * bobScale, -Math.abs(Math.sin(this.bobPhase)) * 0.014 * bobScale);
-    this.sway.set(this.swayX * (1 - this.ads * 0.7), this.swayY * (1 - this.ads * 0.7));
-    const tppSprint = this.thirdPerson && !this.emote && this.ms.sprinting && moving ? 1 : 0;
-    this.tppSprint += (tppSprint - this.tppSprint) * Math.min(1, dt * 5);
-    if (moving) {
+    // The hip gun has weight: it trails a strafe, hangs back on the way up a jump, floats on the way
+    // down and dips on landing. Aimed, the sight overlay already shows this (sightMotion).
+    const strafe = this.ms.vx * Math.cos(this.yaw) - this.ms.vz * Math.sin(this.yaw);
+    this.lagX += (THREE.MathUtils.clamp(-strafe * 0.0016, -0.014, 0.014) - this.lagX) * Math.min(1, dt * 9);
+    this.lagY += ((this.ms.grounded ? 0 : THREE.MathUtils.clamp(-this.ms.vy * 0.003, -0.022, 0.018)) - this.lagY) * Math.min(1, dt * 10);
+    this.gunDrop *= Math.exp(-dt * 9);
+    const hip = 1 - this.ads;
+    this.sway.set(this.swayX * (1 - this.ads * 0.7) + this.lagX * hip, this.swayY * (1 - this.ads * 0.7) + (this.lagY - this.gunDrop) * hip);
+    // The view leans a touch into a strafe, and rolls over through a slide.
+    const roll = -THREE.MathUtils.clamp(strafe / SPRINT_SPEED, -1, 1) * STRAFE_ROLL * hip * (this.ms.grounded ? 1 : 0.5);
+    this.strafeRoll += (roll - this.strafeRoll) * Math.min(1, dt * 7);
+    const rush = !this.emote && this.ms.sprinting && moving ? 1 : 0;
+    this.rush += (rush - this.rush) * Math.min(1, dt * 5);
+    if (moving && !this.ms.sliding) {
       this.stepDist += speed * dt;
       const stride = this.ms.sprinting ? 2.6 : input.crouch ? 1.4 : 2.1;
       if (this.stepDist > stride) {
         this.stepDist = 0;
-        audio.footstep(onStone(this.ms.x, this.ms.z, this.ms.y), undefined, input.crouch ? 0.07 : this.ms.sprinting ? 0.22 : 0.15);
+        audio.footstep(onStone(this.ms.x, this.ms.z, this.ms.y), undefined, input.crouch ? 0.07 : this.ms.sprinting ? 0.22 : 0.15,
+          input.crouch ? 0 : this.ms.sprinting ? 1 : 0.5);
       }
     }
 
@@ -447,19 +492,23 @@ export class LocalPlayer {
   }
 
   updateView() {
-    const eyeH = EYE_HEIGHT + (CROUCH_EYE_HEIGHT - EYE_HEIGHT) * this.crouchT;
+    // A slide lays the body back along the ground: the eye goes down with the drawn head.
+    const eyeH = EYE_HEIGHT + (CROUCH_EYE_HEIGHT - EYE_HEIGHT) * this.crouchT + (SLIDE_EYE_HEIGHT - CROUCH_EYE_HEIGHT) * this.slideT;
     const [lx, ly, lz] = leanOffset(this.lean, this.yaw, this.crouchT, eyeH);
     this.eye.set(this.ms.x + lx, this.ms.y + eyeH + ly - this.landDip + this.bob.y * 0.4, this.ms.z + lz);
     this.viewEye.copy(this.motion.position);
     this.viewEye.x += lx; this.viewEye.z += lz;
     this.viewEye.y += eyeH + ly - this.landDip + this.bob.y * 0.4 + this.stepEase;
-    this.viewQuat.setFromEuler(this.viewEuler.set(this.pitch + this.kickPitch, this.yaw + this.kickYaw, -this.lean * LEAN_ROLL));
+    this.viewQuat.setFromEuler(this.viewEuler.set(this.pitch + this.kickPitch, this.yaw + this.kickYaw,
+      -this.lean * LEAN_ROLL + this.strafeRoll + this.slideT * SLIDE_ROLL));
   }
 
   currentFov() {
     const base = useSettings.getState().fov;
     const target = opticFov(this.weapon, this.optic, base);
-    return base + (target - base) * this.ads + this.tppSprint * TPP_SPRINT_FOV;
+    // Speed widens the view; aiming takes that back, so a zoom stays exact.
+    const speed = this.rush * (this.thirdPerson ? TPP_SPRINT_FOV : FPP_SPRINT_FOV) + this.slideT * SLIDE_FOV;
+    return base + (target - base) * this.ads + speed * (1 - this.ads);
   }
 
   get scoped() {
@@ -681,8 +730,8 @@ export class LocalPlayer {
   }
 
   private sendPose() {
-    const flags = (this.crouchT > 0.5 ? F_CROUCH : 0) | (this.ads > 0.5 ? F_ADS : 0) | (this.ms.sprinting ? F_SPRINT : 0)
-      | (this.ms.grounded ? F_GROUNDED : 0)
+    const flags = (this.crouchT > 0.5 || this.ms.sliding ? F_CROUCH : 0) | (this.ads > 0.5 ? F_ADS : 0) | (this.ms.sprinting ? F_SPRINT : 0)
+      | (this.ms.grounded ? F_GROUNDED : 0) | (this.ms.sliding ? F_SLIDE : 0)
       | (this.reloading ? F_RELOADING | (reloadSkip(this.weapon, this.reloadNeed) << F_RELOAD_SKIP_SHIFT) : 0);
     const msg: PoseMsg = {
       x: round(this.ms.x), y: round(this.ms.y), z: round(this.ms.z),

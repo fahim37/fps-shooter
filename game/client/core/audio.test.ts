@@ -82,6 +82,42 @@ describe("audio voices", () => {
     expect(disconnected.length).toBe(20 * 4 + 3 + 1); // + footstep bus, filter, panner + hitmarker bus
   });
 
+  it("places a bullet going by and a bullet striking the map, without stacking a burst's cracks", () => {
+    const { audio, ctx, panners } = engine();
+    audio.whiz({ x: 1.2, y: 0, z: 0 }, 0.6);
+    audio.whiz({ x: 1.3, y: 0, z: 0 }, 0.6);
+    expect(panners.length).toBe(1);
+    ctx.currentTime = 0.1;
+    audio.whiz({ x: -1, y: 0, z: 0 }, 0.2);
+    audio.impact({ x: 0, y: 1, z: -8 });
+    audio.impact({ x: 0, y: 0, z: -8 }, true);
+    expect(panners.length).toBe(4);
+    expect(voices(audio)).toBe(4);
+    ctx.currentTime = 1;
+    audio.setListener({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: -1 });
+    expect(voices(audio)).toBe(0);
+  });
+
+  it("plays every footfall, landing, jump and handling sound as one voice that ends", () => {
+    const { audio, ctx } = engine();
+    audio.footstep(true, undefined, 0.22, 1);
+    audio.footstep(false, { x: 3, y: 0, z: 0 }, 0.3, 0);
+    audio.land(1);
+    audio.jump();
+    audio.hurt();
+    audio.dryFire();
+    audio.switchWeapon();
+    audio.grenadeThrow();
+    audio.reload("ar", 1.9);
+    audio.reload("sniper", 2.5, { x: 5, y: 0, z: 0 });
+    expect(voices(audio)).toBe(10);
+    // Your own reload is cut when the gun leaves the hands; someone else's is not yours to cut.
+    audio.stopWorking();
+    ctx.currentTime = 3;
+    audio.setListener({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: -1 });
+    expect(voices(audio)).toBe(0);
+  });
+
   it("keeps HRTF for a few nearby sounds and equal-power for the rest", () => {
     const { audio, panners } = engine();
     audio.shot("ar", { x: 5, y: 0, z: 0 });

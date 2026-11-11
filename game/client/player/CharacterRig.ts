@@ -4,6 +4,7 @@ import { cloneWeapon, createShell, SHELL_SEATS, WEAPON_META, WEAPON_PARTS, type 
 import type { WeaponId } from "../../shared/weapons";
 import { solveTwoBone, setBoneWorldQuaternion, rotateBoneWorld } from "./ik";
 import { LEAN_ANGLE } from "../../shared/lean";
+import { SLIDE_LEG_YAW } from "../../shared/hitboxes";
 import { DEFAULT_OPTICS, OPTICS, type OpticId } from "../../shared/optics";
 import { createIronSights, createReflexSight } from "./ReflexSight";
 import { gripPose, type GripPose, type HandPose } from "./grip";
@@ -24,6 +25,8 @@ export interface RigState {
   /** World yaw of the movement direction. */
   moveYaw: number;
   crouch: boolean;
+  /** 0..1 through a slide out of a sprint. */
+  slide?: number;
   grounded: boolean;
   alive: boolean;
   sprint: number;
@@ -61,7 +64,7 @@ export interface RigState {
 export interface HandOverride { weight: number; offset: THREE.Vector3; turn: THREE.Quaternion }
 
 const headCache = new WeakMap<CharacterTemplate, THREE.Vector3>();
-const LOCO: ClipName[] = ["idle", "walk", "jog", "sprint", "crouchIdle", "crouchWalk", "jumpLoop"];
+const LOCO: ClipName[] = ["idle", "walk", "jog", "sprint", "crouchIdle", "crouchWalk", "jumpLoop", "slideLoop"];
 const FPP_VISIBLE = /Arms/;
 const PROCEDURAL_BONES = ["spine_01", "spine_03", "neck_01", "clavicle_r", "upperarm_r", "lowerarm_r", "hand_r", "clavicle_l", "upperarm_l", "lowerarm_l", "hand_l"];
 const BOLT_TRAVEL = 0.065;
@@ -133,6 +136,11 @@ const RUN_SPEED = 2.6;
 /** Legs turn this far (rad) toward a sideways move; past BACKPEDAL they run the clip backwards. */
 const MAX_LEG_YAW = 0.8;
 const BACKPEDAL = (105 * Math.PI) / 180;
+/** FPP: a slide cants the hip gun over (rad) and tucks it in and down (m). */
+const SLIDE_CANT = 0.32;
+/** TPP: how far back from upright (rad) the chest sits over a slide's leading legs. */
+const SLIDE_LEAN_BACK = 0.42;
+const SLIDE_TUCK = [-0.03, -0.028] as const;
 /** Sprint plays no slower than this, so a slower sprint keeps a brisk stride rather than floating. */
 const SPRINT_MIN_RATE = 0.95;
 /** Chest lean (rad, from upright) held steady while moving on foot, plus more when running and sprinting. */
@@ -220,6 +228,8 @@ export class CharacterRig {
    */
   private steady = 0;
   private follow = 0;
+  /** 0..1 (TPP): sliding, when the chest is sat up over hips that the slide clip lays right back. */
+  private slideK = 0;
   private dead = false;
   private deadTime = 0;
   private animationPose: { bone: THREE.Bone; quaternion: THREE.Quaternion }[];
@@ -371,7 +381,8 @@ export class CharacterRig {
       const neck = this.inst.bones.get("neck_01");
       if (neck && this.stance > 1e-4) rotateBoneWorld(neck, _q.setFromAxisAngle(UP, this.stance), true);
     }
-    if (this.mode === "tpp" && this.steady > 1e-3) this.steadyChest(facing);
+    if (this.mode === "tpp" && this.slideK > 1e-3) this.steadyChest(s.yaw + legYaw, -SLIDE_LEAN_BACK, this.slideK);
+    else if (this.mode === "tpp" && this.steady > 1e-3) this.steadyChest(facing, CHEST_LEAN + this.run, this.steady);
     if (this.mode === "tpp" && Math.abs(this.run) > 1e-3) {
       // The steadied chest leans into the stride by `run`; the neck takes it back so the head
       // keeps looking where the player aims.
@@ -411,16 +422,16 @@ export class CharacterRig {
   /**
    * TPP: the run clips pitch and rock the hips with every stride, and the upper body, posed by
    * the aim layer, rides along stiffly on top. Swings the spine from the hips so the chest
-   * points a set lean ahead of upright instead: a level, steady carriage over the legs.
+   * points `lean` ahead of upright instead (`weight` of the way): a level, steady carriage over
+   * the legs. A slide uses it the other way, to sit the chest up over hips its clip lays right back.
    */
-  private steadyChest(facing: number) {
+  private steadyChest(facing: number, lean: number, weight: number) {
     const spine = this.inst.bones.get("spine_01")!;
     const chest = _ta.setFromMatrixPosition(this.inst.bones.get("neck_01")!.matrixWorld)
       .sub(_tb.setFromMatrixPosition(spine.matrixWorld)).normalize();
-    const lean = CHEST_LEAN + this.run;
     const want = _v.set(-Math.sin(facing) * Math.sin(lean), Math.cos(lean), -Math.cos(facing) * Math.sin(lean));
     _q.setFromUnitVectors(chest, want);
-    rotateBoneWorld(spine, _q2.identity().slerp(_q, this.steady), true);
+    rotateBoneWorld(spine, _q2.identity().slerp(_q, weight), true);
   }
 
   private captureAnimationPose() {
@@ -445,17 +456,19 @@ export class CharacterRig {
 
   private updateLocomotion(dt: number, s: RigState) {
     const moving = s.speed > 0.4 && s.grounded;
+    const sliding = moving && (s.slide ?? 0) > 0.5;
     let rel = wrapAngle(s.moveYaw - s.yaw);
     let backwards = false;
-    if (Math.abs(rel) > BACKPEDAL) {
+    if (Math.abs(rel) > BACKPEDAL && !sliding) {
       backwards = true;
       rel = wrapAngle(rel - Math.PI);
     }
     const sprinting = moving && !s.crouch && !backwards && s.sprint * (1 - s.ads) > 0.5;
     this.follow += ((sprinting ? 1 : 0) - this.follow) * Math.min(1, dt * 7);
     this.steady += ((moving && !s.crouch ? 1 : 0) - this.steady) * Math.min(1, dt * 6);
+    this.slideK += ((sliding ? 1 : 0) - this.slideK) * Math.min(1, dt * 14);
     // A sprint turns the whole body, so the legs may face any forward-going run.
-    const maxLeg = MAX_LEG_YAW + (Math.PI / 2 - MAX_LEG_YAW) * this.follow;
+    const maxLeg = sliding ? SLIDE_LEG_YAW : MAX_LEG_YAW + (Math.PI / 2 - MAX_LEG_YAW) * this.follow;
     const targetLeg = moving ? THREE.MathUtils.clamp(rel, -maxLeg, maxLeg) : 0;
     this.legYaw += (targetLeg - this.legYaw) * Math.min(1, dt * 8);
 
@@ -465,6 +478,7 @@ export class CharacterRig {
     const minRate = 0.6;
     let rate = 1, maxRate = 1.6;
     if (!s.grounded) pick = "jumpLoop";
+    else if (sliding) pick = "slideLoop";
     else if (s.crouch) { pick = moving ? "crouchWalk" : "crouchIdle"; rate = s.speed / CLIP_SPEED.crouchWalk; maxRate = 2.4; }
     else if (!moving) pick = "idle";
     else if (s.speed < RUN_SPEED) { pick = "walk"; rate = s.speed / CLIP_SPEED.walk; maxRate = 2.2; }
@@ -475,11 +489,12 @@ export class CharacterRig {
     const lean = running ? (pick === "sprint" ? SPRINT_LEAN : RUN_LEAN) * (backwards ? -0.4 : 1) : 0;
     this.run += (lean - this.run) * Math.min(1, dt * 6);
     const sinceShot = s.sinceShot ?? -1;
-    const relaxed = moving && s.ads < 0.5 && s.reload < 0 && s.sprint < 0.5 && !(sinceShot >= 0 && sinceShot < CARRY_AFTER_SHOT);
+    const relaxed = moving && !sliding && s.ads < 0.5 && s.reload < 0 && s.sprint < 0.5 && !(sinceShot >= 0 && sinceShot < CARRY_AFTER_SHOT);
     // Raising the gun to fire is quicker than lowering it again.
     this.carry += ((relaxed ? 1 : 0) - this.carry) * Math.min(1, dt * (relaxed ? 4 : 14));
 
-    const k = Math.min(1, dt * 9);
+    // A slide is over in a second: it is dropped into and stood up out of quicker than a gait changes.
+    const k = Math.min(1, dt * (sliding || this.locoWeights.get("slideLoop")! > 0.05 ? 16 : 9));
     for (const [name, a] of this.loco) {
       const target = name === pick ? 1 : 0;
       const blended = this.locoWeights.get(name)! + (target - this.locoWeights.get(name)!) * k;
@@ -488,7 +503,7 @@ export class CharacterRig {
       const w = Math.abs(blended - target) < 0.001 ? target : blended;
       this.locoWeights.set(name, w);
       a.setEffectiveWeight(w);
-      if (name === pick && name !== "idle" && name !== "crouchIdle" && name !== "jumpLoop") {
+      if (name === pick && name !== "idle" && name !== "crouchIdle" && name !== "jumpLoop" && name !== "slideLoop") {
         a.timeScale = THREE.MathUtils.clamp(rate, minRate, maxRate) * (backwards ? -1 : 1);
       }
     }
@@ -524,6 +539,7 @@ export class CharacterRig {
     // A reload is held up in view even on the run: the sprint pose would carry it off the screen.
     const reloading = THREE.MathUtils.smoothstep(s.reload, 0, 0.1) * (1 - THREE.MathUtils.smoothstep(s.reload, 0.9, 1));
     const sprint = s.sprint * (1 - s.ads) * (1 - reloading);
+    const slide = (s.slide ?? 0) * (1 - s.ads) * (1 - reloading);
 
     if (this.mode === "fpp" && s.eye && s.view) {
       // View-space placement: hip at the lower right, ADS lines the sights up with the eye.
@@ -535,13 +551,13 @@ export class CharacterRig {
       const ads = _v2.set(0, -sightY, pistol ? -REVOLVER_ADS_REACH : -(meta.max[2] + (w === "ar" || w === "smg" ? AR_EYE_RELIEF : 0.07)));
       const qs = s.quickScope;
       hip.lerp(ads, qs ? qs.lift : s.ads);
-      hip.x += (s.sway?.x ?? 0) + (s.bob?.x ?? 0) + hx - sprint * 0.04;
-      hip.y += (s.sway?.y ?? 0) + (s.bob?.y ?? 0) + hy - sprint * 0.05 - (s.throwing ?? 0) * 0.75 - (qs?.dip ?? 0);
+      hip.x += (s.sway?.x ?? 0) + (s.bob?.x ?? 0) + hx - sprint * 0.04 + slide * SLIDE_TUCK[0];
+      hip.y += (s.sway?.y ?? 0) + (s.bob?.y ?? 0) + hy - sprint * 0.05 - (s.throwing ?? 0) * 0.75 - (qs?.dip ?? 0) + slide * SLIDE_TUCK[1];
       hip.z += s.recoil * 0.045 + (s.tuck ?? 0) * 0.16 + hz;
       _e.set(
         s.recoil * 0.06 + hPitch - sprint * 0.55 - (s.tuck ?? 0) * 0.7,
         sprint * 0.75 + hYaw + (qs?.yaw ?? 0),
-        hRoll + sprint * 0.25 - (qs?.roll ?? 0),
+        hRoll + sprint * 0.25 - (qs?.roll ?? 0) + slide * SLIDE_CANT,
         "YXZ",
       );
       _q.copy(s.view).multiply(_q2.setFromEuler(_e));

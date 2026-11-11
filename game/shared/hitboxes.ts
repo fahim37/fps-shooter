@@ -20,6 +20,11 @@ export interface Pose {
   pitch?: number;
   /** 0 standing still .. 1 moving: the rifle carry puts the head further forward. */
   moving?: number;
+  /**
+   * Sliding: the direction of travel (rad, as a yaw; see `slideYaw`). The legs lead along it and
+   * the chest sits back over the hips, so the whole body is under a metre tall.
+   */
+  slide?: number | null;
 }
 
 export type HitPart = "head" | "body" | "legs";
@@ -44,6 +49,24 @@ const HEAD_AT = {
   moving: { fwd: [0.18, 0.18, 0.17, 0.11, 0.07], up: [1.49, 1.52, 1.58, 1.60, 1.58], right: 0.01 },
   crouch: { fwd: [0.31, 0.29, 0.16, -0.09, -0.23], up: [0.72, 0.86, 1.07, 1.19, 1.19], right: -0.07 },
 };
+/**
+ * The head through a slide: metres along the direction of travel (behind the feet position, the
+ * legs being out in front) and up, at the aim pitches of PITCH_KNOTS. Measured on the drawn
+ * character; it barely moves with the gun held or how far the legs lead off the aim.
+ */
+const SLIDE_HEAD = { fwd: [-0.29, -0.31, -0.33, -0.37, -0.38], up: [0.65, 0.68, 0.69, 0.65, 0.61] };
+/** Sliding: the hips' height, and the legs' reach along the ground ahead of them (m). */
+const SLIDE_HIP = 0.2, SLIDE_LEGS = [0.15, 0.85] as const, SLIDE_LEG_HEIGHT = 0.16;
+/** Sliding, the legs lead along the slide up to this far (rad) off the aim; the drawn character does the same. */
+export const SLIDE_LEG_YAW = 1.2;
+
+/** Which way a slide's legs lead: the direction of travel, no further than SLIDE_LEG_YAW off the aim `yaw`. */
+export function slideYaw(yaw: number, vx: number, vz: number) {
+  if (Math.hypot(vx, vz) < 0.1) return yaw;
+  const rel = Math.atan2(-vx, -vz) - yaw;
+  return yaw + Math.max(-SLIDE_LEG_YAW, Math.min(SLIDE_LEG_YAW, Math.atan2(Math.sin(rel), Math.cos(rel))));
+}
+
 /** The drawn peek swings the head this share of the camera's lean offset. */
 const HEAD_LEAN = 0.8;
 const HEAD_R = 0.15;
@@ -58,7 +81,25 @@ function knot(values: number[], pitch: number) {
   return values[i] + (values[i + 1] - values[i]) * k;
 }
 
+function slideBoxes(p: Pose, travel: number) {
+  const fx = -Math.sin(travel), fz = -Math.cos(travel), pitch = p.pitch ?? 0;
+  const fwd = knot(SLIDE_HEAD.fwd, pitch), up = knot(SLIDE_HEAD.up, pitch);
+  const head: V3 = [p.x + fx * fwd, p.y + up, p.z + fz * fwd];
+  const hip: V3 = [p.x, p.y + SLIDE_HIP, p.z];
+  const spine: V3 = [head[0] - hip[0], head[1] - hip[1], head[2] - hip[2]];
+  const len = Math.hypot(...spine);
+  const k = Math.max(0, (len - NECK_GAP) / len);
+  const leg = (d: number): V3 => [p.x + fx * d, p.y + SLIDE_LEG_HEIGHT, p.z + fz * d];
+  return {
+    head: { c: head, r: HEAD_R },
+    // Slimmer than upright: the chest is laid back, and a full-width cap would cover the face from in front.
+    body: { a: hip, b: [hip[0] + spine[0] * k, hip[1] + spine[1] * k, hip[2] + spine[2] * k] as V3, r: 0.24 },
+    legs: { a: leg(SLIDE_LEGS[0]), b: leg(SLIDE_LEGS[1]), r: 0.2 },
+  };
+}
+
 export function hitboxes(p: Pose) {
+  if (p.slide !== undefined && p.slide !== null) return slideBoxes(p, p.slide);
   const c = p.crouch;
   const yaw = p.yaw ?? 0, pitch = p.pitch ?? 0, moving = c ? 0 : Math.max(0, Math.min(1, p.moving ?? 0));
   const fx = -Math.sin(yaw), fz = -Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw);
@@ -86,8 +127,10 @@ export function hitboxes(p: Pose) {
 
 /** Nearest hit of a ray (unit `dir`) against a player's hitboxes, within `maxDist`. */
 export function rayVsPose(o: V3, dir: V3, maxDist: number, pose: Pose): PoseHit | null {
-  // Cheap reject: bounding capsule around the whole body (the head reaches 0.5 m out, bent or peeking).
-  const cheap = rayCapsule(o, dir, [pose.x, pose.y, pose.z], [pose.x, pose.y + 1.85, pose.z], 0.75);
+  // Cheap reject: bounding capsule around the whole body (the head reaches 0.5 m out, bent or
+  // peeking; a slide's legs a metre).
+  const sliding = pose.slide !== undefined && pose.slide !== null;
+  const cheap = rayCapsule(o, dir, [pose.x, pose.y, pose.z], [pose.x, pose.y + (sliding ? 0.9 : 1.85), pose.z], sliding ? 1.15 : 0.75);
   if (cheap === null || cheap > maxDist) return null;
   const hb = hitboxes(pose);
   let best: PoseHit | null = null;

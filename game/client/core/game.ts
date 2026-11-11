@@ -19,7 +19,7 @@ import { ThrownGrenades, createGrenadeParts } from "./thrownGrenades";
 import { RemotePlayer } from "./remotes";
 import { Input } from "./input";
 import { Effects } from "./effects";
-import { audio } from "./audio";
+import { audio, WHIZ_RANGE } from "./audio";
 import { hud, useHud } from "./hud";
 import { PRESETS, useSettings } from "../settings";
 import { enemyAlongRay } from "./targeting";
@@ -70,6 +70,15 @@ const GRENADE_IN_HAND = new THREE.Vector3(-0.042, 0.075, -0.004);
 
 /** How far off (m) a blast still shakes the camera. */
 const SHAKE_REACH = 28;
+/** Bullet strikes heard per shot, and from how far (m). */
+const IMPACT_SOUNDS = 2;
+const IMPACT_EARSHOT = 45;
+/** A shooter this close (m) drowns out their own bullets going by. */
+const WHIZ_MIN_SHOOTER = 5;
+const _whizFrom = new THREE.Vector3();
+const _whizAlong = new THREE.Vector3();
+const _whizTo = new THREE.Vector3();
+const _whizAt = new THREE.Vector3();
 /**
  * First-person right-hand keyframes through a throw: [progress, x, y, z (view space, meters),
  * pitch, roll, yaw (radians, from how the hand holds the gun)]. Cocked at the shoulder, whipped
@@ -356,6 +365,7 @@ export class Game {
     const muzzle = this.local?.scoped ? new THREE.Vector3(...origin) : rig?.muzzle ?? new THREE.Vector3(...origin);
     if (!this.local?.scoped) this.effects.muzzleFlash(muzzle, new THREE.Vector3(...dirs[0]), FLASH_SIZE[weapon] ?? 1);
     audio.shot(weapon, undefined, true);
+    let struck = 0;
     for (const hit of traces) {
       const point = new THREE.Vector3(...hit.point);
       this.effects.tracer(muzzle, point, "local");
@@ -364,7 +374,11 @@ export class Game {
         if (performance.now() - hud().hitmarker.at > 150 || !hud().hitmarker.confirmed) {
           hud().set({ hitmarker: { at: performance.now(), head: hit.part === "head", kill: false, confirmed: false, damage: 0 } });
         }
-      } else if (hit.wall) this.effects.impact(point, new THREE.Vector3(...hit.wall.normal), point.y < 0.1);
+      } else if (hit.wall) {
+        this.effects.impact(point, new THREE.Vector3(...hit.wall.normal), point.y < 0.1);
+        // A load of buckshot is heard landing as a couple of strikes, not nine.
+        if (struck++ < IMPACT_SOUNDS) audio.impact(point, point.y < 0.1);
+      }
     }
   }
 
@@ -390,6 +404,8 @@ export class Game {
     // Like PUBG, enemy gunfire gives the shooter's position away on the minimap.
     if (!friendly) this.mark({ key: ev.id, kind: "shot", x: ev.origin[0], z: ev.origin[2], yaw: remote?.yaw ?? 0, at: performance.now() });
     if (ev.ends[0]) this.effects.muzzleFlash(from, new THREE.Vector3(...ev.ends[0]).sub(from).normalize(), FLASH_SIZE[ev.weapon] ?? 1, false);
+    if (!friendly) this.nearMiss(ev);
+    let struck = 0;
     ev.ends.forEach((end, i) => {
       const to = new THREE.Vector3(...end);
       this.effects.tracer(from, to, friendly ? "friendly" : "enemy");
@@ -401,9 +417,36 @@ export class Game {
         const delta = to.clone().sub(new THREE.Vector3(...ev.origin));
         const distance = delta.length(); delta.normalize();
         const wall = raycastWorld(this.R, this.world, ev.origin, delta.toArray() as V3, distance + 0.1);
-        if (wall) this.effects.impact(new THREE.Vector3(...wall.point), new THREE.Vector3(...wall.normal), to.y < 0.1);
+        if (wall) {
+          const at = new THREE.Vector3(...wall.point);
+          this.effects.impact(at, new THREE.Vector3(...wall.normal), to.y < 0.1);
+          if (struck++ < IMPACT_SOUNDS && at.distanceTo(this.camera.position) < IMPACT_EARSHOT) audio.impact(at, to.y < 0.1);
+        }
       }
     });
+  }
+
+  /**
+   * An enemy's bullets going past: heard at the nearest point of the closest one's flight, when
+   * that is within WHIZ_RANGE of your ear and the shooter isn't right beside you.
+   */
+  private nearMiss(ev: ShotEvent) {
+    const ear = this.camera.position;
+    const origin = _whizFrom.set(...ev.origin);
+    if (!this.local?.alive || origin.distanceTo(ear) < WHIZ_MIN_SHOOTER) return;
+    let best = WHIZ_RANGE;
+    for (const end of ev.ends) {
+      const along = _whizAlong.set(...end).sub(origin);
+      const length = along.length();
+      if (length < 1e-3) continue;
+      const t = THREE.MathUtils.clamp(_whizTo.copy(ear).sub(origin).dot(along) / (length * length), 0, 1);
+      // A bullet that stopped short of you (in a wall, or in you) never went by.
+      if (t >= 0.999) continue;
+      const at = _whizTo.copy(origin).addScaledVector(along, t);
+      const d = at.distanceTo(ear);
+      if (d < best) { best = d; _whizAt.copy(at); }
+    }
+    if (best < WHIZ_RANGE) audio.whiz(_whizAt, 1 - best / WHIZ_RANGE);
   }
 
   private mark(mark: MapMark) {
@@ -645,7 +688,7 @@ export class Game {
     const s: RigState = {
       x: local.motion.position.x, y: local.motion.position.y, z: local.motion.position.z, yaw: local.yaw, pitch: local.pitch,
       eye: local.viewEye, view: local.viewQuat, speed: Math.hypot(local.ms.vx, local.ms.vz),
-      moveYaw: Math.atan2(-local.ms.vx, -local.ms.vz), crouch: local.crouchT > 0.5,
+      moveYaw: Math.atan2(-local.ms.vx, -local.ms.vz), crouch: local.crouchT > 0.5, slide: local.slideT,
       grounded: local.ms.grounded, alive: local.alive, sprint: local.ms.sprinting ? 1 : 0,
       ads: local.ads, quickScope: local.quickScope, optic: local.optic, reload: local.reloadProgress, recoil: local.recoil,
       bob: local.bob, sway: local.sway, tuck: local.tuck, throwing: Math.max(local.throwAnim, local.grenadeHold), lean: local.lean,

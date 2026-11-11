@@ -11,6 +11,8 @@ export const PLAYER_RADIUS = 0.35;
 export const PLAYER_HEIGHT = 1.8;
 export const EYE_HEIGHT = 1.62;
 export const CROUCH_EYE_HEIGHT = 1.12;
+/** Sliding, the body is laid back along the ground: the eye is level with the drawn head. */
+export const SLIDE_EYE_HEIGHT = 0.8;
 
 /** Movement (m/s, m/s²). */
 export const WALK_SPEED = 5.75;
@@ -22,6 +24,24 @@ export const AIR_ACCEL = 12;
 export const FRICTION = 12;
 export const JUMP_VELOCITY = 6.4;
 export const GRAVITY = 20;
+
+/**
+ * Slide: crouching out of a sprint throws the player forward at SLIDE_SPEED (scaled by the gun's
+ * handling), then the ground drags it down at SLIDE_FRICTION until it falls to SLIDE_END_SPEED,
+ * about 7 m later. A jump out of it carries the speed through the air.
+ */
+export const SLIDE_SPEED = 10.4;
+export const SLIDE_FRICTION = 6.5;
+export const SLIDE_END_SPEED = 3.6;
+/** Ground speed a sprint must have for a slide to start. */
+export const SLIDE_MIN_ENTRY = 6.5;
+/** Longest a slide lasts, and the wait after one before the next (s). */
+export const SLIDE_MAX_SECONDS = 1.25;
+export const SLIDE_COOLDOWN = 0.55;
+/** How fast a slide's direction follows the keys (rad/s at full input). */
+export const SLIDE_STEER = 1.1;
+/** A jump pressed this long before landing still happens on landing (ms). */
+export const JUMP_BUFFER_MS = 130;
 
 export const MAX_HEALTH = 100;
 /** Taken before health. Never regenerates: every life starts with it and kill streaks refill it. */
