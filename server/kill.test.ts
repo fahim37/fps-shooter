@@ -65,7 +65,7 @@ describe("elimination snapshots", () => {
     kill(); kill();
     expect(killer.st.shield).toBe(0);
     kill();
-    expect(killer.st.shield).toBe(35);
+    expect(killer.st.shield).toBe(MAX_SHIELD);
     killer.st.shield = 5;
     kill(); kill();
     expect(killer.st.shield).toBe(5);

@@ -61,7 +61,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     adsFov: 65, adsMs: 200, moveMult: 0.97,
   }),
   sniper: W({
-    id: "sniper", name: "Kalamit 52B", slot: 0, auto: false, rpm: 90, damage: 120, headMult: 2, limbMult: 0.8, pellets: 1,
+    id: "sniper", name: "Kalamit 52B", slot: 0, auto: false, rpm: 90, damage: 100, headMult: 2, limbMult: 0.8, pellets: 1,
     falloffStart: 80, falloffEnd: 200, minMult: 1, range: 300, mag: 5, reserve: 25, reloadMs: 2500, equipMs: 600,
     spreadHip: 7, spreadAds: 0.02, spreadMove: 3, spreadAir: 9, recoilUp: 3.2, recoilSide: 0.2,
     adsFov: 18, adsMs: 170, moveMult: 0.9, scope: true,
@@ -80,7 +80,7 @@ export const GRENADE = {
   /** An underhand lob (right mouse while aiming) leaves the hand at this fraction of a full throw. */
   lobPower: 0.5,
   radius: 8,
-  /** At the blast; lethal through a full shield out to about 2.5 m, around 45 damage at 6 m. */
+  /** At the blast; lethal through a full shield out to about 3 m, around 45 damage at 6 m. */
   damage: 220,
   /** Minimum damage at the edge of the radius, as a fraction. */
   edgeMult: 0.1,

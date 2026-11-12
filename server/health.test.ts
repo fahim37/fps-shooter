@@ -39,9 +39,10 @@ describe("shield", () => {
     for (let tick = 1; tick <= 300; tick++) { vi.setSystemTime(16_000 + tick * TICK_MS); room.tick(); }
     expect([st.shield, st.hp]).toEqual([0, MAX_HEALTH]);
   });
-  it("a sniper body shot does 120 (a full-shield player survives), a headshot kills at any range", () => {
+  it("a sniper body shot does 100 (kills an unshielded player, a full-shield one survives on the shield), a headshot kills at any range", () => {
     const { sniper } = WEAPONS;
-    expect(damageAt(sniper, 5)).toBe(120);
+    expect(damageAt(sniper, 5)).toBe(100);
+    expect(damageAt(sniper, 5)).toBeGreaterThanOrEqual(MAX_HEALTH);
     expect(damageAt(sniper, 5)).toBeLessThan(MAX_HEALTH + MAX_SHIELD);
     for (const range of [5, 120, 300]) expect(damageAt(sniper, range) * sniper.headMult).toBeGreaterThanOrEqual(MAX_HEALTH + MAX_SHIELD);
   });
