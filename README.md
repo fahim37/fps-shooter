@@ -33,7 +33,7 @@ Downtown loads only its own 2.7 MB kit (no village, foliage or grass textures). 
 
 WASD move, mouse look, left-click fire, right-click aim, Shift sprint, Space jump, Ctrl or C crouch (slide when sprinting), R reload, 1/2 or Q switch weapons, V toggle camera, Tab scoreboard, Esc release the mouse. Loadout changes apply on the next spawn.
 
-**Dash.** Press **F** for a very fast, level burst of about 12 m the way you are moving (straight ahead when standing still), to close on a fight or get out of one. Looking up as you dash lifts it a little (up to about 2 m). Each life starts with two, the most you can hold; below that, every two kills give two more. A chip by the weapon bar shows how many you have and counts the kills.
+**Dash.** Press **F** for a very fast, level burst of about 11 m the way you are moving (straight ahead when standing still), to close on a fight or get out of one. Looking up as you dash lifts it a little (up to about 2 m). Each life starts with two, the most you can hold; below that, every two kills give two more. A chip by the weapon bar shows how many you have and counts the kills.
 
 **Marking.** Look at an enemy and press **Z** to mark them (they are warned with a MARKED notice and a tone for as long as it lasts): a lock-on marker follows them for 4.5 seconds, through walls, with the distance over it. In team modes the whole team sees the mark; in a free-for-all only you do. The enemy has to be within about 9° of the crosshair (more up close), within 160 m and in view; the server checks the line of sight again (`game/shared/spot.ts`).
 
