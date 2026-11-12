@@ -9,6 +9,15 @@ type V3 = { x: number; y: number; z: number };
 type BedKey = MapId | "lobby";
 type Timer = ReturnType<typeof setTimeout>;
 
+/**
+ * Far gunfire and blasts are turned down on top of the distance rolloff: full level up to
+ * FAR_FROM metres, easing to FAR_LEVEL by FAR_TO. It covers the echo too, which has no rolloff.
+ */
+const FAR_FROM = 20, FAR_TO = 70, FAR_LEVEL = 0.5;
+/** A map's ambient bed in the mix, and the trim on every footstep (own and other players'). */
+const MAP_BED_LEVEL = 1;
+const FOOTSTEP_LEVEL = 0.7;
+
 /** One ambient bed: looping sources into one fader, plus timers for its occasional events. */
 interface Bed { key: BedKey; out: GainNode; sources: AudioScheduledSourceNode[]; timers: Set<Timer> }
 
@@ -292,7 +301,7 @@ export class AudioEngine {
    * when many sounds already play and this one would be faint. Returns the input node, the
    * distance and the voice, to which reverb sends are added so they are cut with it.
    */
-  private spatial(pos: V3 | undefined, seconds: number, delay = 0): [AudioNode, number, Voice] | null {
+  private spatial(pos: V3 | undefined, seconds: number, delay = 0): [GainNode, number, Voice] | null {
     const ctx = this.ctx!;
     const bus = ctx.createGain();
     const voice: Voice = { end: ctx.currentTime + delay + seconds + 0.1, nodes: [bus], spatial: !!pos, hrtf: false };
@@ -329,6 +338,12 @@ export class AudioEngine {
     return [bus, dist, voice];
   }
 
+  /** How much of a shot or blast `dist` metres away is kept. */
+  private farTrim(dist: number) {
+    const k = Math.max(0, Math.min(1, (dist - FAR_FROM) / (FAR_TO - FAR_FROM)));
+    return 1 - k * (1 - FAR_LEVEL);
+  }
+
   private noiseSource(start: number, dur: number) {
     const src = this.ctx!.createBufferSource();
     src.buffer = this.noise;
@@ -354,6 +369,8 @@ export class AudioEngine {
     const route = this.spatial(pos, Math.max(0.2, v.length, v.boom ? BOOM_SECONDS : 0) + 0.05);
     if (!route) return;
     const [out, dist, voice] = route;
+    const far = this.farTrim(dist);
+    out.gain.value = far;
     const ally = !local && side === "ally";
     const gainMul = local ? 0.9 : ally ? 0.82 : 1;
     const crackMul = local ? 1 : ally ? 0.55 : 1.2;
@@ -401,7 +418,7 @@ export class AudioEngine {
       this.env(rg, t, v.boom * gainMul, 0.003, BOOM_SECONDS - 0.02);
       roar.connect(lp).connect(rg).connect(out);
       const roll = ctx.createGain();
-      roll.gain.value = v.tail * 0.6;
+      roll.gain.value = v.tail * 0.6 * far;
       rg.connect(roll).connect(this.reverb);
       voice.nodes.push(roll);
       this.blip(out, "sine", 96, t, 0.75 * v.boom * gainMul, 0.003, BOOM_SECONDS - 0.1, 30);
@@ -409,7 +426,7 @@ export class AudioEngine {
 
     // Echo off the village walls.
     const send = ctx.createGain();
-    send.gain.value = v.tail * (0.5 + Math.min(1, dist / 60));
+    send.gain.value = v.tail * (0.5 + Math.min(1, dist / 60)) * far;
     bg.connect(send).connect(this.reverb);
     voice.nodes.push(send);
   }
@@ -525,6 +542,7 @@ export class AudioEngine {
     const route = this.spatial(pos, 0.14);
     if (!route) return;
     const [out] = route;
+    level *= FOOTSTEP_LEVEL;
     const weight = 0.7 + gait * 0.6, vary = 0.88 + Math.random() * 0.24;
     this.blip(out, "sine", (stone ? 170 : 130) * vary, t, level * 0.22 * weight, 0.003, 0.045, 70);
     this.burst(out, "lowpass", (stone ? 520 : 380) * vary, 0.8, t, level * 1.1 * weight, 0.003, stone ? 0.045 : 0.065);
@@ -762,6 +780,8 @@ export class AudioEngine {
     const route = this.spatial(pos, 2.4);
     if (!route) return;
     const [out, dist, voice] = route;
+    const far = this.farTrim(dist);
+    out.gain.value = far;
     // The detonation's own crack and punch, ahead of the roar.
     this.burst(out, "highpass", 1800, 0.7, t, 0.9, 0.001, 0.04);
     this.burst(out, "bandpass", 320, 0.8, t, 1.4, 0.002, 0.16);
@@ -790,7 +810,7 @@ export class AudioEngine {
     // Debris pattering down after the blast.
     for (let i = 0; i < 5; i++) this.click(600 + Math.random() * 900, 0.12, pos, 0.35 + Math.random() * 0.6);
     const send = ctx.createGain();
-    send.gain.value = 1 + Math.min(1, dist / 40);
+    send.gain.value = (1 + Math.min(1, dist / 40)) * far;
     g.connect(send).connect(this.reverb);
     voice.nodes.push(send);
   }
@@ -1002,7 +1022,7 @@ export class AudioEngine {
     const t = ctx.currentTime;
     const out = ctx.createGain();
     out.gain.setValueAtTime(0, t);
-    out.gain.linearRampToValueAtTime(key === "lobby" ? LOBBY_LEVEL * this.musicVolume : 1, t + (key === "lobby" ? 1.5 : 2.5));
+    out.gain.linearRampToValueAtTime(key === "lobby" ? LOBBY_LEVEL * this.musicVolume : MAP_BED_LEVEL, t + (key === "lobby" ? 1.5 : 2.5));
     out.connect(this.master);
     const bed: Bed = { key, out, sources: [], timers: new Set() };
     switch (key) {
