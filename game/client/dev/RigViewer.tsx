@@ -13,6 +13,7 @@ import { hitboxes, rayVsPose } from "../../shared/hitboxes";
 import { claimFits } from "../../shared/hitclaim";
 import type { WeaponId } from "../../shared/weapons";
 import type { OpticId } from "../../shared/optics";
+import { gunSideView, gunTopView, handLayout, solveGrips } from "./gripSolver";
 
 const WEAPONS: WeaponId[] = ["ar", "smg", "shotgun", "sniper", "pistol"];
 
@@ -38,7 +39,7 @@ function Rigs({ pitch, speed, reload, ads, shot, draw, solo, move, weapon }: { p
     rigs.forEach((r, i) => {
       const s: RigState = {
         x: solo ? 0 : (Math.floor(i / 2) - 2) * 1.3, y: 0, z: solo ? 0 : (i % 2) * 1.7, yaw: Math.PI * 0.75, pitch, speed, moveYaw: Math.PI * 0.75 + move,
-        crouch: false, grounded: true, alive: true, sprint: 0, ads, reload, recoil: 0, sinceShot: shot, sinceDraw: draw,
+        crouch: false, grounded: true, alive: true, sprint: 0, ads, reload, sinceShot: shot, sinceDraw: draw,
       };
       r.update(Math.min(dt, 0.05), s);
     });
@@ -48,7 +49,19 @@ function Rigs({ pitch, speed, reload, ads, shot, draw, solo, move, weapon }: { p
 
 const FPP_EYE = new THREE.Vector3(0, 1.62, 0);
 
-function FppRig({ weapon, optic, ads, pitch, reload, orbit, shot, draw, raise }: { weapon: WeaponId; optic?: OpticId; ads: number; pitch: number; reload: number; orbit: boolean; shot: number; draw: number; raise?: "up" | "down" }) {
+/** For scripts/dev/grip-bake.ts: solves a gun's hand poses here, where the real meshes are loaded. */
+if (typeof window !== "undefined") {
+  (window as unknown as { __grips: unknown }).__grips = {
+    bake: async (weapon: WeaponId) => solveGrips(await loadCharacter(), await loadWeapons(), weapon),
+    hand: async () => handLayout(await loadCharacter()),
+    sideView: async (weapon: WeaponId, y: [number, number], z: [number, number], step?: number, x?: number, halfWidth?: number) =>
+      gunSideView(await loadWeapons(), weapon, y, z, step, x, halfWidth),
+    topView: async (weapon: WeaponId, y: number, x: [number, number], z: [number, number], step?: number) =>
+      gunTopView(await loadWeapons(), weapon, y, x, z, step),
+  };
+}
+
+function FppRig({ weapon, optic, ads, pitch, reload, orbit, shot, draw, raise, fire }: { weapon: WeaponId; optic?: OpticId; ads: number; pitch: number; reload: number; orbit: boolean; shot: number; draw: number; raise?: "up" | "down"; fire: number }) {
   const template = use(loadCharacter());
   const weapons = use(loadWeapons());
   const rig = useMemo(() => {
@@ -64,7 +77,7 @@ function FppRig({ weapon, optic, ads, pitch, reload, orbit, shot, draw, raise }:
     return () => rig.dispose();
   }, [rig, scene]);
   const view = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch, 0, 0, "YXZ")), [pitch]);
-  useFrame((_, dt) => {
+  useFrame((state, dt) => {
     // Orbit mode inspects the viewmodel from outside; the rig still sees the player's eye.
     if (!orbit) {
       camera.position.copy(FPP_EYE);
@@ -73,7 +86,9 @@ function FppRig({ weapon, optic, ads, pitch, reload, orbit, shot, draw, raise }:
     }
     rig.update(Math.min(dt, 0.05), {
       x: 0, y: 0, z: 0, yaw: 0, pitch, eye: FPP_EYE, view, optic,
-      speed: 0, moveYaw: 0, crouch: false, grounded: true, alive: true, sprint: 0, reload, recoil: 0, sinceShot: shot, sinceDraw: draw,
+      speed: 0, moveYaw: 0, crouch: false, grounded: true, alive: true, sprint: 0, reload, sinceDraw: draw,
+      // &fire=rpm keeps shooting at that rate, to watch the gun kick.
+      sinceShot: fire > 0 ? state.clock.elapsedTime % (60 / fire) : shot,
       // &raise=up|down: `ads` is the linear raise progress, drawn with the quick-scope move.
       ads: raise ? THREE.MathUtils.smoothstep(ads, 0, 1) : ads,
       quickScope: raise ? quickScope(weapon, ads, raise === "up", optic) : undefined,
@@ -82,7 +97,7 @@ function FppRig({ weapon, optic, ads, pitch, reload, orbit, shot, draw, raise }:
   return null;
 }
 
-export default function RigViewer(props: { raise?: "up" | "down"; optic?: OpticId; fpp: boolean; orbit: boolean; solo: boolean; move: number; weapon: WeaponId; pitch: number; speed: number; reload: number; ads: number; shot: number; draw: number; fov: number; cam: [number, number, number]; target?: [number, number, number] }) {
+export default function RigViewer(props: { fire: number; raise?: "up" | "down"; optic?: OpticId; fpp: boolean; orbit: boolean; solo: boolean; move: number; weapon: WeaponId; pitch: number; speed: number; reload: number; ads: number; shot: number; draw: number; fov: number; cam: [number, number, number]; target?: [number, number, number] }) {
   return (
     <div style={{ position: "fixed", inset: 0 }}>
       <Canvas shadows camera={{ position: props.cam, fov: props.fpp && !props.orbit ? props.fov : 40, near: 0.02 }} gl={{ preserveDrawingBuffer: true }}>
@@ -90,7 +105,7 @@ export default function RigViewer(props: { raise?: "up" | "down"; optic?: OpticI
         <directionalLight position={[3, 6, 4]} intensity={2.5} castShadow />
         <Suspense fallback={null}>
           <Environment preset="city" />
-          {props.fpp ? <FppRig raise={props.raise} weapon={props.weapon} optic={props.optic} ads={props.ads} pitch={props.pitch} reload={props.reload} orbit={props.orbit} shot={props.shot} draw={props.draw} /> : <Rigs {...props} />}
+          {props.fpp ? <FppRig raise={props.raise} weapon={props.weapon} optic={props.optic} ads={props.ads} pitch={props.pitch} reload={props.reload} orbit={props.orbit} shot={props.shot} draw={props.draw} fire={props.fire} /> : <Rigs {...props} />}
         </Suspense>
         <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
           <planeGeometry args={[30, 30]} />

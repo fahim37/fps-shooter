@@ -145,9 +145,12 @@ const REVOLVER_RELOAD: Clip = (() => {
   return { gun, left, shell, shellHeld, cylinder, hammer: [[0, 0], [0.07, 0.45], [0.88, 0.45], [0.94, 0]] };
 })();
 
-/** After each shot: the muzzle kicks up, and the thumb rolls the hammer back, turning the cylinder. */
+/**
+ * After each shot the thumb rolls the hammer back, turning the cylinder, as the muzzle comes down
+ * from its kick (recoil.ts): the gun only tips a little toward the thumb doing the work.
+ */
 const REVOLVER_COCK: Clip = {
-  gun: [[0, REST], [0.08, [0, 0.014, 0.035, 0.5, 0, 0.04]], [0.45, [0, 0.004, 0.01, 0.12, 0, 0]], [0.9, REST]],
+  gun: [[0, REST], [0.4, [0, 0, 0, 0.03, 0, 0.06]], [0.9, REST]],
   right: [[0, GRIP], [0.18, { pose: "cock" }], [0.62, { pose: "cock" }], [1, GRIP]],
   hammer: [[0, 1], [0.3, 1], [0.62, 0]],
   cylinder: [[0.3, 0], [0.62, 1]],
@@ -205,10 +208,9 @@ const SNIPER_RELOAD: Clip = (() => {
 
 const SNIPER_BOLT: Clip = (() => {
   const work: GunOffset = [-0.02, -0.03, -0.09, 0.05, 0.08, 0.3];
-  // The shot shoves the gun back into the shoulder and the muzzle up, before the bolt is worked.
-  const kick: GunOffset = [0, 0.012, 0.06, 0.2, 0, 0.03];
+  // The shot's kick (recoil.ts) is ridden out before the bolt is worked.
   return {
-    gun: [[0, REST], [0.05, kick], [0.3, work], [0.5, nudge(work, 0, 0, 0.01)], [0.56, nudge(work, 0, 0, 0.01)], [0.76, work], [1, REST]],
+    gun: [[0, REST], [0.12, REST], [0.3, work], [0.5, nudge(work, 0, 0, 0.01)], [0.56, nudge(work, 0, 0, 0.01)], [0.76, work], [1, REST]],
     right: [[0.18, GRIP], [0.22, GRIP_DOWN], [0.25, GRIP_OUT], [0.28, BOLT_OUT], [0.32, BOLT], [0.76, BOLT], [0.84, BOLT_OUT], [0.87, GRIP_OUT], [0.895, GRIP_DOWN], [0.92, GRIP]],
     boltPull: [[0.4, 0], [0.5, 1], [0.56, 1], [0.64, 0]],
   };

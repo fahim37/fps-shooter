@@ -83,7 +83,7 @@ async function main() {
           r.setWeapon(c.weapon as never);
           const state = (): RigState => ({
             x: 0, y: 0, z: 0, yaw, pitch: c.pitch, lean: c.lean, speed: c.speed, moveYaw: yaw, crouch: c.crouch,
-            grounded: true, alive: true, sprint: c.sprint, ads: c.ads, reload: -1, recoil: 0, sinceShot: 5, sinceDraw: 5,
+            grounded: true, alive: true, sprint: c.sprint, ads: c.ads, reload: -1, sinceShot: 5, sinceDraw: 5,
           });
           for (let i = 0; i < 50; i++) r.update(1 / 60, state());
           for (let ph = 0; ph < phases; ph++) {

@@ -23,7 +23,7 @@ async function main() {
               x: 0, y: 0, z: 0, yaw: Math.PI / 2, pitch: mode === "aim-up" ? 1.45 : mode === "aim-down" ? -1.45 : 0,
               speed: mode === "run" ? 7 : mode === "crouch" ? 2 : 0, moveYaw: 0, crouch: mode === "crouch",
               grounded: true, alive: mode !== "dead", sprint: mode === "run" ? 1 : 0,
-              ads: 1, reload: mode === "reload" ? i / 90 : -1, recoil: i % 10 / 10,
+              ads: 1, reload: mode === "reload" ? i / 90 : -1, sinceShot: (i % 10) / 60,
             };
             r.update(1 / 60, heldState);
           }

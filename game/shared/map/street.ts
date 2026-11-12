@@ -7,8 +7,7 @@ import streetPieces from "../generated/street-pieces.json";
  * road, terraced walks and a cross street with a statue court and a pool.
  *
  * Merged chunks (`Street_<side>_<i>`), clutter that never collides (`Detail_Street_<side>_<i>`,
- * skipped on Low), plants that are always drawn but never collide (`Street_Plants`), and
- * `Clip_Street`: the perimeter, which stops players but not bullets.
+ * skipped on Low), and `Clip_Street`: the perimeter, which stops players but not bullets.
  */
 
 type Spawn = [number, number, number];

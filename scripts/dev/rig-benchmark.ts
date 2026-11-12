@@ -16,11 +16,11 @@ async function main() {
       const { __rigs: rigs, THREE } = window as unknown as { __rigs: CharacterRig[]; THREE: typeof Three };
       const state: RigState = {
         x: 0, y: 0, z: 0, yaw: 0.4, pitch: 0.3, speed: 5, moveYaw: 1.3,
-        crouch: false, grounded: true, alive: true, sprint: 0, ads: 0.5, reload: -1, recoil: 0.4,
+        crouch: false, grounded: true, alive: true, sprint: 0, ads: 0.5, reload: -1, sinceShot: 1,
       };
       const tick = (frame: number) => {
         state.pitch = Math.sin(frame * 0.03) * 0.8;
-        state.recoil = (frame % 8) / 8;
+        state.sinceShot = (frame % 8) / 60;
         state.reload = frame % 240 > 180 ? (frame % 240 - 180) / 60 : -1;
         for (const rig of rigs) rig.update(1 / 60, state);
       };

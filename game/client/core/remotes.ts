@@ -47,7 +47,6 @@ export class RemotePlayer {
   private sliding = false;
   private dashing = false;
   private speed = 0;
-  recoil = 0;
   /** Seconds since this player last fired / drew the current gun, for the rig's handling. */
   private sinceShot = Infinity;
   private sinceDraw = Infinity;
@@ -106,7 +105,6 @@ export class RemotePlayer {
   }
 
   onShot() {
-    this.recoil = 1;
     this.sinceShot = 0;
   }
 
@@ -206,7 +204,6 @@ export class RemotePlayer {
     this.reloadSkip = skip;
     if (reloading) this.reloadT = this.reloadT < 0 ? 0 : this.reloadT + dt / (reloadMs(this.weapon, WEAPONS[this.weapon].mag - skip) / 1000);
     else this.reloadT = -1;
-    this.recoil = Math.max(0, this.recoil - dt * 8);
     this.sinceShot += dt;
     this.sinceDraw += dt;
 
@@ -251,7 +248,7 @@ export class RemotePlayer {
       sprint: (this.flags & F_SPRINT) ? 1 : 0,
       ads: (this.flags & F_ADS) ? 1 : 0,
       reload: this.reloadT >= 0 ? reloadClipAt(this.reloadSkip, Math.min(this.reloadT, 1)) : -1,
-      recoil: this.recoil, sinceShot: this.sinceShot, sinceDraw: this.sinceDraw,
+      sinceShot: this.sinceShot, sinceDraw: this.sinceDraw,
       emote: this.alive && isEmote(this.emote) ? this.emote : null,
     });
     const headBone = this.posed ? this.rig.inst?.bones.get("Head") : undefined;

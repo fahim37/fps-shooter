@@ -35,8 +35,7 @@ import { PLAYER_HEIGHT, PLAYER_RADIUS } from "../../game/shared/constants";
  * - Each object is simplified on its own, within `SIMPLIFY` meters (urns, within more).
  * - Materials are single-sided: `visibleFaces` already keeps both sides of thin things.
  * - Objects smaller than `CLUTTER` go in `Detail_` chunks that never collide and are skipped on
- *   Low. The conifers are 584 triangles of leaf cards each, so each becomes a two-tier cone:
- *   drawn on every preset, so visibility stays the same, without collision.
+ *   Low.
  *
  * For play:
  * - Players wear blue and red, so red banners, orange trim and blue water are repainted. The
@@ -53,6 +52,10 @@ import { PLAYER_HEIGHT, PLAYER_RADIUS } from "../../game/shared/constants";
  * - Small things on the floor go (`isLitter`, `withoutPosts`): posts, rods and lamps around the
  *   plazas and terraces that snag players, ankle-high stones along the road's edges, stubs, chips and raised drain tiles
  *   on the terraces.
+ * - The map is played as a sniper duel along its length, so what only clutters a scope goes too:
+ *   the 124 small conifers on the cross street's stairs, the 18 jets of its fountains (pale
+ *   pillars up to 3.8 m, across the middle of every long shot), and the trios of thin dark stands
+ *   along the top walks, where Red spawns.
  * - The terrace stairs are 7 cm risers by the dozen, and the step-up stalls a runner on every one.
  *   `stairRamps` lays a player-only ramp over each flight, so running up them glides; bullets
  *   and grenades still meet the real steps.
@@ -76,6 +79,8 @@ const SIMPLIFY = 0.03, SIMPLIFY_ROUND = 0.07;
 const CLUTTER = 0.5;
 /** Air flood: cell size and the map's extent (m). */
 const CELL = 0.15, TOP = 44;
+/** Sight test for sides the flood misses: how far off the face a line starts (m), and how many cells away it may end. */
+const SIGHT_LIFT = 0.01, SIGHT_CELLS = 3;
 
 /** The figure SketchUp leaves in a new model. */
 const SKIP = /^Susan$/;
@@ -83,6 +88,7 @@ const SKIP = /^Susan$/;
 const UNPAINTED = "material";
 /** Lathed in dozens of sides: urns and bowls. */
 const ROUND = /^__Charcoal_$/;
+/** The conifers on the cross street's stairs: left out. */
 const PLANT = /^Vegetation_HoneyLocust$/;
 
 type Slot = "stone" | "pavers" | "brick" | "paint";
@@ -169,12 +175,13 @@ const DRAIN = /^Water_Sparkling$/;
 const ROD = /^Brick_Rough_Dark$/;
 /**
  * Posts and lamps, by paint: [paint, narrowest and widest across (m), lowest and highest (m)].
- * Dark rods, the white posts by the facades, and the tall lamp posts.
+ * Dark rods, the white posts by the facades, the tall lamp posts, and the fountains' jets.
  */
 const POSTS: [RegExp, number, number, number, number][] = [
   [/^Brick_Rough_Dark$/, 0, 0.12, 0.8, 1.5],
   [/^Cladding_Stucco_White$/, 0, 0.12, 1, 2],
   [/^__Brick_Pavers_Modular_1$/, 0, 0.3, 2, 3.5],
+  [/^__Water_Sparkling_1$/, 0, 0.3, 1, 4], // the fountains' jets: pale pillars across the court
 ];
 /**
  * Whole objects that go wherever they stand: the black urn lamps on their pedestals (wider than
@@ -183,6 +190,10 @@ const POSTS: [RegExp, number, number, number, number][] = [
 const LAMPS: [RegExp, number, number, number, number][] = [
   [/^(__Brick_Pavers_Modular_1|__Brick_Pavers_Modular_4|__Charcoal_)$/, 0.4, 0.8, 0.3, 1],
   [/^Brick_Rough_Dark$/, 0, 0.15, 3, 5.5],
+  // Along the top walks: three 2 m stands in a row, and three short rods on a ledge. The palace's
+  // balusters are shorter than the first and stay.
+  [/^(__Charcoal_|__Beige_1)$/, 0.9, 1.2, 1.9, 2.1],
+  [/^__Charcoal_$/, 0.9, 1, 0.5, 0.7],
 ];
 /** Flags on poles: their cloth (source material), how thick the long flag is, and its gap to the floor (m). */
 const CLOTH = /^__Color_A01_1$/;
@@ -205,6 +216,7 @@ const newBatch = (): Batch => ({ pos: [], nrm: [], col: [], uv: [] });
 type Tier = "solid" | "detail";
 
 export async function importStreet() {
+  await RAPIER.init();
   const scene = readDae(SRC);
   const raw = gameFaces(scene);
   const { faces, bothSided } = visibleFaces(raw);
@@ -238,7 +250,7 @@ export async function importStreet() {
     if (board) flags.set(object, board);
   }
   const billboards: Billboard[] = [];
-  let drawn = 0, detail = 0, plants = 0;
+  let drawn = 0, detail = 0;
   for (const [object, all] of objects) {
     const box = bounds.get(object)!;
     const board = flags.get(object);
@@ -246,11 +258,7 @@ export async function importStreet() {
     if (board) billboards.push(board);
     const list = withoutPosts(board ? all.filter((f) => !CLOTH.test(f.material)) : all);
     if (!list.length) continue;
-    if (list.every((f) => PLANT.test(f.material))) {
-      plants += addCone(batchFor("Street_Plants", "paint"), box, tint(PAINT[list[0].material][1], "paint"));
-      drawn += 12;
-      continue;
-    }
+    if (list.every((f) => PLANT.test(f.material))) continue;
     // The two sides of a sheet never meet in one call: welded together they make a closed shell
     // with no volume and no border, and the simplifier collapses it to nothing.
     const byPaint = new Map<string, Face[]>();
@@ -341,7 +349,7 @@ export async function importStreet() {
 
   let colTris = 0;
   for (const r of ranges.values()) colTris += r[3] / 3;
-  console.log(`[street] ${(bytes / 1e6).toFixed(2)} MB glb, ${batches.size} pieces, ${raw.length} source tris, ${faces.length} visible (${bothSided} both sides), ${drawn} drawn (${detail} detail, ${plants} plants), ${colTris} collision tris, spawns ${layout.spawns.blue.length}/${layout.spawns.red.length}/${layout.spawns.ffa.length}, ${layout.footprints.length} footprints, ${billboards.length} billboards, ${ramps.flights} stair flights ramped (${ramps.mesh.indices.length / 3} tris)`);
+  console.log(`[street] ${(bytes / 1e6).toFixed(2)} MB glb, ${batches.size} pieces, ${raw.length} source tris, ${faces.length} visible (${bothSided} both sides), ${drawn} drawn (${detail} detail), ${colTris} collision tris, spawns ${layout.spawns.blue.length}/${layout.spawns.red.length}/${layout.spawns.ffa.length}, ${layout.footprints.length} footprints, ${billboards.length} billboards, ${ramps.flights} stair flights ramped (${ramps.mesh.indices.length / 3} tris)`);
 }
 
 /** Every source triangle in game space: X along the avenue becomes Z, Y across it X, Z up Y. */
@@ -422,6 +430,11 @@ function visibleFaces(faces: Face[]) {
 /**
  * Voxelizes the faces and floods the air from the sky. The result says whether a side of a face
  * touches that air, sampled across the face just off its surface.
+ *
+ * A stair's riser is half a cell tall, so the cell in front of it holds the tread below and never
+ * floods: the flights lost about half their risers, in bands, and the sky showed through. A side
+ * the grid calls buried is kept after all when a straight line runs from just off it to the
+ * middle of a flooded cell nearby, with no face of the source in the way.
  */
 function outsideAir(faces: Face[]) {
   const x0 = -EDGE_X - 1.5, z0 = -EDGE_Z - 1.5, y0 = -0.3;
@@ -465,6 +478,32 @@ function outsideAir(faces: Face[]) {
     if (k < nz - 1 && !grid[c + layer]) { grid[c + layer] = AIR; stack[top++] = c + layer; }
   }
 
+  const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+  const corners = new Float32Array(faces.length * 9);
+  faces.forEach((f, i) => corners.set(f.p, i * 9));
+  world.createCollider(RAPIER.ColliderDesc.trimesh(corners, Uint32Array.from({ length: faces.length * 3 }, (_, i) => i)));
+  world.step();
+  const ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 });
+  /** From the face's middle and from near each corner, to the flooded cells within `SIGHT_CELLS`. */
+  const inSight = ({ p, n }: Face) => {
+    const mid = [(p[0] + p[3] + p[6]) / 3, (p[1] + p[4] + p[7]) / 3, (p[2] + p[5] + p[8]) / 3];
+    for (let s = 0; s < 4; s++) {
+      const o = [0, 1, 2].map((d) => (s === 3 ? mid[d] : mid[d] + (p[s * 3 + d] - mid[d]) * 0.7) + n[d] * SIGHT_LIFT);
+      const i0 = Math.floor((o[0] - x0) / CELL), j0 = Math.floor((o[1] - y0) / CELL), k0 = Math.floor((o[2] - z0) / CELL);
+      ray.origin = { x: o[0], y: o[1], z: o[2] };
+      for (let k = k0 - SIGHT_CELLS; k <= k0 + SIGHT_CELLS; k++) for (let j = j0 - SIGHT_CELLS; j <= j0 + SIGHT_CELLS; j++) for (let i = i0 - SIGHT_CELLS; i <= i0 + SIGHT_CELLS; i++) {
+        if (i < 0 || j < 0 || k < 0 || i >= nx || j >= ny || k >= nz || grid[(k * ny + j) * nx + i] !== AIR) continue;
+        const d = [x0 + (i + 0.5) * CELL - o[0], y0 + (j + 0.5) * CELL - o[1], z0 + (k + 0.5) * CELL - o[2]];
+        const len = Math.hypot(d[0], d[1], d[2]);
+        // Only out of the side asked about, and not along its own surface.
+        if ((d[0] * n[0] + d[1] * n[1] + d[2] * n[2]) / len < 0.2) continue;
+        ray.dir = { x: d[0] / len, y: d[1] / len, z: d[2] / len };
+        if (!world.castRay(ray, len, false)) return true;
+      }
+    }
+    return false;
+  };
+
   const reach = CELL * 1.6;
   return ({ p, n }: Face) => {
     let touches = false;
@@ -473,7 +512,7 @@ function outsideAir(faces: Face[]) {
       const c = cell(x + n[0] * reach, y + n[1] * reach, z + n[2] * reach);
       if (c < 0 || grid[c] === AIR) touches = true;
     });
-    return touches;
+    return touches || inSight({ p, n } as Face);
   };
 }
 
@@ -563,21 +602,6 @@ function addTriangle(b: Batch, slot: Slot, pos: Float32Array, c: number[], color
     if (slot !== "paint") b.uv.push(...planarUV(slot, n, p[k], p[k + 1], p[k + 2]));
   }
   return true;
-}
-
-/** A conifer filling a bounding box: two six-sided cones, one over the other. Returns its triangles. */
-function addCone(b: Batch, box: number[], color: V3) {
-  const cx = (box[0] + box[3]) / 2, cz = (box[2] + box[5]) / 2, h = box[4] - box[1];
-  const r = Math.max(box[3] - box[0], box[5] - box[2]) / 2;
-  let triangles = 0;
-  for (const [y0, y1, radius] of [[box[1], box[1] + h * 0.65, r], [box[1] + h * 0.4, box[4], r * 0.7]]) {
-    for (let i = 0; i < 6; i++) {
-      const a = (i * Math.PI) / 3, c = ((i + 1) * Math.PI) / 3;
-      const p = [cx + Math.sin(a) * radius, y0, cz + Math.cos(a) * radius, cx + Math.sin(c) * radius, y0, cz + Math.cos(c) * radius, cx, y1, cz];
-      if (addTriangle(b, "paint", Float32Array.from(p), [0, 3, 6], color)) triangles++;
-    }
-  }
-  return triangles;
 }
 
 /** The three gray textures and the paint. */

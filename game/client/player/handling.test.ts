@@ -61,7 +61,8 @@ describe("weapon handling", () => {
 
   it("drops the hammer on the shot, then cocks it and turns the cylinder", () => {
     expect(sampleHandling("pistol", -1, 0, Infinity).hammer).toBe(1);
-    expect(sampleHandling("pistol", -1, 0.024, Infinity).gun[3]).toBeGreaterThan(0.4);
+    // The muzzle's kick belongs to recoil.ts: the clip only tips the gun toward the cocking thumb.
+    expect(Math.abs(sampleHandling("pistol", -1, 0.024, Infinity).gun[3])).toBeLessThan(0.05);
     const cocked = sampleHandling("pistol", -1, 0.25, Infinity);
     expect(cocked.hammer).toBe(0);
     expect(cocked.cylinder).toBe(1);

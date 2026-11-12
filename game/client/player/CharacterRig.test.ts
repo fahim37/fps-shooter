@@ -47,7 +47,7 @@ describe("character shooting pose", () => {
     const rig = new CharacterRig(template(), new Map(), 1, "tpp");
     const state: RigState = {
       x: 0, y: 0, z: 0, yaw: 0, pitch: 0, speed: 0, moveYaw: 0,
-      crouch: false, grounded: true, alive: true, sprint: 0, ads: 0, reload: -1, recoil: 0,
+      crouch: false, grounded: true, alive: true, sprint: 0, ads: 0, reload: -1,
     };
     const evaluate = vi.spyOn(THREE.Interpolant.prototype, "evaluate");
     try {
@@ -72,7 +72,7 @@ describe("character shooting pose", () => {
     rig.setWeapon(weapon);
     const state: RigState = {
       x: 0, y: 0, z: 0, yaw: 0, pitch: 0.25, speed: 5, moveYaw: Math.PI / 2,
-      crouch: false, grounded: true, alive: true, sprint: 0, ads: 1, reload: -1, recoil: 0.8,
+      crouch: false, grounded: true, alive: true, sprint: 0, ads: 1, reload: -1, sinceShot: 0.02,
     };
     for (let frame = 0; frame < 180; frame++) rig.update(1 / 60, state);
     rig.update(0, state);
@@ -92,7 +92,7 @@ describe("character shooting pose", () => {
     const gun = (rig as unknown as { gunPivot: THREE.Object3D }).gunPivot;
     const state: RigState = {
       x: 0, y: 0, z: 0, yaw: 0, pitch: 0, speed: 0, moveYaw: 0,
-      crouch: false, grounded: true, alive: true, sprint: 0, ads: 0, reload: -1, recoil: 0, emote: "dance",
+      crouch: false, grounded: true, alive: true, sprint: 0, ads: 0, reload: -1, emote: "dance",
     };
     for (let frame = 0; frame < 60; frame++) rig.update(1 / 60, state);
     expect(gun.visible).toBe(false);

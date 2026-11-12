@@ -4,7 +4,6 @@ import { ServerClock } from "../net/clock";
 import { loadCharacter, type CharacterTemplate } from "../assets/characters";
 import { loadWeapons, type WeaponTemplates } from "../assets/weapons";
 import { CharacterRig, type RigState } from "../player/CharacterRig";
-import { gripPose } from "../player/grip";
 import { getMap } from "../../shared/map/maps";
 import { lineOfSight, raycastWorld, type Rapier, type World } from "../../shared/physics";
 import { DASH_MAX, INTERP_DELAY_MS, MAX_SHIELD, RESPAWN_MS, type GameMode } from "../../shared/constants";
@@ -196,10 +195,6 @@ export class Game {
     hud().set({ loading: 0.35 });
     [this.template, this.weapons] = await Promise.all([loadCharacter(), loadWeapons()]);
     if (this.disposed) return;
-    // Solve every hand pose behind the loading screen, not on the first weapon switch.
-    const t0 = performance.now();
-    for (const w of Object.keys(WEAPONS) as WeaponId[]) gripPose(this.template, w);
-    console.debug(`[game] grip poses solved in ${(performance.now() - t0).toFixed(0)} ms`);
     this.local = new LocalPlayer(this, this.R, this.world);
     this.local.thirdPerson = useSettings.getState().thirdPerson;
     if (this.pendingSpawn) this.spawn(this.pendingSpawn);
@@ -768,7 +763,7 @@ export class Game {
       eye: local.viewEye, view: local.viewQuat, speed: Math.hypot(local.ms.vx, local.ms.vz),
       moveYaw: Math.atan2(-local.ms.vx, -local.ms.vz), crouch: local.crouchT > 0.5, slide: local.slideT,
       grounded: local.ms.grounded, alive: local.alive, sprint: local.ms.sprinting ? 1 : 0,
-      ads: local.ads, quickScope: local.quickScope, optic: local.optic, reload: local.reloadProgress, recoil: local.recoil,
+      ads: local.ads, quickScope: local.quickScope, optic: local.optic, reload: local.reloadProgress,
       bob: local.bob, sway: local.sway, tuck: local.tuck, throwing: Math.max(local.throwAnim, local.grenadeHold), lean: local.lean,
       sinceShot: local.sinceShot(now), sinceDraw: local.sinceDraw(now), emote: local.emote,
       grenade: this.grenadeArm(local, dt, now),

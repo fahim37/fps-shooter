@@ -68,6 +68,20 @@ describe("boulevard", () => {
     expect(slow, `ticks stalled of ${ticks}`).toBeLessThanOrEqual(2);
   });
 
+  // A riser is half a cell of the importer's air flood, which called half of them buried: the
+  // flights were drawn in bands with the sky between, and at z 16.5 a shot along the road's edge
+  // went through the stairs at 100 heights of 239.
+  it.each([[16.5, -2, -1], [-10, -2, -1], [24, 3, 1], [40, 2, 1], [56, 3, 1]])("leaves no gap between the stairs' treads at z %d", (z, x, dir) => {
+    const reach: number[] = [];
+    for (let y = 0.02; y < 2.4; y += 0.01) reach.push(raycastWorld(RAPIER, world, [x, y, z], [dir, 0, 0], 40)?.distance ?? Infinity);
+    // A flight only steps back as it rises: no shot goes deeper than one above it.
+    let above = Infinity;
+    for (let i = reach.length - 1; i >= 0; i--) {
+      expect(reach[i], `open at y ${(0.02 + i * 0.01).toFixed(2)}`).toBeLessThan(above + 0.3);
+      above = Math.min(above, reach[i]);
+    }
+  });
+
   it("hangs the flags down to the floor, as cover that stops bullets", () => {
     // The row at x -6.4 has four flags, z -16.9 to -10.4, with cloth from 1.2 m above the foot.
     // The one at z -10.4 now hangs to the floor.

@@ -10,6 +10,7 @@ import { createIronSights, createReflexSight } from "./ReflexSight";
 import { gripPose, type GripPose, type HandPose } from "./grip";
 import { createHandling, sampleHandling, type HandBlend, type HandKey } from "./handling";
 import type { QuickScope } from "./quickScope";
+import { Recoil } from "./recoil";
 
 export type RigMode = "fpp" | "tpp";
 
@@ -36,8 +37,6 @@ export interface RigState {
   optic?: OpticId;
   /** -1 when not reloading, else progress 0..1. */
   reload: number;
-  /** 0..1 recoil kick, decays externally. */
-  recoil: number;
   /** FPP view-space offsets for bob and sway. */
   bob?: THREE.Vector2;
   sway?: THREE.Vector2;
@@ -53,7 +52,7 @@ export interface RigState {
   grenade?: HandOverride & { left?: HandOverride };
   /** Peek -1 (left) .. 1 (right). */
   lean?: number;
-  /** Seconds since the last shot (pump / bolt cycling) and since the gun was drawn. */
+  /** Seconds since the last shot (the gun's kick, pump / bolt cycling) and since the gun was drawn. */
   sinceShot?: number;
   sinceDraw?: number;
   /** Full-body emote to play instead of holding the gun. */
@@ -87,8 +86,19 @@ const POUCH_DROP = 0.3;
 const POUCH_IN = 0.08;
 /** Extra curl (rad per joint) of the right hand's fingers, from the gun grip, around a grenade. */
 const GRENADE_FINGER_CURL = 0.45;
+/** How far (rad) the trigger finger's middle joint closes as a shot breaks. */
+const TRIGGER_PULL = 0.09;
+/** A shot this long ago (s) or more is not one to kick for: the rig was hidden when it went off. */
+const KICK_WITHIN = 0.2;
+/** TPP: share of the first-person shove back and muzzle rise shown on a body seen from outside, and how far (rad per metre of shove) the chest rocks with it. */
+const TPP_KICK_BACK = 0.6;
+const TPP_KICK_RISE = 0.9;
+const TPP_KICK_ROCK = 1.1;
+/** Aiming, the stock is in the shoulder: this share of the hip-fire shove back is left. */
+const AIMED_KICK_BACK = 0.6;
 const GRENADE_CURLED = ["index", "middle", "ring", "pinky"].flatMap((f) => ["01", "02", "03"].map((k) => `${f}_${k}_r`));
 const _unitZ = new THREE.Vector3(0, 0, 1);
+const _unitX = new THREE.Vector3(1, 0, 0);
 /** Crossfade (s) into and out of an emote. */
 const EMOTE_FADE = 0.25;
 /** FPP: view-space offset of the hidden body from where the head would put it. */
@@ -150,7 +160,7 @@ const SPRINT_LEAN = 0.17;
 /** Seconds after a shot before a moving rifleman drops back to a relaxed carry. */
 const CARRY_AFTER_SHOT = 0.6;
 /** How far out (m, beside a point 0.75 m below the shoulder) the long-gun support elbow points. */
-const SUPPORT_ELBOW_OUT = 0.32;
+const SUPPORT_ELBOW_OUT = 0.5;
 /** TPP: the butt sits in the shoulder pocket, this far in from the shoulder joint. */
 const STOCK_POCKET = 0.05;
 /** TPP chest, seen from above, that a lowered gun's butt must stay out of (m). */
@@ -209,8 +219,12 @@ export class CharacterRig {
   private head: THREE.Vector3;
   private grip: GripPose | null = null;
   private state: RigState | null = null;
-  private fingers: { r: THREE.Bone[]; l: THREE.Bone[] } = { r: [], l: [] };
+  /** Finger bones in the grip's order; a body without one leaves a gap. */
+  private fingers: { r: (THREE.Bone | undefined)[]; l: (THREE.Bone | undefined)[] } = { r: [], l: [] };
   private handling = createHandling();
+  /** The gun's kick from shot to shot. A shot is one whenever `sinceShot` starts over. */
+  private kick = new Recoil();
+  private lastSinceShot = Infinity;
   private gunPivot = new THREE.Object3D();
   private guns = new Map<WeaponId, THREE.Object3D>();
   private parts = new Map<WeaponId, WeaponParts>();
@@ -307,8 +321,9 @@ export class CharacterRig {
       this.guns.set(id, g);
     }
     g.visible = true;
-    this.grip = gripPose(this.template, id);
-    const bones = (names: string[]) => names.map((n) => this.inst.bones.get(n)!);
+    this.kick.reset();
+    this.grip = gripPose(id);
+    const bones = (names: string[]) => names.map((n) => this.inst.bones.get(n));
     this.fingers = { r: bones(this.grip.fingers.r), l: bones(this.grip.fingers.l) };
   }
 
@@ -358,6 +373,10 @@ export class CharacterRig {
       this.placeRoot(s, 0);
       return;
     }
+    const sinceShot = s.sinceShot ?? -1;
+    if (this.weapon && sinceShot >= 0 && sinceShot < KICK_WITHIN && sinceShot < this.lastSinceShot - 1e-4) this.kick.kick(this.weapon);
+    this.lastSinceShot = sinceShot;
+    this.kick.update(dt);
     if (this.mode === "tpp") this.updateLocomotion(dt, s);
     this.updateAimLayer(s);
     this.mixer.update(dt);
@@ -388,6 +407,11 @@ export class CharacterRig {
       // keeps looking where the player aims.
       const neck = this.inst.bones.get("neck_01");
       if (neck) rotateBoneWorld(neck, _q.setFromAxisAngle(_v.set(-Math.cos(facing), 0, Math.sin(facing)), -this.run), true);
+    }
+    if (this.mode === "tpp" && this.kick.back > 1e-4) {
+      // The shot shoves the shoulder: the chest rocks back about the hips' side-to-side axis.
+      _v.set(-Math.cos(s.yaw), 0, Math.sin(s.yaw));
+      rotateBoneWorld(this.inst.bones.get("spine_03")!, _q.setFromAxisAngle(_v, -this.kick.back * TPP_KICK_ROCK), true);
     }
     const lean = s.lean ?? 0;
     if (this.mode === "tpp" && Math.abs(lean) > 1e-3) {
@@ -550,14 +574,15 @@ export class CharacterRig {
       // on screen not to hide a target.
       const ads = _v2.set(0, -sightY, pistol ? -REVOLVER_ADS_REACH : -(meta.max[2] + (w === "ar" || w === "smg" ? AR_EYE_RELIEF : 0.07)));
       const qs = s.quickScope;
+      const kick = this.kick, kickTurn = kick.aimed(s.ads), kickBack = 1 - (1 - AIMED_KICK_BACK) * s.ads;
       hip.lerp(ads, qs ? qs.lift : s.ads);
       hip.x += (s.sway?.x ?? 0) + (s.bob?.x ?? 0) + hx - sprint * 0.04 + slide * SLIDE_TUCK[0];
-      hip.y += (s.sway?.y ?? 0) + (s.bob?.y ?? 0) + hy - sprint * 0.05 - (s.throwing ?? 0) * 0.75 - (qs?.dip ?? 0) + slide * SLIDE_TUCK[1];
-      hip.z += s.recoil * 0.045 + (s.tuck ?? 0) * 0.16 + hz;
+      hip.y += (s.sway?.y ?? 0) + (s.bob?.y ?? 0) + hy - sprint * 0.05 - (s.throwing ?? 0) * 0.75 - (qs?.dip ?? 0) + slide * SLIDE_TUCK[1] + kick.up * kickBack;
+      hip.z += kick.back * kickBack + (s.tuck ?? 0) * 0.16 + hz;
       _e.set(
-        s.recoil * 0.06 + hPitch - sprint * 0.55 - (s.tuck ?? 0) * 0.7,
-        sprint * 0.75 + hYaw + (qs?.yaw ?? 0),
-        hRoll + sprint * 0.25 - (qs?.roll ?? 0) + slide * SLIDE_CANT,
+        kick.pitch * kickTurn + hPitch - sprint * 0.55 - (s.tuck ?? 0) * 0.7,
+        sprint * 0.75 + hYaw + (qs?.yaw ?? 0) + kick.yaw * kickTurn,
+        hRoll + sprint * 0.25 - (qs?.roll ?? 0) + slide * SLIDE_CANT + kick.roll * kickTurn,
         "YXZ",
       );
       _q.copy(s.view).multiply(_q2.setFromEuler(_e));
@@ -575,12 +600,13 @@ export class CharacterRig {
       // Reloading, the gun comes down to the right of the body and cants over, so the mag change
       // shows from the over-the-shoulder camera instead of happening behind the chest.
       const tilt = s.reload >= 0 ? THREE.MathUtils.smoothstep(s.reload, 0, 0.12) * (1 - THREE.MathUtils.smoothstep(s.reload, 0.88, 1)) * (pistol ? 0.5 : 1) : 0;
-      _e.set(s.pitch * (1 - tilt * 0.7) + s.recoil * (pistol ? 0.075 : 0.035) + hPitch * 0.5 - dip * 0.6 - carry * (pistol ? 0.25 : 0.5) - tilt * RELOAD_PITCH,
-        yaw + dip * 0.6 + hYaw + carry * 0.12 + tilt * RELOAD_YAW, hRoll - (s.lean ?? 0) * LEAN_ANGLE * 0.6 + tilt * RELOAD_ROLL, "YXZ");
+      const kick = this.kick;
+      _e.set(s.pitch * (1 - tilt * 0.7) + kick.pitch * TPP_KICK_RISE + hPitch * 0.5 - dip * 0.6 - carry * (pistol ? 0.25 : 0.5) - tilt * RELOAD_PITCH,
+        yaw + dip * 0.6 + hYaw + carry * 0.12 + tilt * RELOAD_YAW + kick.yaw, hRoll - (s.lean ?? 0) * LEAN_ANGLE * 0.6 + tilt * RELOAD_ROLL + kick.roll, "YXZ");
       _q.setFromEuler(_e);
       const fwd = _v2.set(0, 0, -1).applyQuaternion(_q);
       const reach = pistol ? 0.43 : meta.max[2] + 0.02;
-      shoulder.addScaledVector(fwd, reach - s.recoil * 0.015);
+      shoulder.addScaledVector(fwd, reach - kick.back * TPP_KICK_BACK);
       shoulder.y += (pistol ? -0.06 : -0.035) + s.ads * 0.03 - dip * 0.12 - carry * 0.1;
       // Handling lifts the gun into the first-person view; seen from outside, the same move
       // lowers it in front of the chest, the stock dropping toward the right armpit. It never
@@ -674,6 +700,10 @@ export class CharacterRig {
 
     // Fingers are written absolutely each frame, so held clips cannot accumulate them.
     this.poseFingers(this.fingers.r, h.right, grip.right);
+    // The trigger finger squeezes as each shot breaks, and lets off after it.
+    if (this.kick.trigger > 1e-3 && h.right.a.pose === "grip" && (h.right.k === 0 || h.right.b.pose === "grip")) {
+      this.inst.bones.get("index_02_r")?.quaternion.multiply(_q.setFromAxisAngle(_unitX, this.kick.trigger * TRIGGER_PULL));
+    }
     // Around a grenade the fingers curl over its top (about each bone's Z, toward the palm).
     const nade = this.mode === "fpp" ? this.state?.grenade?.weight ?? 0 : 0;
     if (nade > 0) {
@@ -739,9 +769,9 @@ export class CharacterRig {
     return o;
   }
 
-  private poseFingers<P extends string>(bones: THREE.Bone[], blend: HandBlend<P>, poses: Partial<Record<P, HandPose>>) {
+  private poseFingers<P extends string>(bones: (THREE.Bone | undefined)[], blend: HandBlend<P>, poses: Partial<Record<P, HandPose>>) {
     const a = poses[blend.a.pose]!.fingers, b = poses[blend.b.pose]!.fingers;
-    for (let i = 0; i < bones.length; i++) bones[i].quaternion.slerpQuaternions(a[i], b[i], blend.k);
+    for (let i = 0; i < bones.length; i++) if (a[i] && b[i]) bones[i]?.quaternion.slerpQuaternions(a[i], b[i], blend.k);
   }
 
   /** Moves a gun part so it sits in the left hand as it did when the hand closed on it. */
