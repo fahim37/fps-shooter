@@ -40,6 +40,8 @@ const _arcNormal = new THREE.Vector3();
 const _spot = new THREE.Vector3(), _spotDir = new THREE.Vector3();
 /** After a dash, how long the next press is ignored and the server's count of dashes is not yet believed (ms). */
 const DASH_LOCK_MS = 700;
+/** A dash's wake is drawn for players within this far (m); past it the streaks are smaller than a pixel. */
+const WAKE_RANGE = 70;
 const _armEuler = new THREE.Euler();
 /**
  * The right hand bone's resting turn in view space while holding a grenade (the bone's +Y runs
@@ -716,14 +718,14 @@ export class Game {
       remote.setReadability(useSettings.getState().quality === "low" && (hud().mode !== "tdm" || remote.team !== hud().myTeam));
       remote.update(dt, this.clock.now() - INTERP_DELAY_MS, this.camera.position);
       remote.updateTag(this.scene, hud().mode === "tdm" && remote.team === hud().myTeam);
-      if (remote.alive && (remote.flags & F_DASH)) this.effects.dashTrail(remote.pos, remote.vel, dt);
+      if (remote.alive && (remote.flags & F_DASH) && remote.pos.distanceToSquared(this.camera.position) < WAKE_RANGE * WAKE_RANGE) this.effects.dashTrail(remote.pos, remote.vel, dt);
     }
     // Read before the local player's update, which clears the frame's presses.
     const spotPressed = this.input.consume("KeyZ");
     if (this.input.consume("KeyF") && active && local.alive) this.tryDash(now);
     local.update(dt, this.input, now);
     // In third person the player sees their own wake.
-    if (local.alive && local.thirdPerson && local.ms.dashTime > 0) this.effects.dashTrail(_spot.set(local.ms.x, local.ms.y, local.ms.z), _spotDir.set(local.ms.vx, 0, local.ms.vz), dt);
+    if (local.alive && local.thirdPerson && local.ms.dashTime > 0) this.effects.dashTrail(_spot.set(local.ms.x, local.ms.y, local.ms.z), _spotDir.set(local.ms.vx, 0, local.ms.vz), dt, false);
     local.updateView();
     if (local.alive) local.camera(this.camera, dt);
     else {

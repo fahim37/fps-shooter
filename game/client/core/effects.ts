@@ -280,6 +280,12 @@ interface Flash {
   life: number;
 }
 
+/** A dash's wake at full density: streaks and puffs of air a second. */
+const WAKE_STREAKS = 110, WAKE_PUFFS = 24;
+
+/** Tracers by who fired: your own, a teammate's, an enemy's. */
+const TRACER_COLORS = { local: new THREE.Color(4, 3.2, 1.8), friendly: new THREE.Color(1.1, 2.7, 4), enemy: new THREE.Color(4, 1.55, 0.65) };
+
 const _v = new THREE.Vector3();
 const Z = new THREE.Vector3(0, 0, 1);
 const Y = new THREE.Vector3(0, 1, 0);
@@ -482,7 +488,7 @@ export class Effects {
     tr.dir.copy(d).normalize();
     tr.length = length;
     tr.t = 0;
-    const color = source === "friendly" ? new THREE.Color(1.1, 2.7, 4) : source === "enemy" ? new THREE.Color(4, 1.55, 0.65) : new THREE.Color(4, 3.2, 1.8);
+    const color = TRACER_COLORS[source];
     (tr.mesh.material as THREE.MeshBasicMaterial).color.copy(color);
     (tr.trail.material as THREE.MeshBasicMaterial).color.copy(color);
     // Initialize immediately: a recycled streak must never flash at its old position.
@@ -503,10 +509,16 @@ export class Effects {
     (tr.trail.material as THREE.MeshBasicMaterial).opacity = 0.15 * fade;
   }
 
-  /** A dashing player's wake: pale streaks left hanging along the way they went, for this frame's travel. */
-  dashTrail(pos: THREE.Vector3, vel: THREE.Vector3, dt: number) {
-    const n = Math.max(1, Math.round(110 * dt * this.budget.density));
-    for (let i = 0; i < n; i++) {
+  /**
+   * A dashing player's wake: pale streaks left hanging along the way they went, for this frame's
+   * travel, and a few soft puffs of disturbed air. How much is left follows the time passed, not
+   * the frames drawn, so several players dashing at once cost the same at any frame rate.
+   * `puffs` is off for your own wake: the third-person camera flies straight through it, and a
+   * puff right on the lens covers the whole screen.
+   */
+  dashTrail(pos: THREE.Vector3, vel: THREE.Vector3, dt: number, puffs = true) {
+    const streaks = Math.floor(WAKE_STREAKS * dt * Math.max(0.5, this.budget.density) + Math.random());
+    for (let i = 0; i < streaks; i++) {
       const back = Math.random() * dt;
       this.glow.spawn({
         x: pos.x - vel.x * back + (Math.random() - 0.5) * 0.5, y: pos.y + 0.3 + Math.random() * 1.3, z: pos.z - vel.z * back + (Math.random() - 0.5) * 0.5,
@@ -514,7 +526,9 @@ export class Effects {
         max: 0.26 + Math.random() * 0.22, s0: 0.17, s1: 0.02, r: 0.55, g: 0.9, b: 1, a0: 0.75, grav: 0, drag: 2,
       });
     }
-    this.smoke.spawn({ x: pos.x, y: pos.y + 0.9, z: pos.z, vx: 0, vy: 0.3, vz: 0, max: 0.45, s0: 0.5, s1: 1.2, r: 0.8, g: 0.92, b: 0.97, a0: 0.16, grav: 0, drag: 2 });
+    if (puffs && Math.random() < WAKE_PUFFS * dt) {
+      this.smoke.spawn({ x: pos.x, y: pos.y + 0.9, z: pos.z, vx: 0, vy: 0.3, vz: 0, max: 0.45, s0: 0.6, s1: 1.3, r: 0.8, g: 0.92, b: 0.97, a0: 0.16, grav: 0, drag: 2 });
+    }
   }
 
   impact(point: THREE.Vector3, normal: THREE.Vector3, soft: boolean) {
