@@ -113,8 +113,10 @@ export class Mover {
     // A dash goes the way the keys point, or straight ahead, and takes over from a slide.
     if (inp.dash && s.dashTime <= 0) {
       s.dashTime = DASH_SECONDS;
-      s.dashX = len > 0.12 ? wx / len : -sin;
-      s.dashZ = len > 0.12 ? wz / len : -cos;
+      // Normalised from the (already clamped) wish vector, so a diagonal dash is as fast as a straight one.
+      const wish = Math.hypot(wx, wz);
+      s.dashX = wish > 0.12 ? wx / wish : -sin;
+      s.dashZ = wish > 0.12 ? wz / wish : -cos;
       // Level until the look is clearly upward, then up to about 1.8 m of rise; never downward.
       s.dashY = Math.max(0, Math.min(0.5, Math.sin(inp.pitch ?? 0) - 0.08)) * DASH_LIFT;
       s.sliding = s.slideQueued = false;

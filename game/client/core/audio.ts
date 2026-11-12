@@ -876,17 +876,36 @@ export class AudioEngine {
     this.blip(bus, "sine", 3740, t + 0.07, level * 0.3, 0.002, 0.1);
   }
   /** Z with no enemy in the sights. */
-  /** A dash: air torn past over a low kick, with a quick rising edge. Without `pos` it is the player's own. */
+  /**
+   * A dash: a gust of wind. Two bands of noise sweep up and fall away (the body of the gust and
+   * the airy hiss on top), with a faint breathy whistle riding the peak. No thump: it is all air.
+   * Without `pos` it is the player's own.
+   */
   dash(pos?: V3) {
     const ctx = this.ctx;
     if (!ctx) return;
-    const route = this.spatial(pos, 0.7);
+    const route = this.spatial(pos, 0.9);
     if (!route) return;
-    const out = route[0], t = ctx.currentTime, k = pos ? 1.3 : 1;
-    this.burst(out, "bandpass", 700, 0.7, t, 0.4 * k, 0.025, 0.3);
-    this.burst(out, "bandpass", 2600, 1.1, t + 0.015, 0.22 * k, 0.04, 0.2);
-    this.blip(out, "sine", 170, t, 0.12 * k, 0.005, 0.2, 52);
-    this.blip(out, "triangle", 420, t, 0.04 * k, 0.03, 0.24, 1700);
+    const out = route[0], voice = route[2], t = ctx.currentTime, k = pos ? 1.3 : 1;
+    /** One band of wind: its centre rushes from `from` up to `peak` and settles at `to`. */
+    const gust = (from: number, peak: number, to: number, q: number, level: number, attack: number, decay: number, delay = 0) => {
+      const at = t + delay;
+      const src = this.noiseSource(at, attack + decay);
+      const f = ctx.createBiquadFilter();
+      f.type = "bandpass";
+      f.Q.value = q;
+      f.frequency.setValueAtTime(from, at);
+      f.frequency.exponentialRampToValueAtTime(peak, at + attack);
+      f.frequency.exponentialRampToValueAtTime(to, at + attack + decay);
+      const g = ctx.createGain();
+      this.env(g, at, level * k, attack, decay);
+      src.connect(f).connect(g).connect(out);
+      voice.nodes.push(f, g);
+    };
+    gust(260, 1500, 420, 0.9, 0.5, 0.07, 0.5);
+    gust(1800, 6200, 2400, 1.4, 0.2, 0.05, 0.38, 0.01);
+    gust(500, 900, 300, 0.6, 0.22, 0.12, 0.6, 0.04);
+    this.blip(out, "sine", 620, t, 0.022 * k, 0.07, 0.3, 1500);
   }
 
   /** The dash is back after three kills: two quick rising notes. */

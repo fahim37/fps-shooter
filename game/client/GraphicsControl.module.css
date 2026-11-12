@@ -47,3 +47,8 @@
 .control.docked { position: static; width: auto; transform: none; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px 12px; padding: 9px 10px; }
 .docked .adaptive { grid-column: 1 / -1; }
 .docked > label:first-child { gap: 6px; }
+/* There it takes the menu's look: square, blue-black, lit in the menu accent. */
+.control.docked { border-color: #ffffff2b; border-radius: 0; background: #05080c99; }
+.docked select { border-radius: 0; border-color: #ffffff2b; background: #0a0f15; }
+.docked kbd { border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--accent); }
+.docked .adaptive input { accent-color: var(--accent); }

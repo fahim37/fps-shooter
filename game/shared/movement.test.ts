@@ -52,6 +52,13 @@ describe.each([30, 60, 120])("sprint steering at %i Hz", (rate) => {
     expect(Math.abs(state.vz)).toBeLessThan(0.01);
   });
 
+  it("dashes diagonally at full speed with two keys held", () => {
+    input.forward = 1; input.right = 1;
+    mover.step(state, { ...input, dash: true }, 1 / rate);
+    expect(state.vx).toBeCloseTo(DASH_SPEED * Math.SQRT1_2);
+    expect(state.vz).toBeCloseTo(-DASH_SPEED * Math.SQRT1_2);
+  });
+
   it("dashes straight ahead with no key held", () => {
     input.forward = 0; input.sprint = false;
     mover.step(state, { ...input, dash: true }, 1 / rate);
