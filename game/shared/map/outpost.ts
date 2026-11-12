@@ -6,6 +6,7 @@ import outpostPieces from "../generated/outpost-pieces.json";
  * as one piece by scripts/assets/outpost.ts at 4x its source scale: a walled 34 x 66 m compound
  * sized for 6v6. A two-story barracks with two watchtowers splits the middle; the ends are
  * raised platforms (4.2 m) with ramps down, Blue's to the north (-Z), Red's to the south.
+ * `Clip_Outpost` stands on the outer wall so nobody climbs out over it.
  */
 
 type Footprint = { x: number; z: number; sx: number; sz: number; h: number };
@@ -49,7 +50,10 @@ export function buildOutpost(): MapData {
       { text: "SOUTH", x: 0, z: 24 },
     ],
   };
-  return { id: "outpost", pieces: [{ kit: "outpost", name: "Outpost", x: 0, y: 0, z: 0, ry: 0 }], spawns, half, kits: ["outpost"], overview };
+  return { id: "outpost", pieces: [
+    { kit: "outpost", name: "Outpost", x: 0, y: 0, z: 0, ry: 0 },
+    { kit: "outpost", name: "Clip_Outpost", x: 0, y: 0, z: 0, ry: 0 },
+  ], spawns, half, kits: ["outpost"], overview };
 }
 
 let cached: MapData | null = null;

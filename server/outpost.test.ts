@@ -31,6 +31,24 @@ describe("outpost", () => {
       for (const r of red) expect(lineOfSight(RAPIER, world, eye(b), eye(r)), `${b.x},${b.z} sees ${r.x},${r.z}`).toBe(false);
   });
 
+  it("keeps players in when they run, jump and dash up the ramps on the west wall", () => {
+    // The ramps lean on the 8 m wall: without Clip_Outpost players walked up them and over it.
+    const mover = new Mover(RAPIER, world), s = newMoveState(0, 0, 0);
+    const input: MoveInput = { forward: 1, right: 0, yaw: 0, jump: false, sprint: true, crouch: false, ads: 0, speedMult: 1, pitch: 0.6 };
+    try {
+      for (let z = -6; z <= 9; z += 1) for (let a = -60; a <= 60; a += 30) {
+        mover.teleport(s, -11, 0.1, z);
+        input.yaw = Math.PI / 2 + (a * Math.PI) / 180;
+        for (let i = 0; i < 60 * 6; i++) {
+          input.jump = s.grounded;
+          input.dash = i % 90 === 30;
+          mover.step(s, input, 1 / 60);
+          expect(Math.abs(s.x) < 16.2 && Math.abs(s.z) < 32.2, `from -11,${z} at ${a}° got out to ${s.x},${s.y},${s.z}`).toBe(true);
+        }
+      }
+    } finally { mover.dispose(); }
+  }, 60_000);
+
   it.each([[-9, 4.2, -28.5], [0, 4.2, 27]])("lets a player walk from the field up onto the platform at %d,%d,%d", (x, y, z) => {
     // Follow the bots' path with the real player movement.
     const nav = getNav("outpost");

@@ -5,6 +5,7 @@ import {
   RAW, PUBLIC_MODELS, GENERATED, readModel, writeGLB, buildCollision, writeCollisionBin, pieceBounds, writeJSON,
   type CollisionMesh, type PieceInfo,
 } from "./common";
+import { boxesMesh, boxBounds, type Box } from "./arena";
 
 /**
  * "Outpost": the "LOWPOLY | FPS | TDM | GAME | MAP" by ResoForge (Sketchfab, CC BY 4.0), a
@@ -18,11 +19,17 @@ import {
  * Players wear blue and red, so the source's red, orange-red and blue materials are repainted in
  * drab military colors. Building footprints for the minimap are measured here too.
  *
+ * `Clip_Outpost` stands on the outer wall, from its inner face outward and up to `CLIP_H`: the
+ * ramps leaning on the west wall reach its 8 m top, and players walked up them and out of the
+ * map. Clips stop players, not bullets.
+ *
  * Put the downloaded GLB at assets-raw/resoforge/map.glb.
  */
 
 export const OUTPOST_SCALE = 4;
 const SRC = path.join(RAW, "resoforge/map.glb");
+/** The outer wall's inner faces (measured on the scaled collision) and the clips' top. */
+const WALL_X = 16, WALL_Z = 32, CLIP_H = 40;
 
 /** Repaints by source material (sRGB hex). Others keep their colors (grays, tan wood). */
 const REPAINT: Record<string, string> = {
@@ -69,13 +76,25 @@ export async function importOutpost() {
 
   const bytes = await writeGLB(doc, path.join(PUBLIC_MODELS, "outpost.glb"));
   // Collision from the written document's real triangles (low-poly already: light simplification).
-  const collision = new Map<string, CollisionMesh | null>([["Outpost", buildCollision(piece, null, 0.02)]]);
+  const clips = perimeterClips();
+  const collision = new Map<string, CollisionMesh | null>([["Outpost", buildCollision(piece, null, 0.02)], ["Clip_Outpost", boxesMesh(clips)]]);
   const { ranges, positionsByteLength } = writeCollisionBin(path.join(PUBLIC_MODELS, "outpost.collision.bin"), collision);
-  const pieces: Record<string, PieceInfo> = { Outpost: { ...pieceBounds(piece), col: ranges.get("Outpost") } };
+  const pieces: Record<string, PieceInfo> = {
+    Outpost: { ...pieceBounds(piece), col: ranges.get("Outpost") },
+    Clip_Outpost: { ...boxBounds(clips), col: ranges.get("Clip_Outpost") },
+  };
   writeJSON(path.join(GENERATED, "outpost-pieces.json"), { positionsByteLength, pieces, footprints });
   const tris = (ranges.get("Outpost")?.[3] ?? 0) / 3;
   const p = pieces.Outpost;
   console.log(`[outpost] ${(bytes / 1e6).toFixed(2)} MB glb, ${tris} collision tris, ${footprints.length} footprints, bounds ${p.min.join(",")} .. ${p.max.join(",")}`);
+}
+
+/** Four boxes over the outer wall, each from its inner face 1.5 m outward, overlapping at the corners. */
+function perimeterClips(): Box[] {
+  const box = (x0: number, x1: number, z0: number, z1: number): Box =>
+    [0, 1, 2, 3, 4, 5, 6, 7].map((k) => [k & 1 ? x1 : x0, k & 4 ? CLIP_H : -1, k & 2 ? z1 : z0] as [number, number, number]);
+  const X = WALL_X + 1.5, Z = WALL_Z + 1.5;
+  return [box(-X, -WALL_X, -Z, Z), box(WALL_X, X, -Z, Z), box(-X, X, -Z, -WALL_Z), box(-X, X, WALL_Z, Z)];
 }
 
 /** The Sketchfab export's "Root" node holding the map objects. */
