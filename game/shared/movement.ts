@@ -125,18 +125,19 @@ export class Mover {
 
     // Crouching out of a sprint slides. Pressed in the air, it slides on landing instead.
     const pressedCrouch = inp.crouch && !s.crouchHeld;
-    let started = false;
+    const started = false; // `let` again when the slide start below comes back
     s.crouchHeld = inp.crouch;
-    if (pressedCrouch && s.sprinting && !s.grounded) s.slideQueued = true;
+    // Slide disabled for now (kept for later): with the start commented out, s.sliding never turns on.
+    // if (pressedCrouch && s.sprinting && !s.grounded) s.slideQueued = true;
     s.slideCooldown = Math.max(0, s.slideCooldown - dt);
-    const entry = Math.hypot(s.vx, s.vz);
-    if (!dashing && !s.sliding && s.grounded && s.slideCooldown <= 0 && entry > SLIDE_MIN_ENTRY && (s.slideQueued || pressedCrouch && s.sprinting)) {
-      started = true;
-      s.sliding = true;
-      s.slideTime = 0;
-      const k = Math.max(entry, SLIDE_SPEED * inp.speedMult) / entry;
-      s.vx *= k; s.vz *= k;
-    }
+    // const entry = Math.hypot(s.vx, s.vz);
+    // if (!dashing && !s.sliding && s.grounded && s.slideCooldown <= 0 && entry > SLIDE_MIN_ENTRY && (s.slideQueued || pressedCrouch && s.sprinting)) {
+    //   started = true;
+    //   s.sliding = true;
+    //   s.slideTime = 0;
+    //   const k = Math.max(entry, SLIDE_SPEED * inp.speedMult) / entry;
+    //   s.vx *= k; s.vz *= k;
+    // }
     if (s.grounded) s.slideQueued = false;
 
     // A sprint starts on the ground but carries through the air: dropping off a curb or

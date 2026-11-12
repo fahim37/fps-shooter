@@ -11,8 +11,9 @@ const KEYBOARD: { title: string; rows: Row[] }[] = [
     [["WASD"], "Move"],
     [["Shift"], "Sprint", "Hold while moving forward"],
     [["Space"], "Jump"],
-    [["Ctrl", "C"], "Crouch", "Either key · steadier aim, quieter steps"],
-    [["Shift", "C"], "Slide", "Tap crouch (C or Ctrl) while sprinting · sideways too (Shift + A or D) · tap again to stop early · jump out of it to carry the speed"],
+    [["Ctrl"], "Crouch", "Steadier aim, quieter steps"],
+    // Slide disabled for now:
+    // [["Shift", "C"], "Slide", "Tap crouch (C or Ctrl) while sprinting · sideways too (Shift + A or D) · tap again to stop early · jump out of it to carry the speed"],
     [["Q", "E"], "Peek left / right", "Aims down sights while peeking"],
   ] },
   { title: "COMBAT", rows: [
@@ -22,7 +23,7 @@ const KEYBOARD: { title: string; rows: Row[] }[] = [
     [["1", "2"], "Primary / sidearm", "Mouse wheel swaps too"],
     [["F"], "Dash", "A very fast burst the way you are moving (straight ahead if standing still) · look up to rise a little · two per life · every 2 kills refill 2 (2 held at most)"],
     [["Z"], "Mark enemy", "Look at an enemy and press: a mark follows them on screen for your team for a few seconds · they get a MARKED warning"],
-    [["X"], "Grenade", "Press to pull the pin (the fuse starts), hold to aim along the arc, release to throw · it blows up in your hand if held too long · right mouse lobs"],
+    [["C", "G"], "Grenade", "Press to pull the pin (the fuse starts), hold to aim along the arc, release to throw · it blows up in your hand if held too long · right mouse lobs"],
   ] },
   { title: "GAME", rows: [
     [["B"], "Loadout", "Weapon and sights for your next spawn"],
@@ -64,7 +65,7 @@ const TIPS = [
   "Play in fullscreen (Enter fullscreen match): in a window, shortcuts like Ctrl+W can close the tab.",
   "Headshots hit much harder than body shots.",
   "Standing still or crouching tightens your spread; running and jumping widen it.",
-  "A slide gets you across an open gap fast and low, and you can fire through it. Enemies hear it.",
+  // "A slide gets you across an open gap fast and low, and you can fire through it. Enemies hear it.",
   "Listen: a bullet cracking past your ear came from the side you hear it on.",
   "Out of the fight for a few seconds, your health comes back on its own.",
   "Every elimination refills part of your reserve ammo.",

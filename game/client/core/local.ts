@@ -320,7 +320,7 @@ export class LocalPlayer {
 
     // Grenade: pressing C (or G) pulls the pin and the fuse starts burning; hold to aim along the
     // arc, release to throw. Right mouse switches to an underhand lob.
-    const draw = input.consume("KeyX") || input.consume("KeyG");
+    const draw = input.consume("KeyC") || input.consume("KeyG");
     if (draw && this.grenades > 0 && !this.grenadeAt && !this.releasing) {
       this.endEmote(now);
       this.grenadeAt = this.fuseAt = now;
@@ -330,7 +330,7 @@ export class LocalPlayer {
     }
     if (this.grenadeAt) {
       this.lob = input.ads;
-      const held = input.held("KeyX") || input.held("KeyG") || input.held("TouchGrenade");
+      const held = input.held("KeyC") || input.held("KeyG") || input.held("TouchGrenade");
       const left = this.fuseAt ? GRENADE.fuseMs - (now - this.fuseAt) : Infinity;
       // Like PUBG, hold a cooked grenade too long and it goes off in your hand.
       if (left <= 60) this.throwGrenade(now, true);

@@ -61,13 +61,13 @@ describe("browser shortcut suppression", () => {
     expect(unload()).toBe(false);
   });
 
-  it("leaves X to the grenade and crouches with C", () => {
+  it("leaves C to the grenade and crouches with Ctrl", () => {
     const { input, key } = attachedInput();
-    key("KeyX", false);
-    expect(input.crouch).toBe(false);
-    expect(input.held("KeyX")).toBe(true);
-    expect(input.consume("KeyX")).toBe(true);
     key("KeyC", false);
+    expect(input.crouch).toBe(false);
+    expect(input.held("KeyC")).toBe(true);
+    expect(input.consume("KeyC")).toBe(true);
+    key("ControlLeft", false);
     expect(input.crouch).toBe(true);
     input.detach();
   });
