@@ -29,6 +29,11 @@ export interface WeaponDef {
   /** Degrees of camera kick per shot. */
   recoilUp: number;
   recoilSide: number;
+  /**
+   * Share of each kick that stays in the view instead of springing back. High on automatics: held
+   * down, the aim walks up and the player pulls the mouse down against it.
+   */
+  recoilClimb: number;
   adsFov: number;
   adsMs: number;
   moveMult: number;
@@ -45,31 +50,31 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   ar: W({
     id: "ar", name: "STM-556", slot: 0, auto: true, rpm: 600, damage: 26, headMult: 2.6, limbMult: 0.85, pellets: 1,
     falloffStart: 30, falloffEnd: 65, minMult: 0.72, range: 200, mag: 35, reserve: 120, reloadMs: 1900, equipMs: 450,
-    spreadHip: 1.7, spreadAds: 0.12, spreadMove: 1.1, spreadAir: 5, recoilUp: 0.4, recoilSide: 0.12,
+    spreadHip: 1.7, spreadAds: 0.12, spreadMove: 1.1, spreadAir: 5, recoilUp: 0.5, recoilSide: 0.12, recoilClimb: 0.85,
     adsFov: 55, adsMs: 220, moveMult: 0.95,
   }),
   smg: W({
     id: "smg", name: "Honey Badger", slot: 0, auto: true, rpm: 880, damage: 19, headMult: 2.4, limbMult: 0.9, pellets: 1,
     falloffStart: 14, falloffEnd: 35, minMult: 0.6, range: 150, mag: 40, reserve: 160, reloadMs: 1650, equipMs: 350,
-    spreadHip: 1.6, spreadAds: 0.22, spreadMove: 0.9, spreadAir: 3.5, recoilUp: 0.26, recoilSide: 0.15,
+    spreadHip: 1.6, spreadAds: 0.22, spreadMove: 0.9, spreadAir: 3.5, recoilUp: 0.3, recoilSide: 0.15, recoilClimb: 0.85,
     adsFov: 62, adsMs: 170, moveMult: 1.05,
   }),
   shotgun: W({
     id: "shotgun", name: "Pump Shotgun", slot: 0, auto: false, rpm: 150, damage: 15, headMult: 1.4, limbMult: 0.9, pellets: 9,
     falloffStart: 9, falloffEnd: 22, minMult: 0.25, range: 60, mag: 6, reserve: 30, reloadMs: 2250, equipMs: 450,
-    spreadHip: 5.5, spreadAds: 4.2, spreadMove: 1, spreadAir: 2, recoilUp: 2.2, recoilSide: 0.35,
+    spreadHip: 5.5, spreadAds: 4.2, spreadMove: 1, spreadAir: 2, recoilUp: 2.2, recoilSide: 0.35, recoilClimb: 0.5,
     adsFov: 65, adsMs: 200, moveMult: 0.97,
   }),
   sniper: W({
     id: "sniper", name: "Kalamit 52B", slot: 0, auto: false, rpm: 90, damage: 100, headMult: 2, limbMult: 0.8, pellets: 1,
     falloffStart: 80, falloffEnd: 200, minMult: 1, range: 300, mag: 5, reserve: 25, reloadMs: 2500, equipMs: 600,
-    spreadHip: 7, spreadAds: 0.02, spreadMove: 3, spreadAir: 9, recoilUp: 3.2, recoilSide: 0.2,
+    spreadHip: 7, spreadAds: 0.02, spreadMove: 3, spreadAir: 9, recoilUp: 3.2, recoilSide: 0.2, recoilClimb: 0.5,
     adsFov: 18, adsMs: 170, moveMult: 0.9, scope: true,
   }),
   pistol: W({
     id: "pistol", name: "Peacemaker", slot: 1, auto: false, rpm: 190, damage: 44, headMult: 4.55, limbMult: 0.9, pellets: 1,
     falloffStart: 18, falloffEnd: 40, minMult: 0.6, range: 120, mag: 6, reserve: 36, reloadMs: 2600, equipMs: 250,
-    spreadHip: 0.18, spreadAds: 0.16, spreadMove: 0.2, spreadAir: 3, recoilUp: 1.5, recoilSide: 0.2,
+    spreadHip: 0.18, spreadAds: 0.16, spreadMove: 0.2, spreadAir: 3, recoilUp: 1.5, recoilSide: 0.2, recoilClimb: 0.5,
     adsFov: 66, adsMs: 150, moveMult: 1.05,
   }),
 };

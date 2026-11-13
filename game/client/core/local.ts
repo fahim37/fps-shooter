@@ -49,6 +49,10 @@ const SLIDE_ROLL = 0.05;
 const SHOT_ROLL: Record<WeaponId, number> = { ar: 0.006, smg: 0.005, shotgun: 0.018, sniper: 0.014, pistol: 0.01 };
 /** Most the twist builds up to under automatic fire. */
 const MAX_SHOT_ROLL = 0.025;
+/** Aiming takes this share off the kick: steadier, but the gun still climbs. */
+const CLIMB_ADS_DAMP = 0.3;
+/** Share of the full climb on a burst's first shot, and how much each following shot adds. */
+const CLIMB_FIRST = 0.35, CLIMB_RAMP = 0.25;
 const STRAFE_ROLL = 0.011;
 
 export class LocalPlayer {
@@ -663,18 +667,29 @@ export class LocalPlayer {
     // The last round goes straight into a reload, whose own pump chambers the next.
     if (a.mag > 0) audio.cycle(this.weapon);
 
-    // Recoil: part of the kick stays (the gun climbs), the rest recovers.
-    const damp = (1 - this.ads * 0.45) * (this.crouchT > 0.5 ? 0.85 : 1);
-    const up = ((def.recoilUp * Math.PI) / 180) * damp * (0.9 + Math.random() * 0.2);
-    const side = ((def.recoilSide * Math.PI) / 180) * damp * (Math.random() * 2 - 1) * 0.7;
-    this.pitch = THREE.MathUtils.clamp(this.pitch + up * 0.1, -1.5, 1.5);
-    this.yaw += side * 0.1;
-    this.kickPitch += up * 0.9;
-    this.kickYaw += side * 0.9;
+    this.applyRecoil(def);
     const twist = SHOT_ROLL[this.weapon] * (0.6 + Math.random() * 0.4) * (1 - this.ads * 0.6) * (Math.random() < 0.5 ? -1 : 1);
     this.shotRoll = THREE.MathUtils.clamp(this.shotRoll + twist, -MAX_SHOT_ROLL, MAX_SHOT_ROLL);
     this.recoil = 0.65;
     this.burst++;
+  }
+
+  /**
+   * One shot's kick on the view. The `recoilClimb` share stays and the player pulls the mouse
+   * down against it: held down, an automatic walks steadily up; a single-shot gun is brought back
+   * down after each shot. An automatic's first shots climb less, so tapping stays accurate. The
+   * rest is a punch that springs back.
+   */
+  applyRecoil(def: (typeof WEAPONS)[WeaponId], random: () => number = Math.random) {
+    const damp = (1 - this.ads * CLIMB_ADS_DAMP) * (this.crouchT > 0.5 ? 0.85 : 1);
+    const up = ((def.recoilUp * Math.PI) / 180) * damp * (0.9 + random() * 0.2);
+    const side = ((def.recoilSide * Math.PI) / 180) * damp * (random() * 2 - 1) * 0.7;
+    const ramp = def.auto ? Math.min(1, CLIMB_FIRST + CLIMB_RAMP * this.burst) : 1;
+    const stays = def.recoilClimb * ramp;
+    this.pitch = THREE.MathUtils.clamp(this.pitch + up * stays, -1.5, 1.5);
+    this.yaw += side * stays;
+    this.kickPitch += up * (1 - stays);
+    this.kickYaw += side * (1 - stays);
   }
 
   /** Starts the throw of the grenade in hand, or with `drop` lets it fall (it has cooked off). */

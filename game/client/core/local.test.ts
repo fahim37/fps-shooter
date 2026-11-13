@@ -5,6 +5,7 @@ import { ShotCadence } from "./cadence";
 import { useLoadout } from "../loadout";
 import { DEFAULT_OPTICS } from "../../shared/optics";
 import { useSettings } from "../settings";
+import { WEAPONS } from "../../shared/weapons";
 
 vi.mock("./audio", () => ({ audio: { switchWeapon: vi.fn(), stopWorking: vi.fn(), slide: vi.fn() } }));
 vi.mock("../../shared/physics", () => ({ raycastWorld: () => null }));
@@ -134,5 +135,38 @@ describe("peeking", () => {
     lean(local, [], true);
     expect(peeking(local)).toBe(false);
     expect(local.leanSide).toBe(0);
+  });
+});
+
+describe("recoil climb", () => {
+  const deg = (r: number) => (r * 180) / Math.PI;
+  /** Pitch the view keeps after `shots` held-down shots of `weapon`, with no pull-down. */
+  function climb(weapon: "ar" | "smg" | "sniper", shots: number, ads = 0) {
+    const local = player();
+    Object.assign(local, { pitch: 0, yaw: 0, kickPitch: 0, kickYaw: 0, burst: 0, ads, crouchT: 0 });
+    for (let i = 0; i < shots; i++) {
+      local.applyRecoil(WEAPONS[weapon], () => 0.5);
+      (local as unknown as { burst: number }).burst++;
+    }
+    return deg(local.pitch);
+  }
+
+  it("walks a held-down automatic up a magazine's worth, so the player has to pull down", () => {
+    expect(climb("ar", 35)).toBeGreaterThan(12);
+    expect(climb("smg", 40)).toBeGreaterThan(8);
+    // Aimed it climbs less, but still climbs.
+    expect(climb("ar", 35, 1)).toBeGreaterThan(8);
+    expect(climb("ar", 35, 1)).toBeLessThan(climb("ar", 35));
+  });
+
+  it("keeps a single tap nearly where it was aimed", () => {
+    expect(climb("ar", 1)).toBeLessThan(0.2);
+    expect(climb("ar", 1)).toBeLessThan(climb("ar", 5) / 5);
+  });
+
+  it("leaves part of a single-shot gun's kick for the player to bring back down", () => {
+    const shot = climb("sniper", 1);
+    expect(shot).toBeGreaterThan(1);
+    expect(shot).toBeLessThan(WEAPONS.sniper.recoilUp * 0.6);
   });
 });
