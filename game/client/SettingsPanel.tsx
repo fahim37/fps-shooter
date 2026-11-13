@@ -44,7 +44,6 @@ function Slider({ label, value, fallback, format, min, max, step = 1, index, onC
 /** The settings players change most, right in the home lobby; everything else stays in the dialog. */
 export const QuickSettings = memo(function QuickSettings({ onMore }: { onMore: () => void }) {
   const s = useSettings();
-  const at = QUALITY_ORDER.indexOf(s.quality);
   return <section className="quick-settings" aria-label="Quick settings">
     <div className="quick-settings-head"><span className="field-caption">QUICK SETTINGS</span><button type="button" className="text-button" onClick={onMore}>All settings →</button></div>
     <Slider index={0} label="Sensitivity" value={s.sensitivity} fallback={TUNING_DEFAULTS.sensitivity} format={(v) => v.toFixed(2)} min={SENSITIVITY_RANGE.min} max={SENSITIVITY_RANGE.max} step={SENSITIVITY_RANGE.step} onChange={(sensitivity) => s.set({ sensitivity })} />
@@ -52,14 +51,43 @@ export const QuickSettings = memo(function QuickSettings({ onMore }: { onMore: (
     <Slider index={2} label="Field of view" value={s.fov} fallback={TUNING_DEFAULTS.fov} format={(v) => `${v}°`} min={60} max={110} onChange={(fov) => s.set({ fov })} />
     <Slider index={3} label="Volume" value={s.volume} fallback={TUNING_DEFAULTS.volume} format={(v) => `${Math.round(v * 100)}%`} min={0} max={1} step={0.05} onChange={(volume) => s.set({ volume })} />
     <Slider index={4} label="Lobby music" value={s.musicVolume} fallback={TUNING_DEFAULTS.musicVolume} format={(v) => v ? `${Math.round(v * 100)}%` : "Off"} min={0} max={1} step={0.05} onChange={(musicVolume) => s.set({ musicVolume })} />
-    <div className="qs-quality">
-      <span className="field-caption" id="qs-quality-label">GRAPHICS<em>F6 cycles in a match</em></span>
-      <div className="qs-seg" role="radiogroup" aria-labelledby="qs-quality-label" style={{ "--n": QUALITY_ORDER.length, "--at": Math.max(0, at) } as CSSProperties}>
-        <span className="qs-seg-pill" aria-hidden="true" />
-        {QUALITY_ORDER.map((q) => <button type="button" role="radio" key={q} aria-checked={s.quality === q} aria-label={`${QUALITY_LABEL[q]}: ${QUALITY_NOTE[q].toLowerCase()}`} onClick={() => s.set({ quality: q })}>
-          <span className="qs-tier"><b>{QUALITY_LABEL[q]}</b><small>{QUALITY_NOTE[q]}</small></span>
-        </button>)}
-      </div>
+    <QualitySeg hint="F6 cycles in a match" />
+  </section>;
+});
+
+/** Graphics tiers as a segmented control with a lit pill that slides to the pick. */
+function QualitySeg({ hint }: { hint: string }) {
+  const quality = useSettings((s) => s.quality);
+  const id = useId();
+  const at = QUALITY_ORDER.indexOf(quality);
+  return <div className="qs-quality">
+    <span className="field-caption" id={id}>GRAPHICS<em>{hint}</em></span>
+    <div className="qs-seg" role="radiogroup" aria-labelledby={id} style={{ "--n": QUALITY_ORDER.length, "--at": Math.max(0, at) } as CSSProperties}>
+      <span className="qs-seg-pill" aria-hidden="true" />
+      {QUALITY_ORDER.map((q) => <button type="button" role="radio" key={q} aria-checked={quality === q} aria-label={`${QUALITY_LABEL[q]}: ${QUALITY_NOTE[q].toLowerCase()}`} onClick={() => useSettings.getState().set({ quality: q })}>
+        <span className="qs-tier"><b>{QUALITY_LABEL[q]}</b><small>{QUALITY_NOTE[q]}</small></span>
+      </button>)}
+    </div>
+  </div>;
+}
+
+/** Every in-match setting, right in the pause menu: no dialog to open mid-fight. */
+export const MatchSettings = memo(function MatchSettings() {
+  const s = useSettings();
+  return <section className="match-settings" aria-label="Match settings">
+    <div className="match-settings-sliders">
+      <Slider index={0} label="Sensitivity" value={s.sensitivity} fallback={TUNING_DEFAULTS.sensitivity} format={(v) => v.toFixed(2)} min={SENSITIVITY_RANGE.min} max={SENSITIVITY_RANGE.max} step={SENSITIVITY_RANGE.step} onChange={(sensitivity) => s.set({ sensitivity })} />
+      <Slider index={1} label="ADS sensitivity" value={s.adsSensitivity} fallback={TUNING_DEFAULTS.adsSensitivity} format={(v) => v.toFixed(1)} min={0.2} max={1.5} step={0.1} onChange={(adsSensitivity) => s.set({ adsSensitivity })} />
+      <Slider index={2} label="Field of view" value={s.fov} fallback={TUNING_DEFAULTS.fov} format={(v) => `${v}°`} min={60} max={110} onChange={(fov) => s.set({ fov })} />
+      <Slider index={3} label="Volume" value={s.volume} fallback={TUNING_DEFAULTS.volume} format={(v) => `${Math.round(v * 100)}%`} min={0} max={1} step={0.05} onChange={(volume) => s.set({ volume })} />
+    </div>
+    <QualitySeg hint="F6 cycles while playing" />
+    <div className="match-settings-checks">
+      <label className="check-label"><input type="checkbox" checked={s.adaptiveResolution} onChange={(e) => s.set({ adaptiveResolution: e.target.checked })} /> Adaptive resolution</label>
+      <label className="check-label"><input type="checkbox" checked={s.fpsMeter} onChange={(e) => s.set({ fpsMeter: e.target.checked })} /> FPS meter</label>
+      <label className="check-label"><input type="checkbox" checked={s.thirdPerson} onChange={(e) => s.set({ thirdPerson: e.target.checked })} /> Third-person camera</label>
+      <label className="check-label"><input type="checkbox" checked={s.leanToggle} onChange={(e) => s.set({ leanToggle: e.target.checked })} /> Toggle peek (Q / E)</label>
+      <label className="check-label" title="Less bloom and shadow contrast, no darkened edges while aiming"><input type="checkbox" checked={s.clearView} onChange={(e) => s.set({ clearView: e.target.checked })} /> Clearer combat view</label>
     </div>
   </section>;
 });

@@ -12,10 +12,9 @@ function cycleQuality() {
 }
 
 /** F6 is available during pointer lock, when clicking a normal select is impossible.
- *  `docked` renders inside the desktop pause menu; the floating one then stays hidden. */
-export function GraphicsControl({ docked = false }: { docked?: boolean }) {
+ *  While paused on desktop the pause menu's own settings take over and this stays hidden. */
+export function GraphicsControl() {
   const quality = useSettings((s) => s.quality);
-  const adaptive = useSettings((s) => s.adaptiveResolution);
   const ready = useHud((s) => s.ready);
   const locked = useHud((s) => s.locked);
   const alive = useHud((s) => s.alive);
@@ -26,7 +25,6 @@ export function GraphicsControl({ docked = false }: { docked?: boolean }) {
   const scoreboard = useHud((s) => s.scoreboard || s.phase === "ended");
 
   useEffect(() => {
-    if (docked) return;
     const changeQuality = (e: KeyboardEvent) => {
       if (e.code !== "F6" || e.repeat || !useHud.getState().ready) return;
       e.preventDefault();
@@ -34,15 +32,7 @@ export function GraphicsControl({ docked = false }: { docked?: boolean }) {
     };
     window.addEventListener("keydown", changeQuality);
     return () => window.removeEventListener("keydown", changeQuality);
-  }, [docked]);
-
-  if (docked) return <div className={`${styles.control} ${styles.docked}`} aria-label="Live graphics settings">
-    <label htmlFor="match-graphics-quality">GRAPHICS <kbd>F6</kbd></label>
-    <select id="match-graphics-quality" aria-label="In-match graphics quality" value={quality} onChange={(e) => useSettings.getState().set({ quality: e.target.value as Quality })}>
-      {QUALITY_ORDER.map((q) => <option key={q} value={q}>{q === "low" ? "Low / performance" : q[0].toUpperCase() + q.slice(1)}</option>)}
-    </select>
-    <label className={styles.adaptive}><input type="checkbox" checked={adaptive} onChange={(e) => useSettings.getState().set({ adaptiveResolution: e.target.checked })} />Adaptive resolution</label>
-  </div>;
+  }, []);
 
   if (!ready || scoreboard || customizing || loadoutOpen || (touch && menu) || (!alive && (locked || touch) && !menu)) return null;
   // Paused on desktop: the docked copy in the deploy menu takes over.

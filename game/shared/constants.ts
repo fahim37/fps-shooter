@@ -40,9 +40,9 @@ export const SLIDE_MAX_SECONDS = 1.7;
 export const SLIDE_COOLDOWN = 0.55;
 /** How fast a slide's direction follows the keys (rad/s at full input). */
 export const SLIDE_STEER = 1.1;
-/** Dash (F): a very fast, level burst the way the keys point (straight ahead with none held). About 11 m. */
+/** Dash (F): a very fast, level burst the way the keys point (straight ahead with none held). About 9.7 m. */
 export const DASH_SPEED = 46;
-export const DASH_SECONDS = 0.235;
+export const DASH_SECONDS = 0.21;
 /** Looking up lifts a dash a little: the share of its speed that goes upward at the steepest look that counts. */
 export const DASH_LIFT = 0.3;
 /** A life starts with DASH_MAX dashes, the most held at once. Below that, every DASH_KILLS kills give DASH_REFILL more. */

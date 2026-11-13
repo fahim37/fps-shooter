@@ -15,7 +15,8 @@ import { SkyAndSun } from "./world/SkyAndSun";
 import { Ground } from "./world/Ground";
 import { StaticWorld } from "./world/StaticWorld";
 import { PostFX } from "./world/PostFX";
-import { SettingsDialog } from "./SettingsDialog";
+import { MatchSettings } from "./SettingsPanel";
+import { LoadingScreen } from "./LoadingScreen";
 import { RoomInvite } from "./RoomInvite";
 import { GraphicsControl } from "./GraphicsControl";
 import { PerformanceTuner } from "./world/PerformanceTuner";
@@ -100,7 +101,6 @@ function MatchHud({ game, map, onLeave }: { game: Game | null; map: MapId; onLea
   const fpsMeter = useSettings((s) => s.fpsMeter);
   const clearView = useSettings((s) => s.clearView);
   const [now, setNow] = useState(0);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const optic = useLoadout((s) => s.optics[h.weapon]);
   const baseFov = useSettings((s) => s.fov);
   useEffect(() => { const timer = setInterval(() => setNow(performance.now()), 100); return () => clearInterval(timer); }, []);
@@ -171,19 +171,16 @@ function MatchHud({ game, map, onLeave }: { game: Game | null; map: MapId; onLea
         </>}
         {h.touch && <button className="outline-button" onClick={() => { game?.input.releaseAll(); hud().set({ menu: false, customizingControls: true }); }}>CUSTOMIZE TOUCH CONTROLS</button>}
         <RoomInvite code={h.code} />
-        {!h.touch && <GraphicsControl docked />}
         <div className="deploy-tools">
           <button className="outline-button" onClick={() => hud().set({ help: true })}>HOW TO PLAY</button>
-          <button className="outline-button" onClick={() => setSettingsOpen(true)}>SETTINGS</button>
+          <button className="outline-button" onClick={onLeave}>RETURN TO LOBBY</button>
         </div>
-        <button className="outline-button" onClick={onLeave}>RETURN TO LOBBY</button>
       </div>
-      {game && <div className="deploy-loadout"><span className="eyebrow">FIELD LOADOUT</span><LoadoutPicker game={game} /></div>}
-    </div>{settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}</div> : <div className="modal-shade"><div className="match-modal">
-      <span className="eyebrow">STRIKELINE / {h.code}</span>
-      <h2>{failed ? "Connection interrupted" : h.conn === "reconnecting" ? "Reconnecting…" : `Loading ${MAPS[map].name}…`}</h2>
-      {failed ? <p role="alert">{h.error}</p> : !h.ready ? <p>Preparing terrain, collision and character rigs.</p> : <p>Waiting for the game server.</p>}
-      <button className="outline-button" onClick={onLeave}>RETURN TO LOBBY</button>
-    </div></div>)}
+      <div className="deploy-loadout">
+        {game && <><span className="eyebrow">FIELD LOADOUT</span><LoadoutPicker game={game} /></>}
+        <span className="eyebrow">SETTINGS</span>
+        <MatchSettings />
+      </div>
+    </div></div> : <LoadingScreen map={map} code={h.code} loading={h.loading} ready={h.ready} conn={h.conn} error={h.error} onLeave={onLeave} />)}
   </>;
 }

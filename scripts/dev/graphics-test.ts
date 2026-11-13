@@ -70,13 +70,11 @@ async function main() {
 
     await page.evaluate(() => document.exitPointerLock());
     await page.getByRole("button", { name: "PLAY IN A WINDOW" }).waitFor();
-    await page.getByLabel("In-match graphics quality", { exact: true }).selectOption("medium");
+    await page.getByRole("radio", { name: /^Med:/ }).click();
     await page.getByLabel("Adaptive resolution", { exact: true }).check();
-    await page.getByRole("button", { name: "SETTINGS", exact: true }).click();
     const clearView = page.getByLabel("Clearer combat view", { exact: true });
     assert.ok(await clearView.isChecked(), "Clear view should be enabled by default");
     await clearView.uncheck();
-    await page.getByRole("button", { name: "Close settings", exact: true }).click();
     await page.getByRole("button", { name: "PLAY IN A WINDOW" }).click();
     await page.locator(".crosshair").waitFor();
     await page.mouse.down({ button: "right" });
@@ -84,9 +82,7 @@ async function main() {
     await page.mouse.up({ button: "right" });
     await page.evaluate(() => document.exitPointerLock());
     await page.getByRole("button", { name: "PLAY IN A WINDOW" }).waitFor();
-    await page.getByRole("button", { name: "SETTINGS", exact: true }).click();
     await clearView.check();
-    await page.getByRole("button", { name: "Close settings", exact: true }).click();
     await page.getByRole("button", { name: "PLAY IN A WINDOW" }).click();
     await page.locator(".crosshair").waitFor();
     await page.mouse.down({ button: "right" });
