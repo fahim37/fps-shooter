@@ -177,7 +177,8 @@ const GRIPS: Record<WeaponId, { right: Partial<Record<RightPose, HandGrip>> & { 
   smg: {
     right: { grip: pistolGrip([0, 0.0037, 0.003], [0.0135, 0.045, 0.024], -0.36, [0, 0.031, -0.05]) },
     left: {
-      support: cradle([0, 0.085, -0.235], [0.0285, 0.031, 0.06], "gun", 0.015),
+      // Far enough forward that the little finger stays on the handguard, not in the gap before the mag well.
+      support: cradle([0, 0.085, -0.235], [0.0285, 0.031, 0.06], "gun", -0.015),
       mag: magGrip([0, -0.0245, -0.1187], [0.0105, 0.055, 0.027], 0.17),
       charge: {
         part: { center: [0, 0.1075, 0.023], half: [0.021, 0.006, 0.006], round: 0.005 },
