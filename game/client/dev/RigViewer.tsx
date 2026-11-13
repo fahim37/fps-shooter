@@ -5,7 +5,8 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Environment } from "@react-three/drei";
 import * as THREE from "three";
 import { loadCharacter } from "../assets/characters";
-import { loadWeapons } from "../assets/weapons";
+import { EJECTION, loadWeapons } from "../assets/weapons";
+import { Casings } from "../core/casings";
 import { CharacterRig, type RigState } from "../player/CharacterRig";
 import { HitShapes, SHAPES } from "../player/hitShapes";
 import { quickScope } from "../player/quickScope";
@@ -61,6 +62,8 @@ if (typeof window !== "undefined") {
   };
 }
 
+const _at = new THREE.Vector3(), _turn = new THREE.Quaternion(), _still = new THREE.Vector3();
+
 function FppRig({ weapon, optic, ads, pitch, reload, orbit, shot, draw, raise, fire }: { weapon: WeaponId; optic?: OpticId; ads: number; pitch: number; reload: number; orbit: boolean; shot: number; draw: number; raise?: "up" | "down"; fire: number }) {
   const template = use(loadCharacter());
   const weapons = use(loadWeapons());
@@ -70,12 +73,13 @@ function FppRig({ weapon, optic, ads, pitch, reload, orbit, shot, draw, raise, f
     return r;
   }, [template, weapons, weapon]);
   const { scene, camera } = useThree();
+  const casings = useMemo(() => new Casings(), []);
   useEffect(() => {
     (window as unknown as { __rigs: CharacterRig[]; THREE: typeof THREE }).__rigs = [rig];
     (window as unknown as { THREE: typeof THREE }).THREE = THREE;
-    scene.add(rig.object);
-    return () => rig.dispose();
-  }, [rig, scene]);
+    scene.add(rig.object, casings.mesh);
+    return () => { rig.dispose(); scene.remove(casings.mesh); };
+  }, [rig, scene, casings]);
   const view = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch, 0, 0, "YXZ")), [pitch]);
   useFrame((state, dt) => {
     // Orbit mode inspects the viewmodel from outside; the rig still sees the player's eye.
@@ -93,6 +97,10 @@ function FppRig({ weapon, optic, ads, pitch, reload, orbit, shot, draw, raise, f
       ads: raise ? THREE.MathUtils.smoothstep(ads, 0, 1) : ads,
       quickScope: raise ? quickScope(weapon, ads, raise === "up", optic) : undefined,
     });
+    // Spent cases, as the game throws them.
+    const ejection = EJECTION[weapon];
+    if (rig.ejected && ejection) casings.eject(rig.gunToWorld(ejection.port, _at, _turn), _turn, _still, ejection, 0);
+    casings.update(Math.min(dt, 0.05));
   });
   return null;
 }

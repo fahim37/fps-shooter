@@ -3,6 +3,7 @@ import { MeshBVH } from "three-mesh-bvh";
 import { instantiateCharacter, type CharacterInstance, type CharacterTemplate } from "../assets/characters";
 import { cloneWeapon, SHELL_SEATS, WEAPON_PARTS, type WeaponTemplates } from "../assets/weapons";
 import type { WeaponId } from "../../shared/weapons";
+import { COCK_ANGLE } from "../player/CharacterRig";
 import type { BakedGrip, BakedHand, HandFrame, LeftPose, RightPose } from "../player/grip";
 
 /**
@@ -41,6 +42,10 @@ interface HandGrip {
   trigger?: readonly [number, number, number];
   /** Where the pad of the index finger rests on the trigger; solved instead of `trigger` curls. */
   triggerAt?: V3;
+  /** Where the pad of the thumb rests, e.g. on a hammer spur; solved instead of laying the thumb along the gun. */
+  thumbAt?: V3;
+  /** The hammer rolled back this far (rad) from fallen, where the bake's gun has it: `thumbAt` is on the fallen spur and rolls with it. */
+  hammer?: number;
   /**
    * How far (m) the palm is pressed on past first touching the gun. The glove's palm is thickly
    * padded: resting on its pads, the knuckles stand well off a narrow grip and the fingers cannot
@@ -135,13 +140,26 @@ function magGrip(center: V3, half: V3, pitch: number): HandGrip {
 const REVOLVER: HandGrip = { ...pistolGrip([0, -0.025, 0.014], [0.016, 0.04, 0.027], -0.2, [0, 0.017, -0.066], [-0.78, 0.3, -0.55]), thumbAside: 0.12 };
 
 /**
+ * Thumbing the hammer back. A big gloved hand low on a plow handle cannot reach the spur from the
+ * firing grip: as a real one does, it rides up the grip (the gun rolling down in it), the index
+ * off the trigger, and the thumb's pad goes on top of the spur.
+ */
+const REVOLVER_COCK: HandGrip = {
+  ...REVOLVER,
+  thumbAt: [0, 0.109, -0.018],
+  triggerAt: undefined,
+  trigger: [0.25, 0.35, 0.25],
+  search: { yaw: 0.2, roll: 0.3, tilt: 0.4, along: 0.03, across: 0.045 },
+};
+
+/**
  * Where each hand goes on each gun: the firing grip and support hold, plus the extra holds the
  * reload and cycling animations move through. These only aim the hand; contact is solved.
  */
 const GRIPS: Record<WeaponId, { right: Partial<Record<RightPose, HandGrip>> & { grip: HandGrip }; left: Partial<Record<LeftPose, HandGrip>> & { support: HandGrip } }> = {
   ar: {
     right: {
-      grip: pistolGrip([0, -0.0013, 0.0105], [0.0195, 0.058, 0.029], -0.5, [0, 0.037, -0.052]),
+      grip: pistolGrip([0, -0.0013, 0.0105], [0.0195, 0.058, 0.029], -0.5, [0, 0.033, -0.051]),
     },
     left: {
       support: cradle([0, 0.0965, -0.3], [0.019, 0.0285, 0.08], "gun", 0.035),
@@ -202,14 +220,18 @@ const GRIPS: Record<WeaponId, { right: Partial<Record<RightPose, HandGrip>> & { 
   sniper: {
     right: {
       // The stock runs on behind the grip as a bar, so the thumb cannot come round behind it: it lies forward along the top of the bar.
-      grip: pistolGrip([0, -0.073, 0.021], [0.0175, 0.05, 0.024], -0.59, [0, -0.044, -0.063], [-0.35, 0.25, -0.9], 0.006),
-      // In from the right, fingers over the cocking knob; the thumb rides above.
+      grip: pistolGrip([0, -0.073, 0.021], [0.0175, 0.05, 0.024], -0.59, [0, -0.05, -0.058], [-0.35, 0.25, -0.9], 0.006),
+      // The bolt knob is a stub 8 mm proud of the receiver's right side: pinched, as a real one is,
+      // the index hooked under its front and the thumb's pad pressing on top, the other fingers
+      // curled into the palm out of the way.
       bolt: {
-        part: { center: [0, -0.03, -0.13], half: [0.038, 0.07, 0.08], round: 0.006 },
-        palm: [0.045, 0, -0.08],
+        part: { center: [0.02, 0.005, -0.096], half: [0.008, 0.008, 0.008], round: 0.003 },
+        palm: [0.02, -0.041, -0.04],
         facing: [-1, 0, 0],
         thumbSide: [0, 1, 0],
-        thumb: [0.3, 0.7, 0.3],
+        thumb: [-0.2, 0.3, -0.9],
+        triggerAt: [0.021, -0.008, -0.1],
+        thumbAt: [0.021, 0.017, -0.094],
         against: "part",
         frame: "bolt",
       },
@@ -223,8 +245,9 @@ const GRIPS: Record<WeaponId, { right: Partial<Record<RightPose, HandGrip>> & { 
   pistol: {
     right: {
       grip: REVOLVER,
-      // Thumb up on the hammer spur, rolling it back.
-      cock: { ...REVOLVER, thumb: [-0.05, 0.75, 0.55] },
+      // Thumb on the fallen hammer's spur, then (cocked) on the same spur rolled back to full cock.
+      cock: REVOLVER_COCK,
+      cocked: { ...REVOLVER_COCK, hammer: COCK_ANGLE },
     },
     left: {
       // Never held in two hands: this is only where the arm hangs from (see BELT in handling.ts).
@@ -482,6 +505,8 @@ export interface HandReport {
   fingers: Record<string, number[]>;
   /** How far the index finger's pad is from where it should rest on the trigger. */
   trigger?: number;
+  /** How far the thumb's pad is from `thumbAt`. */
+  thumb?: number;
   /** Deepest any skin sits inside the gun. */
   deepest: number;
   /** Where the wrist, the index and middle knuckles and the base of the thumb ended up, weapon space. */
@@ -567,6 +592,7 @@ export function solveGrips(template: CharacterTemplate, templates: WeaponTemplat
       // A pressed-in palm is meant to be in the gun; only the fingers and thumb must stay out of it.
       const visible = g.press ? chains.flatMap((c) => c.links.flat()) : everything;
       let triggerMiss: number | undefined;
+      let thumbMiss: number | undefined;
 
       /** Poses the whole hand for one way of fitting it: placed, pushed onto the gun, thumb laid on, fingers wrapped. */
       const pose = (fit: Fit, thorough = false) => {
@@ -590,7 +616,8 @@ export function solveGrips(template: CharacterTemplate, templates: WeaponTemplat
           if (g.press) move(g.press);
         }
         for (const chain of chains) {
-          if (chain.thumb) { aimThumb(chain.bones, thumbDir, g.part); pressThumb(chain, thumbDir, g.part, field, thorough, g.press, g.thumbAside); }
+          if (chain.thumb && g.thumbAt) thumbMiss = reachThumb(chain, onHammer(g.thumbAt, g.hammer ?? 0), field);
+          else if (chain.thumb) { aimThumb(chain.bones, thumbDir, g.part); pressThumb(chain, thumbDir, g.part, field, thorough, g.press, g.thumbAside); }
           else if (chain.trigger && g.triggerAt) triggerMiss = reachTrigger(chain, new THREE.Vector3(...g.triggerAt));
           else if (chain.trigger && g.trigger) g.trigger.forEach((angle, j) => curl(chain.bones[j], angle));
           else closeFinger(chain, field);
@@ -612,7 +639,7 @@ export function solveGrips(template: CharacterTemplate, templates: WeaponTemplat
         }
         let sunk = 0;
         for (const vert of visible) if (field(skinPosition(vert, _p)) < -SUNK) sunk++;
-        return score - sunk * 0.2 - (g.triggerAt ? (triggerMiss ?? 0) * 300 : 0)
+        return score - sunk * 0.2 - (g.triggerAt ? (triggerMiss ?? 0) * 300 : 0) - (g.thumbAt ? (thumbMiss ?? 0) * 300 : 0)
           - (Math.abs(fit.yaw) + Math.abs(fit.roll) + Math.abs(fit.tilt)) * 0.6 - (Math.abs(fit.along) + Math.abs(fit.across)) * 12;
       };
 
@@ -654,12 +681,27 @@ export function solveGrips(template: CharacterTemplate, templates: WeaponTemplat
         fit: [best.yaw, best.roll, best.tilt].map((r) => Math.round((r * 180) / Math.PI)).concat([best.along, best.across].map((m) => Math.round(m * 1000))),
         fingers: Object.fromEntries(chains.map((c) => [c.name, c.links.map((verts) => mm(closest(verts, field)))])),
         ...(triggerMiss === undefined || !g.triggerAt ? {} : { trigger: mm(triggerMiss) }),
+        ...(thumbMiss === undefined || !g.thumbAt ? {} : { thumb: mm(thumbMiss) }),
         deepest: mm(Math.min(0, closest(visible, field))),
         at: Object.fromEntries([["wrist", bone], ["index", b("index_01")], ["middle", b("middle_01")], ["thumb", b("thumb_01")]]
-          .map(([key, x]) => [key as string, new THREE.Vector3().setFromMatrixPosition((x as THREE.Bone).matrixWorld).toArray().map((v) => Math.round(v * 1000))])),
+          .map(([key, x]) => [key as string, new THREE.Vector3().setFromMatrixPosition((x as THREE.Bone).matrixWorld).toArray().map((v) => Math.round(v * 1000))])
+          .concat(g.triggerAt ? [["pad", lastReach.pad], ["reach", lastReach.angles]] : [])),
       };
     }
     return poses;
+  };
+  /** A point on the fallen hammer, where it is once the hammer has rolled back `angle`. */
+  const onHammer = (point: V3, angle: number) => {
+    const at = new THREE.Vector3(...point);
+    if (!angle) return at;
+    const gun = cloneWeapon(templates, weapon, true);
+    gun.updateMatrixWorld(true);
+    const hammer = gun.getObjectByName("hammer");
+    if (!hammer) return at;
+    const fallen = hammer.matrixWorld.clone().invert();
+    hammer.rotation.x += angle;
+    hammer.updateMatrixWorld(true);
+    return at.applyMatrix4(fallen).applyMatrix4(hammer.matrixWorld);
   };
   const right = solveSide("r", spec.right as Record<RightPose, HandGrip>);
   const left = solveSide("l", spec.left as Record<LeftPose, HandGrip>);
@@ -742,7 +784,7 @@ function reachTrigger(chain: Chain, target: THREE.Vector3) {
   const search = (around: typeof best, span: number, step: number) => {
     let found = around;
     for (const follow of [0.2, 0.55, 0.9]) {
-      for (let spread = Math.max(-0.45, around.spread - span); spread <= Math.min(0.45, around.spread + span); spread += step) {
+      for (let spread = Math.max(-0.6, around.spread - span); spread <= Math.min(0.45, around.spread + span); spread += step) {
         for (let a = Math.max(-0.25, around.a - span * 3); a <= Math.min(1.4, around.a + span * 3); a += step) {
           for (let b = Math.max(0, around.b - span * 3); b <= Math.min(1.7, around.b + span * 3); b += step) {
             pose(spread, a, b, follow);
@@ -757,8 +799,70 @@ function reachTrigger(chain: Chain, target: THREE.Vector3) {
   best = search({ spread: 0, a: 0.6, b: 0.85, follow: 0.55, miss: Infinity }, 0.45, 0.05);
   best = search(best, 0.05, 0.01);
   pose(best.spread, best.a, best.b, best.follow);
+  miss();
+  lastReach = { pad: _p.toArray().map((v) => Math.round(v * 1000)), angles: [best.spread, best.a, best.b, best.follow].map((v) => Math.round(v * 100) / 100) };
   return best.miss;
 }
+/**
+ * Swings and bends the thumb so its pad rests at `target` (a hammer spur, say), without sinking
+ * any of it into the gun. Returns how far the pad ends up from it.
+ */
+function reachThumb(chain: Chain, target: THREE.Vector3, field: Field) {
+  const [t1, t2, t3, end] = chain.bones;
+  const start = [t1, t2, t3].map((x) => x.quaternion.clone());
+  const base = new THREE.Vector3().setFromMatrixPosition(t1.matrixWorld);
+  const dir = target.clone().sub(base).normalize();
+  // Point the thumb at the target first; the search then works around that.
+  const along = new THREE.Vector3().setFromMatrixPosition(t2.matrixWorld).sub(base).normalize();
+  const aim = new THREE.Quaternion().setFromUnitVectors(along, dir);
+  const side = new THREE.Vector3().crossVectors(dir, Math.abs(dir.y) < 0.9 ? _y.set(0, 1, 0) : _y.set(1, 0, 0)).normalize();
+  const lift = new THREE.Vector3().crossVectors(side, dir);
+  const swing = new THREE.Quaternion();
+  const set = ([a, b, r, c2, c3]: number[]) => {
+    t1.quaternion.copy(start[0]); t2.quaternion.copy(start[1]); t3.quaternion.copy(start[2]);
+    swing.setFromAxisAngle(side, a).multiply(_q.setFromAxisAngle(lift, b)).multiply(_q.setFromAxisAngle(dir, r)).multiply(aim);
+    rotateWorld(t1, swing);
+    curl(t2, c2); curl(t3, c3);
+    t1.updateMatrixWorld(true);
+  };
+  const miss = () => {
+    _a.setFromMatrixPosition(t3.matrixWorld);
+    _b.setFromMatrixPosition(end.matrixWorld);
+    const pad = _p.lerpVectors(_a, _b, 0.6).addScaledVector(_v.set(0, 0, 1).transformDirection(t3.matrixWorld), 0.007);
+    return pad.distanceTo(target);
+  };
+  const limits = [[-0.9, 0.9], [-0.9, 0.9], [-1.2, 1.2], [0, THUMB_MAX_CURL[0]], [0, THUMB_MAX_CURL[1]]];
+  const cost = (params: number[]) => {
+    set(params);
+    const m = miss();
+    const depth = Math.min(0, closest(chain.links[1], field), closest(chain.links[2], field));
+    return m - depth * 5;
+  };
+  let best = [0, 0, 0, 0.2, 0.2], bestCost = cost(best);
+  // Coarse starts first: rolled either way the bending side may face the gun or away from it.
+  for (const r of [-0.9, -0.45, 0.45, 0.9]) {
+    const tried = [0, 0, r, 0.3, 0.3], c = cost(tried);
+    if (c < bestCost) { bestCost = c; best = tried; }
+  }
+  for (const step of [0.2, 0.1, 0.05, 0.02, 0.01]) {
+    for (let improved = true; improved;) {
+      improved = false;
+      for (let k = 0; k < best.length; k++) {
+        for (const d of [-step, step]) {
+          const tried = best.slice();
+          tried[k] = Math.min(limits[k][1], Math.max(limits[k][0], tried[k] + d));
+          const c = cost(tried);
+          if (c < bestCost - 1e-6) { bestCost = c; best = tried; improved = true; }
+        }
+      }
+    }
+  }
+  set(best);
+  return miss();
+}
+
+/** Where the last trigger reach left the index pad (mm, weapon space) and its spread/curl/curl/follow: for the bake report. */
+let lastReach = { pad: [0, 0, 0], angles: [0, 0, 0, 0] };
 
 /**
  * Lays the thumb on the gun: swung from where it was aimed until its skin meets the surface (or,

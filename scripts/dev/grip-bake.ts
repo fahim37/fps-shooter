@@ -28,7 +28,7 @@ async function main() {
       console.log(`${weapon} (${result.ms} ms)`);
       for (const [pose, r] of Object.entries(result.report)) {
         const fingers = Object.entries(r.fingers).map(([name, gaps]) => `${name} ${gaps.join("/")}`).join("  ");
-        console.log(`  ${pose.padEnd(14)} ${String(r.on).padStart(3)}% on  palm ${String(r.palm).padStart(5)}  ${fingers}${r.trigger === undefined ? "" : `  trigger off ${r.trigger}`}  deepest ${r.deepest}  moved ${r.fit.join("/")}`);
+        console.log(`  ${pose.padEnd(14)} ${String(r.on).padStart(3)}% on  palm ${String(r.palm).padStart(5)}  ${fingers}${r.trigger === undefined ? "" : `  trigger off ${r.trigger}`}${r.thumb === undefined ? "" : `  thumb off ${r.thumb}`}  deepest ${r.deepest}  moved ${r.fit.join("/")}`);
         if (process.env.GRIP_AT) console.log(`  ${"".padEnd(14)} ${Object.entries(r.at).map(([k, v]) => `${k} ${v.join(",")}`).join("  ")}`);
       }
     }

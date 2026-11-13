@@ -8,7 +8,7 @@ import { SLIDE_LEG_YAW } from "../../shared/hitboxes";
 import { DEFAULT_OPTICS, OPTICS, type OpticId } from "../../shared/optics";
 import { createIronSights, createReflexSight } from "./ReflexSight";
 import { gripPose, type GripPose, type HandPose } from "./grip";
-import { createHandling, sampleHandling, type HandBlend, type HandKey } from "./handling";
+import { createHandling, cycleStrokes, sampleHandling, type HandBlend, type HandKey } from "./handling";
 import type { QuickScope } from "./quickScope";
 import { Recoil } from "./recoil";
 
@@ -68,7 +68,7 @@ const FPP_VISIBLE = /Arms/;
 const PROCEDURAL_BONES = ["spine_01", "spine_03", "neck_01", "clavicle_r", "upperarm_r", "lowerarm_r", "hand_r", "clavicle_l", "upperarm_l", "lowerarm_l", "hand_l"];
 const BOLT_TRAVEL = 0.065;
 /** How far a revolver's hammer rolls back from its fallen position (rad). */
-const COCK_ANGLE = 0.75;
+export const COCK_ANGLE = 0.75;
 /** Height of the middle of the sniper's scope above the weapon origin (m). */
 const SNIPER_SCOPE_AXIS = 0.113;
 /** Height of the rifle's rail scope's lens axis above the weapon origin (m), from its lenses in weapons.glb. */
@@ -127,6 +127,8 @@ const _qa = new THREE.Quaternion();
 const _qb = new THREE.Quaternion();
 const _scale = new THREE.Vector3();
 const _handTarget = new THREE.Matrix4();
+const _gunAt = new THREE.Vector3();
+const _gunScale = new THREE.Vector3();
 /** Share of the wrist's roll taken by the forearm; there are no twist bones to spread it. */
 const FOREARM_ROLL = 0.75;
 /** Longest wrist reach, as a share of the arm, that still leaves the elbow clearly bent (~118°). */
@@ -225,6 +227,8 @@ export class CharacterRig {
   /** The gun's kick from shot to shot. A shot is one whenever `sinceShot` starts over. */
   private kick = new Recoil();
   private lastSinceShot = Infinity;
+  /** A spent case left the gun this update: on the shot, or as a pump or bolt gun's action opens. */
+  ejected = false;
   private gunPivot = new THREE.Object3D();
   private guns = new Map<WeaponId, THREE.Object3D>();
   private parts = new Map<WeaponId, WeaponParts>();
@@ -247,6 +251,13 @@ export class CharacterRig {
   private dead = false;
   private deadTime = 0;
   private animationPose: { bone: THREE.Bone; quaternion: THREE.Quaternion }[];
+  /** A weapon-space point and the gun's turn, in the world (for effects). */
+  gunToWorld(point: readonly [number, number, number], out: THREE.Vector3, turn?: THREE.Quaternion) {
+    out.set(point[0], point[1], point[2]).applyMatrix4(this.gunPivot.matrixWorld);
+    if (turn) this.gunPivot.matrixWorld.decompose(_gunAt, turn, _gunScale);
+    return out;
+  }
+
   /** World-space muzzle position of the current weapon (for effects). */
   readonly muzzle = new THREE.Vector3();
   readonly muzzleDir = new THREE.Vector3();
@@ -374,7 +385,11 @@ export class CharacterRig {
       return;
     }
     const sinceShot = s.sinceShot ?? -1;
-    if (this.weapon && sinceShot >= 0 && sinceShot < KICK_WITHIN && sinceShot < this.lastSinceShot - 1e-4) this.kick.kick(this.weapon);
+    const fired = !!this.weapon && sinceShot >= 0 && sinceShot < KICK_WITHIN && sinceShot < this.lastSinceShot - 1e-4;
+    if (fired) this.kick.kick(this.weapon!);
+    const opens = this.weapon && this.weapon !== "pistol" ? cycleStrokes(this.weapon)?.[0] : undefined;
+    this.ejected = !!this.weapon && this.weapon !== "pistol" && (opens === undefined ? fired
+      : sinceShot >= opens && (this.lastSinceShot < opens || fired) && sinceShot < opens + KICK_WITHIN);
     this.lastSinceShot = sinceShot;
     this.kick.update(dt);
     if (this.mode === "tpp") this.updateLocomotion(dt, s);

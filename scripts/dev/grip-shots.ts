@@ -9,6 +9,7 @@ const WEAPONS = ["ar", "smg", "shotgun", "sniper", "pistol"];
 /** Camera offsets from the hand being looked at (m), in the rig viewer's world (the gun points along -Z). */
 const VIEWS: Record<string, [number, number, number]> = {
   left: [-0.3, 0.06, 0.02],
+  high: [-0.22, 0.2, 0.05],
   right: [0.3, 0.06, 0.02],
   below: [-0.05, -0.3, 0.06],
   above: [0.03, 0.3, 0.08],

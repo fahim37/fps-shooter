@@ -42,6 +42,13 @@ const SLIDE_FOV = 5;
 const DASH_FOV = 17;
 /** View roll (rad) through a slide, and at a full-speed strafe. */
 const SLIDE_ROLL = 0.05;
+/**
+ * First-person view twist per shot (rad), either way at random, gone again in a fraction of a
+ * second. Looks only: a roll about the line of sight leaves the aim point where it was.
+ */
+const SHOT_ROLL: Record<WeaponId, number> = { ar: 0.006, smg: 0.005, shotgun: 0.018, sniper: 0.014, pistol: 0.01 };
+/** Most the twist builds up to under automatic fire. */
+const MAX_SHOT_ROLL = 0.025;
 const STRAFE_ROLL = 0.011;
 
 export class LocalPlayer {
@@ -52,6 +59,8 @@ export class LocalPlayer {
   /** Recoverable view kick (radians) layered on top of yaw/pitch. */
   private kickPitch = 0;
   private kickYaw = 0;
+  /** First-person view twist from the last shots (see SHOT_ROLL). */
+  private shotRoll = 0;
   /** Viewmodel kick 0..1. */
   recoil = 0;
   weapon: WeaponId = "ar";
@@ -189,7 +198,7 @@ export class LocalPlayer {
     this.motion.reset(this.ms);
     this.yaw = ev.yaw;
     this.pitch = 0;
-    this.kickPitch = this.kickYaw = 0;
+    this.kickPitch = this.kickYaw = this.shotRoll = 0;
     this.primary = ev.primary;
     this.weapon = ev.primary;
     this.resetAmmo();
@@ -428,6 +437,7 @@ export class LocalPlayer {
     const rec = Math.exp(-dt * 11);
     this.kickPitch *= rec;
     this.kickYaw *= rec;
+    this.shotRoll *= Math.exp(-dt * 14);
     this.recoil = Math.max(0, this.recoil - dt * 9);
 
     // ---- bob / footsteps
@@ -515,7 +525,7 @@ export class LocalPlayer {
     this.viewEye.x += lx; this.viewEye.z += lz;
     this.viewEye.y += eyeH + ly - this.landDip + this.bob.y * 0.4 + this.stepEase;
     this.viewQuat.setFromEuler(this.viewEuler.set(this.pitch + this.kickPitch, this.yaw + this.kickYaw,
-      -this.lean * LEAN_ROLL + this.strafeRoll + this.slideT * SLIDE_ROLL));
+      -this.lean * LEAN_ROLL + this.strafeRoll + this.slideT * SLIDE_ROLL + this.shotRoll));
   }
 
   currentFov() {
@@ -580,7 +590,7 @@ export class LocalPlayer {
     this.drawAt = now;
     this.lastShotAt = -Infinity;
     this.adsProgress = this.ads = 0;
-    this.kickPitch = this.kickYaw = this.burst = 0;
+    this.kickPitch = this.kickYaw = this.burst = this.shotRoll = 0;
     this.cadence.reset();
     this.sendPose();
     audio.stopWorking();
@@ -661,6 +671,8 @@ export class LocalPlayer {
     this.yaw += side * 0.1;
     this.kickPitch += up * 0.9;
     this.kickYaw += side * 0.9;
+    const twist = SHOT_ROLL[this.weapon] * (0.6 + Math.random() * 0.4) * (1 - this.ads * 0.6) * (Math.random() < 0.5 ? -1 : 1);
+    this.shotRoll = THREE.MathUtils.clamp(this.shotRoll + twist, -MAX_SHOT_ROLL, MAX_SHOT_ROLL);
     this.recoil = 0.65;
     this.burst++;
   }

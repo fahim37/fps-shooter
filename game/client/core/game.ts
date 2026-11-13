@@ -2,7 +2,7 @@ import * as THREE from "three";
 import type { GameRoom } from "../net/session";
 import { ServerClock } from "../net/clock";
 import { loadCharacter, type CharacterTemplate } from "../assets/characters";
-import { loadWeapons, type WeaponTemplates } from "../assets/weapons";
+import { EJECTION, loadWeapons, type WeaponTemplates } from "../assets/weapons";
 import { CharacterRig, type RigState } from "../player/CharacterRig";
 import { getMap } from "../../shared/map/maps";
 import { lineOfSight, raycastWorld, type Rapier, type World } from "../../shared/physics";
@@ -31,6 +31,9 @@ import { liveSpots, screenSpot } from "./spots";
 import { pickSpot, SPOT_COOLDOWN_MS, type SpotTarget } from "../../shared/spot";
 import { updateSightMotion } from "./sightMotion";
 
+const _ejectAt = new THREE.Vector3();
+const _ejectTurn = new THREE.Quaternion();
+const _ejectCarry = new THREE.Vector3();
 const _frustum = new THREE.Frustum();
 const _viewProjection = new THREE.Matrix4();
 /** Covers a character with arms and gun out, peeking or emoting, around its waist. */
@@ -776,6 +779,12 @@ export class Game {
     this.tpp?.setVisible(((local.thirdPerson || !!local.emote) && !local.throughSight) || !local.alive);
     if (this.fpp?.object.visible) this.fpp.update(dt, s);
     if (this.tpp?.object.visible) this.tpp.update(dt, s);
+    const shown = this.fpp?.object.visible ? this.fpp : this.tpp?.object.visible ? this.tpp : null;
+    const ejection = EJECTION[local.weapon];
+    if (shown?.ejected && ejection && local.alive) {
+      shown.gunToWorld(ejection.port, _ejectAt, _ejectTurn);
+      this.effects.casing(_ejectAt, _ejectTurn, _ejectCarry.set(local.ms.vx, local.ms.vy, local.ms.vz), ejection, local.motion.position.y);
+    }
     this.placeHandGrenade(local, now);
     this.thrown.update(dt, now, this.room.state.grenades, this.room.sessionId);
     this.effects.setQuality(useSettings.getState().quality);

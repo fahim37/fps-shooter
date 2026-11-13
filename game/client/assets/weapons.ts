@@ -61,6 +61,17 @@ const PARTS: Partial<Record<WeaponId, Partial<Record<PartId, PartSpec & { extrac
 
 export const WEAPON_PARTS = PARTS as Partial<Record<WeaponId, Partial<Record<PartId, PartSpec>>>>;
 
+/**
+ * Where spent cases leave each gun (weapon space, just outside the receiver's right wall) and what
+ * they look like. The revolver keeps its empties in the cylinder.
+ */
+export const EJECTION: Partial<Record<WeaponId, { port: V3; radius: number; length: number; color: string }>> = {
+  ar: { port: [0.024, 0.085, -0.07], radius: 0.0048, length: 0.045, color: "#c9a043" },
+  smg: { port: [0.022, 0.075, -0.07], radius: 0.0055, length: 0.023, color: "#c9a043" },
+  shotgun: { port: [0.032, 0.03, -0.1], radius: 0.0105, length: 0.066, color: "#9b2a22" },
+  sniper: { port: [0.024, 0.025, -0.13], radius: 0.006, length: 0.07, color: "#c9a043" },
+};
+
 /** Where a hand-loaded round seats (its centre, lying along +Z), the way it travels in, and its size. */
 export const SHELL_SEATS: Partial<Record<WeaponId, { port: V3; axis: V3; scale: number }>> = {
   // Pushed up into the receiver.

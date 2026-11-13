@@ -151,7 +151,8 @@ const REVOLVER_RELOAD: Clip = (() => {
  */
 const REVOLVER_COCK: Clip = {
   gun: [[0, REST], [0.4, [0, 0, 0, 0.03, 0, 0.06]], [0.9, REST]],
-  right: [[0, GRIP], [0.18, { pose: "cock" }], [0.62, { pose: "cock" }], [1, GRIP]],
+  // The thumb lands on the fallen spur, then rides it back as the hammer rolls to full cock.
+  right: [[0, GRIP], [0.18, { pose: "cock" }], [0.3, { pose: "cock" }], [0.62, { pose: "cocked" }], [0.7, { pose: "cocked" }], [1, GRIP]],
   hammer: [[0, 1], [0.3, 1], [0.62, 0]],
   cylinder: [[0.3, 0], [0.62, 1]],
 };

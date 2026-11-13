@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { CharacterRig, type RigState } from "./CharacterRig";
 import type { CharacterTemplate, ClipName } from "../assets/characters";
 import type { WeaponId } from "../../shared/weapons";
+import { cycleStrokes } from "./handling";
 
 /** Static animation samples expose procedural drift that moving keyframes can hide. */
 function template(): CharacterTemplate {
@@ -106,5 +107,44 @@ describe("character shooting pose", () => {
     rig.update(1 / 60, { ...state, emote: null });
     expect(gun.visible).toBe(true);
     rig.dispose();
+  });
+});
+
+describe("spent cases", () => {
+  const state: RigState = {
+    x: 0, y: 0, z: 0, yaw: 0, pitch: 0, speed: 0, moveYaw: 0,
+    crouch: false, grounded: true, alive: true, sprint: 0, ads: 0, reload: -1,
+  };
+  /** Frames (60 fps) on which the rig let a case go over `seconds` after a shot. */
+  function ejections(weapon: WeaponId, seconds: number) {
+    // A stand-in gun with the moving parts the action's hand poses follow.
+    const gun = new THREE.Group();
+    for (const name of ["bolt", "pump", "mag"]) gun.add(Object.assign(new THREE.Group(), { name }));
+    const rig = new CharacterRig(template(), new Map([[weapon, gun]]), 1, "tpp");
+    rig.setWeapon(weapon);
+    rig.update(1 / 60, { ...state, sinceShot: 5 });
+    const frames: number[] = [];
+    for (let frame = 0; frame < seconds * 60; frame++) {
+      rig.update(1 / 60, { ...state, sinceShot: frame / 60 });
+      if (rig.ejected) frames.push(frame);
+    }
+    rig.dispose();
+    return frames;
+  }
+
+  it("throws one case on the shot from a self-loading gun", () => {
+    expect(ejections("ar", 0.5)).toEqual([0]);
+  });
+
+  it("throws the case as a pump or bolt gun's action opens, not on the shot", () => {
+    for (const weapon of ["shotgun", "sniper"] as WeaponId[]) {
+      const frames = ejections(weapon, 1.5);
+      expect(frames).toHaveLength(1);
+      expect(frames[0] / 60).toBeCloseTo(cycleStrokes(weapon)![0], 1);
+    }
+  });
+
+  it("keeps the revolver's empties in the cylinder", () => {
+    expect(ejections("pistol", 1)).toEqual([]);
   });
 });

@@ -11,7 +11,7 @@ import baked from "../../shared/generated/grips.json";
 /** What a hand pose is attached to: the gun itself, or a piece that moves while handling it. */
 export type HandFrame = "gun" | "mag" | "pump" | "bolt" | "shell";
 
-export type RightPose = "grip" | "bolt" | "cock";
+export type RightPose = "grip" | "bolt" | "cock" | "cocked";
 export type LeftPose = "support" | "mag" | "charge" | "shell";
 export type HandPoseId = RightPose | LeftPose;
 

@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { Quality } from "../settings";
+import { Casings, type CasingKind } from "./casings";
 
 // ---------------------------------------------------------------- procedural textures
 
@@ -254,14 +255,16 @@ class ParticleSystem {
 interface EffectBudget {
   smoke: number; glow: number; blood: number;
   density: number; tracers: number; flashes: number; decals: number; bloodDecals: number;
+  /** Spent cases lying about at once. */
+  casings: number;
   lights: boolean;
 }
 
 const EFFECT_BUDGETS: Record<Quality, EffectBudget> = {
-  low: { smoke: 140, glow: 90, blood: 64, density: 0.35, tracers: 16, flashes: 8, decals: 40, bloodDecals: 12, lights: false },
-  medium: { smoke: 320, glow: 180, blood: 120, density: 0.65, tracers: 32, flashes: 16, decals: 80, bloodDecals: 24, lights: false },
-  high: { smoke: 700, glow: 400, blood: 200, density: 1, tracers: 48, flashes: 24, decals: 140, bloodDecals: 40, lights: true },
-  ultra: { smoke: 900, glow: 500, blood: 260, density: 1.15, tracers: 64, flashes: 32, decals: 180, bloodDecals: 48, lights: true },
+  low: { smoke: 140, glow: 90, blood: 64, density: 0.35, tracers: 16, flashes: 8, decals: 40, bloodDecals: 12, casings: 6, lights: false },
+  medium: { smoke: 320, glow: 180, blood: 120, density: 0.65, tracers: 32, flashes: 16, decals: 80, bloodDecals: 24, casings: 12, lights: false },
+  high: { smoke: 700, glow: 400, blood: 200, density: 1, tracers: 48, flashes: 24, decals: 140, bloodDecals: 40, casings: 24, lights: true },
+  ultra: { smoke: 900, glow: 500, blood: 260, density: 1.15, tracers: 64, flashes: 32, decals: 180, bloodDecals: 48, casings: 40, lights: true },
 };
 
 // ---------------------------------------------------------------- effects manager
@@ -321,6 +324,7 @@ export class Effects {
   private bloodDecalOpacities = new Float32Array(48);
   private bloodDecalAlpha: THREE.InstancedBufferAttribute;
   private dummy = new THREE.Object3D();
+  private casings = new Casings();
 
   constructor() {
     const dot = canvasTexture(64, softDot);
@@ -331,7 +335,8 @@ export class Effects {
     this.smoke.setLimit(this.budget.smoke);
     this.glow.setLimit(this.budget.glow);
     this.droplets.setLimit(this.budget.blood);
-    this.group.add(this.smoke.points, this.glow.points, this.droplets.points, this.light, this.boomLight);
+    this.group.add(this.smoke.points, this.glow.points, this.droplets.points, this.light, this.boomLight, this.casings.mesh);
+    this.casings.setLimit(this.budget.casings);
     this.flashMat = new THREE.MeshBasicMaterial({
       map: canvasTexture(128, flashStar), color: new THREE.Color(3, 2.6, 2), transparent: true,
       depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
@@ -394,6 +399,7 @@ export class Effects {
     this.smoke.setLimit(this.budget.smoke);
     this.glow.setLimit(this.budget.glow);
     this.droplets.setLimit(this.budget.blood);
+    this.casings.setLimit(this.budget.casings);
     while (this.tracers.length > this.budget.tracers) {
       const tr = this.tracers.pop()!;
       tr.mesh.visible = tr.trail.visible = false;
@@ -425,7 +431,7 @@ export class Effects {
 
   dispose() {
     this.group.removeFromParent();
-    this.smoke.dispose(); this.glow.dispose(); this.droplets.dispose();
+    this.smoke.dispose(); this.glow.dispose(); this.droplets.dispose(); this.casings.dispose();
     for (const tr of [...this.tracers, ...this.tracerPool]) {
       (tr.mesh.material as THREE.Material).dispose();
       (tr.trail.material as THREE.Material).dispose();
@@ -651,8 +657,14 @@ export class Effects {
     this.decals.instanceMatrix.needsUpdate = true;
   }
 
+  /** A spent case thrown from a gun's ejection port (see Casings.eject). */
+  casing(port: THREE.Vector3, gun: THREE.Quaternion, carry: THREE.Vector3, kind: CasingKind, floor: number) {
+    this.casings.eject(port, gun, carry, kind, floor);
+  }
+
   update(dt: number) {
     this.smoke.update(dt);
+    this.casings.update(dt);
     this.glow.update(dt);
     this.droplets.update(dt);
     for (let i = 0; i < this.budget.flashes; i++) {
