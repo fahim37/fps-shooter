@@ -118,7 +118,7 @@ export class AudioEngine {
   private theme: Promise<AudioBuffer> | null = null;
   volume = 0.8;
   /** Scales only the menu bed (the lobby theme), so players can quiet the music but keep UI sounds. */
-  musicVolume = 1;
+  musicVolume = 0.5;
 
   /**
    * Creates or resumes the audio context. From a user gesture (click/tap) this always unlocks

@@ -104,7 +104,7 @@ function load(): Partial<Omit<Settings, "set">> {
 }
 
 /** Out-of-the-box aim, view and sound; the lobby quick settings mark these and can reset to them. */
-export const TUNING_DEFAULTS = { sensitivity: 0.5, adsSensitivity: 0.8, fov: 78, volume: 0.8, musicVolume: 1 };
+export const TUNING_DEFAULTS = { sensitivity: 0.5, adsSensitivity: 0.8, fov: 78, volume: 0.8, musicVolume: 0.5 };
 
 export const useSettings = create<Settings>((set, get) => ({
   name: "",
