@@ -13,6 +13,8 @@ export interface CombatSituation {
   defensive: boolean;
   underFire: boolean;
   canDash: boolean;
+  /** Keep the last charge for an escape rather than spending it to approach an enemy. */
+  dashCharges: number;
   /** Keep a useful strafe instead of changing direction every decision. */
   side: number;
 }
@@ -75,7 +77,7 @@ export function chooseCombatMove(s: CombatSituation, probe: ProbeMove): CombatMo
     const nearbyCover = pick(false, true);
     if (nearbyCover) return nearbyCover;
   }
-  if (s.canDash && (s.defensive || s.underFire || closing)) {
+  if (s.canDash && (s.defensive || s.underFire || (closing && s.dashCharges > 1))) {
     const dash = pick(true);
     if (dash) return dash;
   }

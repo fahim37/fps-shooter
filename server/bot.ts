@@ -5,7 +5,6 @@ import { leanOffset } from "../game/shared/lean";
 import { aimDir, lookAt, spreadDir, angleBetween } from "../game/shared/aim";
 import { WEAPONS, currentSpread, fireIntervalMs, type WeaponId } from "../game/shared/weapons";
 import { F_CROUCH, F_ADS, F_SPRINT, F_GROUNDED, F_RELOADING, F_SLIDE, F_DASH } from "../game/shared/messages";
-import { offAim, SPOT_CONE } from "../game/shared/spot";
 import type { SpawnPoint } from "../game/shared/map/types";
 import { RAPIER, getNav } from "./world";
 import type { MatchRoom, ServerPlayer } from "./MatchRoom";
@@ -21,9 +20,9 @@ export const BOT_NAMES = [
 
 /** Per-skill tuning: easy / normal / hard. */
 const SKILL = [
-  { reactionMs: 750, aimErrorDeg: 5.5, turnRate: 3.2, fireAngleDeg: 9, burstMs: 500, viewDist: 45, dashGapMs: 5500 },
-  { reactionMs: 420, aimErrorDeg: 2.6, turnRate: 5.5, fireAngleDeg: 5, burstMs: 800, viewDist: 60, dashGapMs: 4000 },
-  { reactionMs: 230, aimErrorDeg: 1.2, turnRate: 9, fireAngleDeg: 3, burstMs: 1200, viewDist: 80, dashGapMs: 2800 },
+  { reactionMs: 750, aimErrorDeg: 5.5, turnRate: 3.2, fireAngleDeg: 9, burstMs: 500, viewDist: 45, dashGapMs: 12000 },
+  { reactionMs: 420, aimErrorDeg: 2.6, turnRate: 5.5, fireAngleDeg: 5, burstMs: 800, viewDist: 60, dashGapMs: 10000 },
+  { reactionMs: 230, aimErrorDeg: 1.2, turnRate: 9, fireAngleDeg: 3, burstMs: 1200, viewDist: 80, dashGapMs: 8000 },
 ];
 
 const PREFERRED_RANGE: Record<WeaponId, number> = { shotgun: 5, smg: 11, ar: 18, sniper: 32, pistol: 12 };
@@ -54,7 +53,6 @@ export class Bot {
   private combatMove: CombatMove | null = null;
   private maneuverAt = 0;
   private nextDashAt = 0;
-  private nextSpotAt = 0;
   private burstUntil = 0;
   private pauseUntil = 0;
   private thinkAt = 0;
@@ -84,7 +82,7 @@ export class Bot {
     this.goal = null;
     this.pathIdx = this.repathAt = this.thinkAt = 0;
     this.combatMove = null;
-    this.maneuverAt = this.nextDashAt = this.nextSpotAt = 0;
+    this.maneuverAt = this.nextDashAt = 0;
     this.crouchUntil = this.burstUntil = this.pauseUntil = this.errAt = 0;
     this.stuckT = 0;
     this.jump = false;
@@ -245,16 +243,6 @@ export class Bot {
       | (this.ms.grounded ? F_GROUNDED : 0) | (reloading ? F_RELOADING : 0) | (this.ms.sliding ? F_SLIDE : 0)
       | (this.ms.dashTime > 0 ? F_DASH : 0);
     this.p.vel = [this.ms.vx, this.ms.vy, this.ms.vz];
-
-    if (this.target && this.targetVisible && this.target.st.alive && t - this.firstSeenAt >= this.skill.reactionMs
-      && t >= this.nextSpotAt && !this.room.isSpotted(this.p, this.target, t)) {
-      // Use the bot's current aim, not the server's wider allowance for delayed human poses.
-      const aimed = offAim(this.room.eyePos(this.p), aimDir(this.yaw, this.pitch), this.room.eyePos(this.target));
-      if (aimed.angle <= SPOT_CONE) {
-        this.room.spot(this.p, this.target);
-        this.nextSpotAt = t + 800;
-      }
-    }
   }
 
   private planCombat(t: number, weapon: WeaponId) {
@@ -264,12 +252,13 @@ export class Bot {
     if (t - this.firstSeenAt < this.skill.reactionMs) { this.combatMove = null; return; }
     const enemyEye = this.room.eyePos(target);
     const recentlyHit = this.p.lastDamageAt > 0 && t - this.p.lastDamageAt < 1400;
+    const towardUs = lookAt(enemyEye, [st.x, st.y + 1.1, st.z]);
     const aimedAtUs = t - target.lastFireAt < 1200
-      && offAim(enemyEye, aimDir(target.st.yaw, target.st.pitch), [st.x, st.y + 1.1, st.z]).angle < 0.18;
+      && angleBetween(aimDir(target.st.yaw, target.st.pitch), aimDir(towardUs.yaw, towardUs.pitch)) < 0.18;
     this.combatMove = chooseCombatMove({
       position: [st.x, st.y, st.z], target: [target.st.x, target.st.y, target.st.z],
       preferredRange: PREFERRED_RANGE[weapon], defensive: st.hp <= 40 || this.p.reloadingUntil > 0,
-      underFire: recentlyHit || aimedAtUs, side: this.strafe,
+      underFire: recentlyHit || aimedAtUs, side: this.strafe, dashCharges: st.dash,
       canDash: st.dash > 0 && this.ms.grounded && this.ms.dashTime <= 0 && t >= this.nextDashAt,
     }, (direction, distance) => {
       const point = this.travelPoint(direction, distance);

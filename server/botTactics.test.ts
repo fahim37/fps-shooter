@@ -3,7 +3,7 @@ import { BOT_DASH_DISTANCE, chooseCombatMove, type CombatSituation, type ProbeMo
 
 const situation = (changes: Partial<CombatSituation> = {}): CombatSituation => ({
   position: [0, 0, 0], target: [0, 0, -18], preferredRange: 18,
-  defensive: false, underFire: false, canDash: true, side: 1, ...changes,
+  defensive: false, underFire: false, canDash: true, dashCharges: 2, side: 1, ...changes,
 });
 const open: ProbeMove = ([x, z], d) => ({ point: [x * d, 0, z * d], covered: false });
 
@@ -25,6 +25,11 @@ describe("bot combat decisions", () => {
     const move = chooseCombatMove(situation({ underFire: true }), open)!;
     expect(move.dash).toBe(true);
     expect(Math.abs(move.direction[0])).toBe(1);
+  });
+
+  it("reserves the final charge for escaping danger", () => {
+    expect(chooseCombatMove(situation({ target: [0, 0, -40], dashCharges: 1 }), open)).toBeNull();
+    expect(chooseCombatMove(situation({ underFire: true, dashCharges: 1 }), open)?.dash).toBe(true);
   });
 
   it("prioritizes reachable cover while hurt or reloading", () => {
