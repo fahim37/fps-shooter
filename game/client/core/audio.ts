@@ -883,6 +883,19 @@ export class AudioEngine {
     this.burst(bus, "bandpass", 2600, 3, t, 0.08, 0.001, 0.025);
   }
 
+  /** Switching tabs: a quick downward slide and a light tick. */
+  /** An enemy marked (Z): a rising two-note call, brighter when the mark is your own. */
+  spot(mine: boolean) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime + 0.001;
+    const [bus] = this.eventBus(this.sfx, 0.3);
+    const level = mine ? 0.09 : 0.07;
+    this.blip(bus, "triangle", 1250, t, level, 0.002, 0.07);
+    this.blip(bus, "triangle", 1870, t + 0.07, level, 0.002, 0.14);
+    this.blip(bus, "sine", 3740, t + 0.07, level * 0.3, 0.002, 0.1);
+  }
+  /** Z with no enemy in the sights. */
   /**
    * A dash: a gust of wind. Two bands of noise sweep up and fall away (the body of the gust and
    * the airy hiss on top), with a faint breathy whistle riding the peak. No thump: it is all air.
@@ -926,8 +939,18 @@ export class AudioEngine {
     this.blip(bus, "sine", 1980, t + 0.09, 0.025, 0.004, 0.3);
   }
 
-  /** No dash charges remain. */
-  dashEmpty() {
+  /** An enemy marked the player: a low double warning tone. */
+  marked() {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const [bus] = this.eventBus(this.sfx, 0.5);
+    const t = ctx.currentTime + 0.001;
+    this.blip(bus, "square", 440, t, 0.035, 0.003, 0.11, 330);
+    this.blip(bus, "square", 440, t + 0.16, 0.035, 0.003, 0.16, 294);
+    this.blip(bus, "sine", 147, t, 0.06, 0.004, 0.3);
+  }
+
+  spotMiss() {
     const ctx = this.ctx;
     if (!ctx) return;
     const [bus] = this.eventBus(this.sfx, 0.12);

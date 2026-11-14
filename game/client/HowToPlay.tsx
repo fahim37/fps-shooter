@@ -22,6 +22,7 @@ const KEYBOARD: { title: string; rows: Row[] }[] = [
     [["R"], "Reload"],
     [["1", "2"], "Primary / sidearm", "Mouse wheel swaps too"],
     [["F"], "Dash", "A very fast burst the way you are moving (straight ahead if standing still) · look up to rise a little · two per life · every 2 kills refill 2 (2 held at most)"],
+    [["Z"], "Mark enemy", "Look at an enemy and press: a mark follows them on screen for your team for a few seconds · they get a MARKED warning"],
     [["C", "G"], "Grenade", "Press to pull the pin (the fuse starts), hold to aim along the arc, release to throw · it blows up in your hand if held too long · right mouse lobs"],
   ] },
   { title: "GAME", rows: [

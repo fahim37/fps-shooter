@@ -84,7 +84,7 @@ export function toFrame(point: { x: number; y: number }, inset = 4) {
 
 /**
  * A fading enemy mark, like PUBG's: where an enemy just fired from, or a footprint left by an
- * enemy sprinting nearby.
+ * enemy sprinting nearby; or an enemy marked with Z, shown where they are for as long as the mark lasts.
  */
 export interface MapMark {
   key: string;

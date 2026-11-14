@@ -6,6 +6,7 @@ import { PlayerState } from "../game/shared/schema";
 import { DASH_MAX, TICK_MS } from "../game/shared/constants";
 import { F_DASH } from "../game/shared/messages";
 import { GROUP_WORLD } from "../game/shared/physics";
+import { SPOT_MS } from "../game/shared/spot";
 import { WEAPONS, type WeaponId } from "../game/shared/weapons";
 import { init as initRecast } from "recast-navigation";
 import { navMeshFromTriangles } from "./navmesh";
@@ -46,13 +47,14 @@ function fixture(floorLength = 100, slope = 0) {
     const st = new PlayerState();
     Object.assign(st, { alive: true, team, x, y: 0.03, z, hp: 100, dash: DASH_MAX });
     const ammo = Object.fromEntries(Object.entries(WEAPONS).map(([w, def]) => [w, { mag: def.mag, reserve: def.mag * 3 }])) as ServerPlayer["ammo"];
-    const p = { id, st, ammo, lastFireAt: -1e9, lastDamageAt: 0, reloadingUntil: 0,
+    const p = { id, st, ammo, lastFireAt: -1e9, lastSpotAt: 0, lastDamageAt: 0, reloadingUntil: 0,
       grenades: 2, vel: [0, 0, 0], client: { send: vi.fn() } } as unknown as ServerPlayer;
     room.players.set(id, p);
     return p;
   };
   const p = player("bot", 1, 0, 0), enemy = player("enemy", 2, 0, -18), ally = player("ally", 1, 5, 5);
   const bot = new Bot(room, p);
+  p.bot = bot; p.st.bot = true;
   bot.onSpawn({ x: 0, y: 0.03, z: 0, yaw: 0, team: 1 });
   cleanup.push(() => { bot.dispose(); world.free(); });
   world.step();
@@ -70,6 +72,44 @@ function fixture(floorLength = 100, slope = 0) {
 }
 
 describe("bot abilities in the server simulation", () => {
+  it("keeps player marks and teammate notifications while bots never initiate them", () => {
+    const { p, enemy, ally, room, run } = fixture();
+    Object.assign(ally.st, { x: 0, z: 0, yaw: 0 });
+    expect(room.spot(p, enemy)).toBe(false);
+    run(1000);
+    expect(enemy.client!.send).not.toHaveBeenCalled();
+    expect(room.spot(ally, enemy)).toBe(true);
+    expect(ally.client!.send).toHaveBeenCalledWith("spotted", { id: enemy.id, by: ally.id, ms: SPOT_MS });
+    expect(p.client!.send).toHaveBeenCalledWith("spotted", { id: enemy.id, by: ally.id, ms: SPOT_MS });
+    expect(enemy.client!.send).toHaveBeenCalledExactlyOnceWith("marked", { ms: SPOT_MS });
+    expect(room.spot(ally, enemy)).toBe(false);
+    vi.setSystemTime(Date.now() + 800);
+    expect(room.spot(ally, p)).toBe(false);
+  });
+
+  it("still requires human markers to aim through clear sight", () => {
+    const { ally, enemy, room, world } = fixture();
+    Object.assign(ally.st, { x: 0, z: 0, yaw: Math.PI });
+    expect(room.spot(ally, enemy)).toBe(false);
+    ally.st.yaw = 0;
+    vi.setSystemTime(Date.now() + 800);
+    world.createCollider(RAPIER.ColliderDesc.cuboid(10, 3, 0.3)
+      .setTranslation(0, 3, -6).setCollisionGroups(GROUP_WORLD));
+    world.step();
+    expect(room.spot(ally, enemy)).toBe(false);
+    expect(enemy.client!.send).not.toHaveBeenCalled();
+  });
+
+  it("lets humans mark bots in free-for-all without sharing with other players", () => {
+    const { p, ally, enemy, room } = fixture();
+    room.state.mode = "ffa";
+    Object.assign(ally.st, { x: 0, z: 5, yaw: 0 });
+    expect(room.spot(ally, p)).toBe(true);
+    expect(ally.client!.send).toHaveBeenCalledWith("spotted", { id: p.id, by: ally.id, ms: SPOT_MS });
+    expect(enemy.client!.send).not.toHaveBeenCalled();
+    expect(room.spot(p, ally)).toBe(false);
+  });
+
   it("reacts, spends a dash to close range, and replicates the dash flag and velocity", () => {
     const { p, enemy, run } = fixture();
     enemy.st.z = -45;

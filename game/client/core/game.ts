@@ -11,8 +11,8 @@ import { GRENADE, WEAPONS, type WeaponId } from "../../shared/weapons";
 import { GRENADE_BODY, grenadeFlight } from "../../shared/grenade";
 import { spreadRadius } from "../../shared/aim";
 import type { MatchState } from "../../shared/schema";
-import type { AmmoEvent, DamagedEvent, ExplosionEvent, GrenadeHitEvent, HitConfirm, KillEvent, LoadoutEvent, Pong, ShotEvent, SpawnEvent } from "../../shared/messages";
-import { F_DASH } from "../../shared/messages";
+import type { AmmoEvent, DamagedEvent, ExplosionEvent, GrenadeHitEvent, HitConfirm, KillEvent, LoadoutEvent, Pong, ShotEvent, SpawnEvent, SpotEvent } from "../../shared/messages";
+import { F_DASH, F_SLIDE } from "../../shared/messages";
 import { loadClientWorld } from "./physics";
 import { LocalPlayer, THROW_RELEASE } from "./local";
 import { ThrownGrenades, createGrenadeParts } from "./thrownGrenades";
@@ -27,6 +27,8 @@ import { useLoadout } from "../loadout";
 import { DeathCamera } from "./deathcam";
 import { bearingYaw, liveView, MARK_MS, THREAT_MS, addMark, addThreat, mapRelation, relativeBearing, type MapMark, type MapPlayer } from "./minimap";
 import { buildSquad } from "./squad";
+import { liveSpots, screenSpot } from "./spots";
+import { pickSpot, SPOT_COOLDOWN_MS, type SpotTarget } from "../../shared/spot";
 import { updateSightMotion } from "./sightMotion";
 
 const _ejectAt = new THREE.Vector3();
@@ -37,13 +39,15 @@ const _viewProjection = new THREE.Matrix4();
 /** Covers a character with arms and gun out, peeking or emoting, around its waist. */
 const _bounds = new THREE.Sphere(new THREE.Vector3(), 1.9);
 const _arcNormal = new THREE.Vector3();
-const _dashPosition = new THREE.Vector3(), _dashVelocity = new THREE.Vector3();
+const _spot = new THREE.Vector3(), _spotDir = new THREE.Vector3();
 /** After a dash, how long the next press is ignored and the server's count of dashes is not yet believed (ms). */
 const DASH_LOCK_MS = 700;
 /** Keep the map introduction readable even when all assets are already cached. */
 const MIN_MAP_LOADING_MS = 2000;
 /** A dash's wake is drawn for players within this far (m); past it the streaks are smaller than a pixel. */
 const WAKE_RANGE = 70;
+/** How strongly your own dash ribbon is drawn (others' are 1): at full it hides what you dashed away from. */
+const OWN_RIBBON = 0.5;
 const _armEuler = new THREE.Euler();
 /**
  * The right hand bone's resting turn in view space while holding a grenade (the bone's +Y runs
@@ -170,6 +174,8 @@ export class Game {
   /** Camera shake from nearby explosions, 0..1. */
   private shake = 0;
   private markSeq = 0;
+  /** No marking an enemy (Z) again before this. */
+  private spotAt = 0;
 
   constructor(readonly room: GameRoom, readonly scene: THREE.Scene, readonly camera: THREE.PerspectiveCamera, element: HTMLElement) {
     useHud.setState({ ...useHud.getInitialState(), myId: room.sessionId, code: room.roomId, conn: "connected" });
@@ -245,6 +251,8 @@ export class Game {
       room.onMessage<AmmoEvent>("ammo", (ev) => this.local?.reconcileAmmo(ev)),
       room.onMessage<LoadoutEvent>("loadout", (ev) => this.local?.applyLoadout(ev)),
       room.onMessage<ShotEvent>("shot", (ev) => this.remoteShot(ev)),
+      room.onMessage<SpotEvent>("spotted", (ev) => this.onSpotted(ev)),
+      room.onMessage<{ ms: number }>("marked", (ev) => { hud().set({ markedUntil: performance.now() + ev.ms }); audio.marked(); }),
       room.onMessage<HitConfirm>("hit", (ev) => {
         hud().set({ hitmarker: { at: performance.now(), head: ev.part === "head", kill: ev.killed, confirmed: true, damage: ev.damage } });
         if (!ev.killed) audio.hitmarker(ev.part === "head");
@@ -279,7 +287,7 @@ export class Game {
     this.local.spawn(ev);
     this.local.updateView();
     this.deathCamera.start(this.local.eye, null);
-    hud().set({ alive: true, hp: 100, shield: MAX_SHIELD, shieldAt: 0, regenerating: false, hurtAt: 0, threats: [], killedBy: null, respawnAt: 0, killerMarker: null, deathCam: "environment" });
+    hud().set({ alive: true, markedUntil: 0, hp: 100, shield: MAX_SHIELD, shieldAt: 0, regenerating: false, hurtAt: 0, threats: [], killedBy: null, respawnAt: 0, killerMarker: null, deathCam: "environment" });
   }
 
   private syncLife(alive: boolean) {
@@ -465,16 +473,59 @@ export class Game {
   }
 
   private dashAt = -1e9;
+  /** Whether the local player was mid-dash last frame, and where they last stood when not (feet): the start of their ribbon. */
+  private dashing = false;
+  private dashFrom = new THREE.Vector3();
 
   /** F: spends a dash. The server takes it off the player; kills or a new life bring more. */
   private tryDash(now: number) {
     if (now - this.dashAt < DASH_LOCK_MS || !this.local) return;
-    if (hud().dash < 1) { audio.dashEmpty(); return; }
+    if (hud().dash < 1) { audio.spotMiss(); return; }
     this.dashAt = now;
     this.local.dash();
     this.send("dash", 1);
     hud().set({ dash: hud().dash - 1, dashAt: now });
     audio.dash();
+  }
+
+  /** Z: marks the enemy in the sights for the team. */
+  private trySpot(now: number) {
+    if (now < this.spotAt || !this.world) return;
+    this.spotAt = now + SPOT_COOLDOWN_MS;
+    const world = this.world, tdm = hud().mode === "tdm", myTeam = hud().myTeam;
+    const targets: SpotTarget[] = [];
+    for (const [id, remote] of this.remotes) {
+      if (!remote.alive || (tdm && remote.team === myTeam)) continue;
+      targets.push({ id, points: [remote.head.toArray() as V3, [remote.pos.x, remote.pos.y + ((remote.flags & F_SLIDE) ? 0.4 : 1), remote.pos.z]] });
+    }
+    const origin = this.camera.position.toArray() as V3;
+    const dir = this.camera.getWorldDirection(new THREE.Vector3()).toArray() as V3;
+    const id = pickSpot(origin, dir, targets, (from, to) => lineOfSight(this.R, world, from, to));
+    if (id) this.send("spot", id);
+    else audio.spotMiss();
+  }
+
+  private onSpotted(ev: SpotEvent) {
+    const at = performance.now(), mine = ev.by === this.room.sessionId;
+    hud().set({ spots: [...hud().spots.filter((spot) => spot.id !== ev.id && spot.until > at), { id: ev.id, at, until: at + ev.ms, mine }] });
+    audio.spot(mine);
+  }
+
+  /** Keeps each mark on its enemy: where it is on screen this frame, and gone once they are down or it runs out. */
+  private updateSpots(now: number) {
+    const spots = hud().spots;
+    if (!spots.length) { if (liveSpots.size) liveSpots.clear(); return; }
+    let stale = false;
+    for (const spot of spots) {
+      const remote = this.remotes.get(spot.id);
+      if (!remote?.alive || now >= spot.until) { stale = true; liveSpots.delete(spot.id); continue; }
+      _spot.copy(remote.head); _spot.y += 0.34;
+      const distance = _spot.distanceTo(this.camera.position);
+      const behind = _spot.clone().sub(this.camera.position).dot(this.camera.getWorldDirection(_spotDir)) <= 0;
+      _spot.project(this.camera);
+      liveSpots.set(spot.id, { ...screenSpot(_spot.x, _spot.y, behind), distance });
+    }
+    if (stale) hud().set({ spots: spots.filter((spot) => liveSpots.has(spot.id)) });
   }
 
   private mark(mark: MapMark) {
@@ -676,13 +727,16 @@ export class Game {
       remote.setReadability(useSettings.getState().quality === "low" && (hud().mode !== "tdm" || remote.team !== hud().myTeam));
       remote.update(dt, this.clock.now() - INTERP_DELAY_MS, this.camera.position);
       remote.updateTag(this.scene, hud().mode === "tdm" && remote.team === hud().myTeam);
-      if (remote.alive && (remote.flags & F_DASH) && remote.pos.distanceToSquared(this.camera.position) < WAKE_RANGE * WAKE_RANGE) this.effects.dashTrail(remote.pos, remote.vel, dt);
+      // The ribbon is drawn at any distance: it is how you tell where a dashing player went.
+      if (remote.dashing || remote.dashEnded) this.effects.dashRibbon(remote.id, remote.pos, remote.dashFrom);
+      if (remote.dashing && remote.pos.distanceToSquared(this.camera.position) < WAKE_RANGE * WAKE_RANGE) this.effects.dashTrail(remote.pos, remote.vel, dt);
     }
     // Read before the local player's update, which clears the frame's presses.
+    const spotPressed = this.input.consume("KeyZ");
     if (this.input.consume("KeyF") && active && local.alive) this.tryDash(now);
     local.update(dt, this.input, now);
     // In third person the player sees their own wake.
-    if (local.alive && local.thirdPerson && local.ms.dashTime > 0) this.effects.dashTrail(_dashPosition.set(local.ms.x, local.ms.y, local.ms.z), _dashVelocity.set(local.ms.vx, 0, local.ms.vz), dt, false);
+    if (local.alive && local.thirdPerson && local.ms.dashTime > 0) this.effects.dashTrail(_spot.set(local.ms.x, local.ms.y, local.ms.z), _spotDir.set(local.ms.vx, 0, local.ms.vz), dt, false);
     local.updateView();
     if (local.alive) local.camera(this.camera, dt);
     else {
@@ -702,6 +756,7 @@ export class Game {
     liveView.x = local.motion.position.x; liveView.z = local.motion.position.z; liveView.yaw = local.yaw; liveView.alive = local.alive;
     const fov = local.alive ? local.currentFov() : 62;
     if (this.camera.fov !== fov) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
+    if (active && local.alive && spotPressed) this.trySpot(now);
     // Characters are skinned with culling off (their bounds don't follow the animation), so cull
     // them here, against this frame's camera, with a sphere covering a gun, a peek or an emote.
     // Off-screen ones are neither animated nor drawn unless they may cast a shadow into view.
@@ -713,6 +768,7 @@ export class Game {
       _bounds.center.set(remote.pos.x, remote.pos.y + 1, remote.pos.z);
       remote.animate(dt, _frustum.intersectsSphere(_bounds) || remote.pos.distanceTo(this.camera.position) < shadowReach);
     }
+    this.updateSpots(now);
     if (local.alive && local.ads > 0.4) updateSightMotion(dt, {
       swayX: local.sway.x, swayY: local.sway.y, bobX: local.bob.x, bobY: local.bob.y,
       strafe: local.ms.vx * Math.cos(local.yaw) - local.ms.vz * Math.sin(local.yaw), vy: local.ms.vy,
@@ -746,7 +802,7 @@ export class Game {
     this.thrown.update(dt, now, this.room.state.grenades, this.room.sessionId);
     this.effects.setQuality(useSettings.getState().quality);
     this.effects.setViewportHeight(viewportHeight * pixelRatio);
-    this.effects.update(dt);
+    this.effects.update(dt, this.camera.position);
     audio.setVolume(useSettings.getState().volume);
     audio.setListener(this.camera.position, this.camera.getWorldDirection(new THREE.Vector3()));
     if (now >= this.pingAt) { this.send("ping", { c: now, rtt: this.clock.rtt }); this.pingAt = now + 1500; }

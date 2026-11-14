@@ -135,6 +135,16 @@ export interface LoadoutEvent extends AmmoEvent {
 
 // ----- server → client -----
 
+/** An enemy was marked (Z): sent to the marker's team, or in a free-for-all to the marker alone. */
+export interface SpotEvent {
+  /** The marked enemy. */
+  id: string;
+  /** Who marked them. */
+  by: string;
+  /** How long the mark lasts (ms). */
+  ms: number;
+}
+
 export interface ShotEvent {
   id: string;
   weapon: WeaponId;
