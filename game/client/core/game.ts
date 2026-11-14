@@ -12,7 +12,7 @@ import { GRENADE_BODY, grenadeFlight } from "../../shared/grenade";
 import { spreadRadius } from "../../shared/aim";
 import type { MatchState } from "../../shared/schema";
 import type { AmmoEvent, DamagedEvent, ExplosionEvent, GrenadeHitEvent, HitConfirm, KillEvent, LoadoutEvent, Pong, ShotEvent, SpawnEvent, SpotEvent } from "../../shared/messages";
-import { F_DASH, F_SLIDE } from "../../shared/messages";
+import { F_SLIDE } from "../../shared/messages";
 import { loadClientWorld } from "./physics";
 import { LocalPlayer, THROW_RELEASE } from "./local";
 import { ThrownGrenades, createGrenadeParts } from "./thrownGrenades";
@@ -40,12 +40,15 @@ const _viewProjection = new THREE.Matrix4();
 const _bounds = new THREE.Sphere(new THREE.Vector3(), 1.9);
 const _arcNormal = new THREE.Vector3();
 const _spot = new THREE.Vector3(), _spotDir = new THREE.Vector3();
+const _dashPosition = new THREE.Vector3(), _dashVelocity = new THREE.Vector3();
 /** After a dash, how long the next press is ignored and the server's count of dashes is not yet believed (ms). */
 const DASH_LOCK_MS = 700;
 /** Keep the map introduction readable even when all assets are already cached. */
 const MIN_MAP_LOADING_MS = 2000;
 /** A dash's wake is drawn for players within this far (m); past it the streaks are smaller than a pixel. */
 const WAKE_RANGE = 70;
+/** How strongly your own dash ribbon is drawn (others' are 1): at full it hides what you dashed away from. */
+const OWN_RIBBON = 0.5;
 const _armEuler = new THREE.Euler();
 /**
  * The right hand bone's resting turn in view space while holding a grenade (the bone's +Y runs
@@ -471,6 +474,9 @@ export class Game {
   }
 
   private dashAt = -1e9;
+  /** Whether the local player was mid-dash last frame, and where they last stood when not (feet): the start of their ribbon. */
+  private dashing = false;
+  private dashFrom = new THREE.Vector3();
 
   /** F: spends a dash. The server takes it off the player; kills or a new life bring more. */
   private tryDash(now: number) {
@@ -722,14 +728,21 @@ export class Game {
       remote.setReadability(useSettings.getState().quality === "low" && (hud().mode !== "tdm" || remote.team !== hud().myTeam));
       remote.update(dt, this.clock.now() - INTERP_DELAY_MS, this.camera.position);
       remote.updateTag(this.scene, hud().mode === "tdm" && remote.team === hud().myTeam);
-      if (remote.alive && (remote.flags & F_DASH) && remote.pos.distanceToSquared(this.camera.position) < WAKE_RANGE * WAKE_RANGE) this.effects.dashTrail(remote.pos, remote.vel, dt);
+      // The ribbon is drawn at any distance: it is how you tell where a dashing player went.
+      if (remote.dashing || remote.dashEnded) this.effects.dashRibbon(remote.id, remote.pos, remote.dashFrom);
+      if (remote.dashing && remote.pos.distanceToSquared(this.camera.position) < WAKE_RANGE * WAKE_RANGE) this.effects.dashTrail(remote.pos, remote.vel, dt);
     }
     // Read before the local player's update, which clears the frame's presses.
     const spotPressed = this.input.consume("KeyZ");
     if (this.input.consume("KeyF") && active && local.alive) this.tryDash(now);
     local.update(dt, this.input, now);
-    // In third person the player sees their own wake.
-    if (local.alive && local.thirdPerson && local.ms.dashTime > 0) this.effects.dashTrail(_spot.set(local.ms.x, local.ms.y, local.ms.z), _spotDir.set(local.ms.vx, 0, local.ms.vz), dt, false);
+    // In third person the player sees their own wake, thinner than everyone else sees it.
+    const dashing = local.alive && local.ms.dashTime > 0;
+    _dashPosition.set(local.ms.x, local.ms.y, local.ms.z);
+    if (local.thirdPerson && (dashing || this.dashing)) this.effects.dashRibbon(this.room.sessionId, _dashPosition, this.dashFrom, OWN_RIBBON);
+    if (local.thirdPerson && dashing) this.effects.dashTrail(_dashPosition, _dashVelocity.set(local.ms.vx, 0, local.ms.vz), dt, false);
+    if (!dashing) this.dashFrom.copy(_dashPosition);
+    this.dashing = dashing;
     local.updateView();
     if (local.alive) local.camera(this.camera, dt);
     else {
@@ -795,7 +808,7 @@ export class Game {
     this.thrown.update(dt, now, this.room.state.grenades, this.room.sessionId);
     this.effects.setQuality(useSettings.getState().quality);
     this.effects.setViewportHeight(viewportHeight * pixelRatio);
-    this.effects.update(dt);
+    this.effects.update(dt, this.camera.position);
     audio.setVolume(useSettings.getState().volume);
     audio.setListener(this.camera.position, this.camera.getWorldDirection(new THREE.Vector3()));
     if (now >= this.pingAt) { this.send("ping", { c: now, rtt: this.clock.rtt }); this.pingAt = now + 1500; }

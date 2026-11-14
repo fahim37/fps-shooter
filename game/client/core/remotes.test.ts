@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { RemotePlayer } from "./remotes";
 import type { CharacterRig } from "../player/CharacterRig";
 import { PlayerState } from "../../shared/schema";
+import { F_DASH } from "../../shared/messages";
 
 function remote() {
   const r = new RemotePlayer("test");
@@ -30,6 +31,29 @@ describe("remote snapshot playback", () => {
   it("ignores older packets and replaces equal timestamps", () => {
     const r = remote(); r.push(1000, snap(1)); r.push(1100, snap(2)); r.push(900, snap(9)); r.push(1100, snap(3));
     sample(r, 1100); expect(r.pos.x).toBe(3);
+  });
+  it("reports a dash from the pose before it began to the frame it ends", () => {
+    const r = remote(), far = new THREE.Vector3(0, 0, 1000);
+    r.push(1000, snap(0));
+    for (let i = 1; i <= 6; i++) r.push(1000 + i * 33, Object.assign(snap(i * 1.5), { flags: F_DASH }));
+    r.push(1231, snap(9.7));
+    r.push(1264, snap(9.9));
+    r.update(1 / 60, 1020, far);
+    expect(r.dashing).toBe(false);
+    // The flag shows a pose late, with the character already under way: the dash is traced back to where it stood.
+    r.update(1 / 60, 1040, far);
+    expect(r.dashing).toBe(true);
+    expect(r.pos.x).toBeGreaterThan(1.5);
+    expect(r.dashFrom.x).toBe(0);
+    r.update(1 / 60, 1150, far);
+    expect(r.dashing).toBe(true);
+    expect(r.dashEnded).toBe(false);
+    r.update(1 / 60, 1235, far);
+    expect(r.dashing).toBe(false);
+    expect(r.dashEnded).toBe(true);
+    expect(r.pos.x).toBeCloseTo(9.7, 1);
+    r.update(1 / 60, 1250, far);
+    expect(r.dashEnded).toBe(false);
   });
   it("does not interpolate or extrapolate across respawn teleports", () => {
     const r = remote(); r.push(1000, snap(1, 0, false)); r.push(1100, snap(30));

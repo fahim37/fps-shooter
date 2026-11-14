@@ -78,6 +78,53 @@ describe("combat effects", () => {
     expect(effects.group.children).toHaveLength(0);
   });
 
+  it("leaves a ribbon along a dash that hangs, dissolves from the start and is gone", () => {
+    vi.stubGlobal("document", canvasDocument());
+    const effects = new Effects();
+    try {
+      const eye = new THREE.Vector3(0, 1.6, 12), from = new THREE.Vector3(-5, 0, 0), pos = new THREE.Vector3();
+      const objectCount = effects.group.children.length;
+      // A dash of about ten metres along +x, as other players see it: 46 m/s for 0.21 s.
+      for (let i = 1; i <= 13; i++) {
+        effects.dashRibbon("enemy", pos.set(-5 + i * 0.77, 0, 0), from);
+        effects.update(1 / 60, eye);
+      }
+      const ribbon = effects.group.children.find((o): o is THREE.Mesh => o instanceof THREE.Mesh && o.visible && o.geometry.hasAttribute("color"))!;
+      expect(ribbon).toBeDefined();
+      expect(effects.group.children.length).toBe(objectCount);
+      const position = ribbon.geometry.getAttribute("position"), color = ribbon.geometry.getAttribute("color");
+      const points = ribbon.geometry.drawRange.count / 6 + 1;
+      const middle = (i: number) => (position.getX(i * 2) + position.getX(i * 2 + 1)) / 2;
+      const alphas = () => Array.from({ length: points }, (_, i) => color.getW(i * 2));
+      // It spans the whole dash, start to finish, at chest height and as wide as a body.
+      expect(middle(0)).toBeCloseTo(-5);
+      expect(middle(points - 1)).toBeCloseTo(-5 + 13 * 0.77);
+      expect(Math.abs(position.getY(points) - position.getY(points + 1))).toBeGreaterThan(1);
+      expect(Array.from(position.array).every(Number.isFinite)).toBe(true);
+      // Clearly visible along its length, brightest toward where the player went, soft at both ends.
+      const fresh = alphas();
+      expect(fresh[0]).toBe(0);
+      expect(fresh[points - 1]).toBe(0);
+      expect(fresh[1]).toBeGreaterThan(0.4);
+      expect(fresh[points - 2]).toBeGreaterThan(fresh[1]);
+
+      // It hangs after the dash; the start goes first, so what is left points to where they are.
+      effects.update(0.75, eye);
+      expect(ribbon.visible).toBe(true);
+      const aged = alphas();
+      expect(aged[1]).toBe(0);
+      expect(aged[points - 2]).toBeGreaterThan(0.5);
+      effects.update(1, eye);
+      expect(ribbon.visible).toBe(false);
+
+      // More dashes at once than ribbons: none is taken from a dash still under way.
+      for (let i = 0; i < 12; i++) effects.dashRibbon(`p${i}`, pos.set(i, 0, 3), from);
+      effects.update(1 / 60, eye);
+      expect(effects.group.children.length).toBe(objectCount);
+      expect(effects.group.children.filter((o) => o instanceof THREE.Mesh && o.visible && o.geometry.hasAttribute("color"))).toHaveLength(8);
+    } finally { effects.dispose(); }
+  });
+
   it("fades actual surface splatter and does not resurrect it when raising quality", () => {
     vi.stubGlobal("document", canvasDocument());
     const effects = new Effects();

@@ -45,7 +45,10 @@ export class RemotePlayer {
   private reloadSkip = 0;
   private stepDist = 0;
   private sliding = false;
-  private dashing = false;
+  /** Mid-dash, the frame a dash ended, and where the dash now or last under way began (feet). */
+  dashing = false;
+  dashEnded = false;
+  readonly dashFrom = new THREE.Vector3();
   private speed = 0;
   /** Seconds since this player last fired / drew the current gun, for the rig's handling. */
   private sinceShot = Infinity;
@@ -136,7 +139,7 @@ export class RemotePlayer {
 
   /** Interpolates the network pose and plays footsteps; `animate` then poses the character. */
   update(dt: number, renderTime: number, listener: THREE.Vector3) {
-    this.stepped = false;
+    this.stepped = this.dashEnded = false;
     const s = this.snaps;
     if (s.length === 0 || !this.rig) return;
     let a = s[0], b = s[s.length - 1];
@@ -224,7 +227,19 @@ export class RemotePlayer {
     if (sliding && !this.sliding && this.pos.distanceTo(listener) < 30) audio.slideAt(this.pos);
     this.sliding = sliding;
     const dashing = this.alive && (this.flags & F_DASH) !== 0;
-    if (dashing && !this.dashing && this.pos.distanceTo(listener) < 45) audio.dash(this.pos);
+    if (dashing && !this.dashing) {
+      if (this.pos.distanceTo(listener) < 45) audio.dash(this.pos);
+      // The dash began at the last pose before it: the character is drawn flying from there, so
+      // by the frame the flag shows it is already metres along.
+      this.dashFrom.copy(this.pos);
+      for (let i = s.length - 1; i >= 0; i--) {
+        const snap = s[i];
+        if (snap.t > renderTime || (snap.flags & F_DASH)) continue;
+        if (snap.alive && renderTime - snap.t < 300 && _prev.set(snap.x, snap.y, snap.z).distanceToSquared(this.pos) < 36) this.dashFrom.copy(_prev);
+        break;
+      }
+    }
+    this.dashEnded = this.alive && this.dashing && !dashing;
     this.dashing = dashing;
   }
 

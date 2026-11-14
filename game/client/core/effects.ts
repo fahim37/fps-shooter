@@ -115,6 +115,35 @@ function bloodStain(g: CanvasRenderingContext2D, s: number) {
   g.globalAlpha = 1;
 }
 
+/** Wind streaks for a dash's ribbon: they run along it, thickest through the middle, and tile end to end. */
+function windStreaks(g: CanvasRenderingContext2D, s: number) {
+  // A body of pale blue, which shows against light walls and sky where white alone would not.
+  const band = g.createLinearGradient(0, 0, 0, s);
+  band.addColorStop(0, "rgba(95,190,255,0)");
+  band.addColorStop(0.3, "rgba(95,190,255,0.5)");
+  band.addColorStop(0.7, "rgba(95,190,255,0.5)");
+  band.addColorStop(1, "rgba(95,190,255,0)");
+  g.fillStyle = band;
+  g.fillRect(0, 0, s, s);
+  for (let i = 0; i < 26; i++) {
+    const y = s * (0.5 + (Math.random() + Math.random() - 1) * 0.4);
+    const h = s * (0.03 + Math.random() * 0.07);
+    const len = s * (0.35 + Math.random() * 0.5), x = Math.random() * s;
+    const alpha = 0.6 + Math.random() * 0.4;
+    // Drawn twice, a tile apart, so a streak crossing the edge carries on at the other side.
+    for (const x0 of [x, x - s]) {
+      const grad = g.createLinearGradient(x0, 0, x0 + len, 0);
+      grad.addColorStop(0, "rgba(215,242,255,0)");
+      grad.addColorStop(0.7, `rgba(215,242,255,${alpha})`);
+      grad.addColorStop(1, "rgba(215,242,255,0)");
+      g.fillStyle = grad;
+      g.beginPath();
+      g.ellipse(x0 + len / 2, y, len / 2, h / 2, 0, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+}
+
 // ---------------------------------------------------------------- particles
 
 interface Particle {
@@ -286,6 +315,38 @@ interface Flash {
 /** A dash's wake at full density: streaks and puffs of air a second. */
 const WAKE_STREAKS = 110, WAKE_PUFFS = 24;
 
+/**
+ * A dash's ribbon: a band of wind along the whole way the player went, turned to face the viewer,
+ * so anyone watching can tell where they ended up. One per dash, from a small pool.
+ */
+interface Ribbon {
+  mesh: THREE.Mesh;
+  /** Whose dash this is; a ribbon still being laid is found again by it. */
+  id: string;
+  /** Points along the middle of the band (0 while unused). The last one follows the player until the dash ends. */
+  n: number;
+  points: Float32Array;
+  /** Still being laid, and whether this frame added to it: a frame that does not ends it. */
+  live: boolean;
+  fed: boolean;
+  /** Seconds since the dash ended. */
+  age: number;
+  strength: number;
+}
+
+/** Ribbons at once, the most points along one, and how far apart they are dropped (m). */
+const RIBBONS = 8, RIBBON_POINTS = 20, RIBBON_SPACING = 0.8;
+/** How wide a ribbon is where the dash ended and how high above the feet its middle runs (m). */
+const RIBBON_WIDTH = 1.5, RIBBON_LIFT = 0.95;
+/** Seconds a ribbon hangs in the air after the dash. It dissolves from where the dash began, so what is left points to where the player is. */
+const RIBBON_LINGER = 1.5;
+/** Metres of ribbon one tile of streaks covers, and tiles a second they blow along it after the player. */
+const RIBBON_TILE = 4, RIBBON_DRIFT = 0.6;
+/** How bright the ribbon's streaks are drawn: a little over full, so they stay pale once tone mapped. */
+const RIBBON_GLOW = 1.2;
+const _ribbonLength = new Float32Array(RIBBON_POINTS);
+const _origin = new THREE.Vector3();
+
 /** Tracers by who fired: your own, a teammate's, an enemy's. */
 const TRACER_COLORS = { local: new THREE.Color(4, 3.2, 1.8), friendly: new THREE.Color(1.1, 2.7, 4), enemy: new THREE.Color(4, 1.55, 0.65) };
 
@@ -325,6 +386,9 @@ export class Effects {
   private bloodDecalAlpha: THREE.InstancedBufferAttribute;
   private dummy = new THREE.Object3D();
   private casings = new Casings();
+  private ribbons: Ribbon[] = [];
+  private ribbonMat: THREE.MeshBasicMaterial;
+  private ribbonTime = 0;
 
   constructor() {
     const dot = canvasTexture(64, softDot);
@@ -389,6 +453,27 @@ export class Effects {
       this.group.add(mesh, trail);
       this.tracerPool.push({ mesh, trail, from: new THREE.Vector3(), dir: new THREE.Vector3(), length: 0, t: 0 });
     }
+
+    const streaks = canvasTexture(256, windStreaks);
+    streaks.wrapS = THREE.RepeatWrapping;
+    // Not additive: a pale glow vanishes against bright sand and sky, where a dash most needs to be seen.
+    this.ribbonMat = new THREE.MeshBasicMaterial({ map: streaks, vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+    const index: number[] = [];
+    for (let i = 0; i < RIBBON_POINTS - 1; i++) index.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
+    for (let i = 0; i < RIBBONS; i++) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(RIBBON_POINTS * 6), 3).setUsage(THREE.DynamicDrawUsage));
+      geo.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(RIBBON_POINTS * 4), 2).setUsage(THREE.DynamicDrawUsage));
+      geo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(RIBBON_POINTS * 8), 4).setUsage(THREE.DynamicDrawUsage));
+      geo.setIndex(index);
+      geo.setDrawRange(0, 0);
+      const mesh = new THREE.Mesh(geo, this.ribbonMat);
+      mesh.frustumCulled = false;
+      mesh.renderOrder = 2;
+      mesh.visible = false;
+      this.group.add(mesh);
+      this.ribbons.push({ mesh, id: "", n: 0, points: new Float32Array(RIBBON_POINTS * 3), live: false, fed: false, age: 0, strength: 1 });
+    }
   }
 
   /** Budgets switch immediately with the in-game graphics setting. */
@@ -444,6 +529,8 @@ export class Effects {
     this.bloodDecals.geometry.dispose();
     const bloodMat = this.bloodDecals.material as THREE.MeshBasicMaterial;
     bloodMat.map?.dispose(); bloodMat.dispose(); this.bloodDecals.dispose();
+    for (const r of this.ribbons) r.mesh.geometry.dispose();
+    this.ribbonMat.map?.dispose(); this.ribbonMat.dispose();
     this.group.clear();
   }
 
@@ -535,6 +622,96 @@ export class Effects {
     if (puffs && Math.random() < WAKE_PUFFS * dt) {
       this.smoke.spawn({ x: pos.x, y: pos.y + 0.9, z: pos.z, vx: 0, vy: 0.3, vz: 0, max: 0.45, s0: 0.6, s1: 1.3, r: 0.8, g: 0.92, b: 0.97, a0: 0.16, grav: 0, drag: 2 });
     }
+  }
+
+  /**
+   * Lays the ribbon of `id`'s dash up to `pos` (feet). Call every frame of the dash and once more
+   * as it ends; the first frame without a call ends the ribbon, which then hangs and dissolves.
+   * A new ribbon starts at `from`, where the dash began. `strength` thins your own, which would
+   * otherwise hide what you dashed away from.
+   */
+  dashRibbon(id: string, pos: THREE.Vector3, from: THREE.Vector3 = pos, strength = 1) {
+    let r: Ribbon | undefined;
+    for (const x of this.ribbons) if (x.live && x.id === id) { r = x; break; }
+    if (!r) {
+      // A free ribbon, else the one closest to gone. None is taken from a dash still under way.
+      for (const x of this.ribbons) {
+        if (x.n === 0) { r = x; break; }
+        if (!x.live && (!r || x.age > r.age)) r = x;
+      }
+      if (!r) return;
+      // Shown by the next update, once shaped: a reused ribbon must never flash where it last hung.
+      r.mesh.visible = false;
+      r.id = id; r.live = true; r.age = 0; r.strength = strength; r.n = 2;
+      r.points[0] = from.x; r.points[1] = from.y + RIBBON_LIFT; r.points[2] = from.z;
+    }
+    r.fed = true;
+    const p = r.points, head = (r.n - 1) * 3;
+    p[head] = pos.x; p[head + 1] = pos.y + RIBBON_LIFT; p[head + 2] = pos.z;
+    // Far enough from the last point dropped: leave this one behind and carry on with a new head.
+    if (r.n < RIBBON_POINTS && Math.hypot(p[head] - p[head - 3], p[head + 1] - p[head - 2], p[head + 2] - p[head - 1]) > RIBBON_SPACING) {
+      p[head + 3] = p[head]; p[head + 4] = p[head + 1]; p[head + 5] = p[head + 2];
+      r.n++;
+    }
+  }
+
+  /** Ends ribbons no longer being laid, ages them out, and turns the rest to face `eye`. */
+  private updateRibbons(dt: number, eye: THREE.Vector3) {
+    this.ribbonTime += dt;
+    for (const r of this.ribbons) {
+      if (r.n === 0) continue;
+      if (r.fed) r.fed = false;
+      else r.live = false;
+      if (!r.live && (r.age += dt) >= RIBBON_LINGER) {
+        r.n = 0;
+        r.mesh.visible = false;
+        continue;
+      }
+      this.shapeRibbon(r, eye);
+    }
+  }
+
+  private shapeRibbon(r: Ribbon, eye: THREE.Vector3) {
+    const p = r.points, n = r.n, geo = r.mesh.geometry;
+    const position = geo.getAttribute("position") as THREE.BufferAttribute;
+    const uv = geo.getAttribute("uv") as THREE.BufferAttribute;
+    const color = geo.getAttribute("color") as THREE.BufferAttribute;
+    let total = 0;
+    _ribbonLength[0] = 0;
+    for (let i = 1; i < n; i++) {
+      const c = i * 3;
+      total += Math.hypot(p[c] - p[c - 3], p[c + 1] - p[c - 2], p[c + 2] - p[c - 1]);
+      _ribbonLength[i] = total;
+    }
+    const gone = r.age / RIBBON_LINGER;
+    const scroll = (this.ribbonTime * RIBBON_DRIFT) % 1;
+    let tx = 0, ty = 0, tz = 0;
+    for (let i = 0; i < n; i++) {
+      const c = i * 3, a = Math.max(0, i - 1) * 3, b = Math.min(n - 1, i + 1) * 3;
+      // The way the ribbon runs here; a point on top of its neighbours keeps the last one found.
+      const dx = p[b] - p[a], dy = p[b + 1] - p[a + 1], dz = p[b + 2] - p[a + 2], dl = Math.hypot(dx, dy, dz);
+      if (dl > 1e-4) { tx = dx / dl; ty = dy / dl; tz = dz / dl; }
+      const ex = eye.x - p[c], ey = eye.y - p[c + 1], ez = eye.z - p[c + 2], far = Math.hypot(ex, ey, ez);
+      // Across the ribbon, square to the line of sight; lying flat when looked at dead along it.
+      let sx = ty * ez - tz * ey, sy = tz * ex - tx * ez, sz = tx * ey - ty * ex, sl = Math.hypot(sx, sy, sz);
+      if (sl < 1e-5) { sx = -tz; sy = 0; sz = tx; sl = Math.hypot(sx, sz) || 1; }
+      const along = total > 0 ? _ribbonLength[i] / total : 1;
+      const half = RIBBON_WIDTH * 0.5 * (0.6 + 0.4 * along) * (1 + 0.3 * gone) / sl;
+      // Soft at both ends, fainter toward the start, eaten away from the start as it ages, and
+      // thinned right at the lens so flying through one never whites out the screen.
+      const alpha = i === 0 || i === n - 1 ? 0 : r.strength * (0.7 + 0.3 * along)
+        * Math.min(1, Math.max(0, (along + 0.35 - gone * 1.35) / 0.35)) * Math.min(1, Math.max(0, (far - 0.8) / 2));
+      const u = _ribbonLength[i] / RIBBON_TILE - scroll;
+      position.setXYZ(i * 2, p[c] + sx * half, p[c + 1] + sy * half, p[c + 2] + sz * half);
+      position.setXYZ(i * 2 + 1, p[c] - sx * half, p[c + 1] - sy * half, p[c + 2] - sz * half);
+      uv.setXY(i * 2, u, 0);
+      uv.setXY(i * 2 + 1, u, 1);
+      color.setXYZW(i * 2, RIBBON_GLOW, RIBBON_GLOW, RIBBON_GLOW, alpha);
+      color.setXYZW(i * 2 + 1, RIBBON_GLOW, RIBBON_GLOW, RIBBON_GLOW, alpha);
+    }
+    position.needsUpdate = uv.needsUpdate = color.needsUpdate = true;
+    geo.setDrawRange(0, (n - 1) * 6);
+    r.mesh.visible = true;
   }
 
   impact(point: THREE.Vector3, normal: THREE.Vector3, soft: boolean) {
@@ -662,7 +839,9 @@ export class Effects {
     this.casings.eject(port, gun, carry, kind, floor);
   }
 
-  update(dt: number) {
+  /** `eye` is where the view is from: dash ribbons turn to face it. */
+  update(dt: number, eye: THREE.Vector3 = _origin) {
+    this.updateRibbons(dt, eye);
     this.smoke.update(dt);
     this.casings.update(dt);
     this.glow.update(dt);
