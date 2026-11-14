@@ -40,6 +40,8 @@ const _arcNormal = new THREE.Vector3();
 const _dashPosition = new THREE.Vector3(), _dashVelocity = new THREE.Vector3();
 /** After a dash, how long the next press is ignored and the server's count of dashes is not yet believed (ms). */
 const DASH_LOCK_MS = 700;
+/** Keep the map introduction readable even when all assets are already cached. */
+const MIN_MAP_LOADING_MS = 2000;
 /** A dash's wake is drawn for players within this far (m); past it the streaks are smaller than a pixel. */
 const WAKE_RANGE = 70;
 const _armEuler = new THREE.Euler();
@@ -184,6 +186,7 @@ export class Game {
   get matchEnded() { return this.room.state?.phase === "ended"; }
 
   async init() {
+    const loadingStartedAt = performance.now();
     // Capture spawn messages while assets load; initial state also recovers a missed join message.
     const map = getMap(this.room.state?.map);
     audio.setMap(map.id);
@@ -193,6 +196,9 @@ export class Game {
     this.world = physics.world;
     hud().set({ loading: 0.35 });
     [this.template, this.weapons] = await Promise.all([loadCharacter(), loadWeapons()]);
+    if (this.disposed) return;
+    const remaining = MIN_MAP_LOADING_MS - (performance.now() - loadingStartedAt);
+    if (remaining > 0) await new Promise<void>((resolve) => setTimeout(resolve, remaining));
     if (this.disposed) return;
     this.local = new LocalPlayer(this, this.R, this.world);
     this.local.thirdPerson = useSettings.getState().thirdPerson;
