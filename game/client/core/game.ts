@@ -46,8 +46,6 @@ const DASH_LOCK_MS = 700;
 const MIN_MAP_LOADING_MS = 2000;
 /** A dash's wake is drawn for players within this far (m); past it the streaks are smaller than a pixel. */
 const WAKE_RANGE = 70;
-/** How strongly your own dash ribbon is drawn (others' are 1): at full it hides what you dashed away from. */
-const OWN_RIBBON = 0.5;
 const _armEuler = new THREE.Euler();
 /**
  * The right hand bone's resting turn in view space while holding a grenade (the bone's +Y runs
@@ -473,9 +471,6 @@ export class Game {
   }
 
   private dashAt = -1e9;
-  /** Whether the local player was mid-dash last frame, and where they last stood when not (feet): the start of their ribbon. */
-  private dashing = false;
-  private dashFrom = new THREE.Vector3();
 
   /** F: spends a dash. The server takes it off the player; kills or a new life bring more. */
   private tryDash(now: number) {
@@ -727,9 +722,7 @@ export class Game {
       remote.setReadability(useSettings.getState().quality === "low" && (hud().mode !== "tdm" || remote.team !== hud().myTeam));
       remote.update(dt, this.clock.now() - INTERP_DELAY_MS, this.camera.position);
       remote.updateTag(this.scene, hud().mode === "tdm" && remote.team === hud().myTeam);
-      // The ribbon is drawn at any distance: it is how you tell where a dashing player went.
-      if (remote.dashing || remote.dashEnded) this.effects.dashRibbon(remote.id, remote.pos, remote.dashFrom);
-      if (remote.dashing && remote.pos.distanceToSquared(this.camera.position) < WAKE_RANGE * WAKE_RANGE) this.effects.dashTrail(remote.pos, remote.vel, dt);
+      if (remote.alive && (remote.flags & F_DASH) && remote.pos.distanceToSquared(this.camera.position) < WAKE_RANGE * WAKE_RANGE) this.effects.dashTrail(remote.pos, remote.vel, dt);
     }
     // Read before the local player's update, which clears the frame's presses.
     const spotPressed = this.input.consume("KeyZ");
@@ -802,7 +795,7 @@ export class Game {
     this.thrown.update(dt, now, this.room.state.grenades, this.room.sessionId);
     this.effects.setQuality(useSettings.getState().quality);
     this.effects.setViewportHeight(viewportHeight * pixelRatio);
-    this.effects.update(dt, this.camera.position);
+    this.effects.update(dt);
     audio.setVolume(useSettings.getState().volume);
     audio.setListener(this.camera.position, this.camera.getWorldDirection(new THREE.Vector3()));
     if (now >= this.pingAt) { this.send("ping", { c: now, rtt: this.clock.rtt }); this.pingAt = now + 1500; }
