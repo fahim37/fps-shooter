@@ -96,10 +96,10 @@ describe("combat effects", () => {
       const points = ribbon.geometry.drawRange.count / 6 + 1;
       const middle = (i: number) => (position.getX(i * 2) + position.getX(i * 2 + 1)) / 2;
       const alphas = () => Array.from({ length: points }, (_, i) => color.getW(i * 2));
-      // It spans the whole dash, start to finish, at chest height and as wide as a body.
+      // It spans the whole dash, start to finish, at chest height and wide enough to make out.
       expect(middle(0)).toBeCloseTo(-5);
       expect(middle(points - 1)).toBeCloseTo(-5 + 13 * 0.77);
-      expect(Math.abs(position.getY(points) - position.getY(points + 1))).toBeGreaterThan(1);
+      expect(Math.abs(position.getY(points) - position.getY(points + 1))).toBeGreaterThan(0.7);
       expect(Array.from(position.array).every(Number.isFinite)).toBe(true);
       // Clearly visible along its length, brightest toward where the player went, soft at both ends.
       const fresh = alphas();
@@ -108,13 +108,13 @@ describe("combat effects", () => {
       expect(fresh[1]).toBeGreaterThan(0.4);
       expect(fresh[points - 2]).toBeGreaterThan(fresh[1]);
 
-      // It hangs after the dash; the start goes first, so what is left points to where they are.
-      effects.update(0.75, eye);
+      // It hangs briefly after the dash; the start goes first, so what is left points to where they are.
+      effects.update(0.3, eye);
       expect(ribbon.visible).toBe(true);
       const aged = alphas();
       expect(aged[1]).toBe(0);
       expect(aged[points - 2]).toBeGreaterThan(0.5);
-      effects.update(1, eye);
+      effects.update(0.3, eye);
       expect(ribbon.visible).toBe(false);
 
       // More dashes at once than ribbons: none is taken from a dash still under way.

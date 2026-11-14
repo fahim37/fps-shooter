@@ -120,8 +120,8 @@ function windStreaks(g: CanvasRenderingContext2D, s: number) {
   // A body of pale blue, which shows against light walls and sky where white alone would not.
   const band = g.createLinearGradient(0, 0, 0, s);
   band.addColorStop(0, "rgba(95,190,255,0)");
-  band.addColorStop(0.3, "rgba(95,190,255,0.5)");
-  band.addColorStop(0.7, "rgba(95,190,255,0.5)");
+  band.addColorStop(0.3, "rgba(95,190,255,0.26)");
+  band.addColorStop(0.7, "rgba(95,190,255,0.26)");
   band.addColorStop(1, "rgba(95,190,255,0)");
   g.fillStyle = band;
   g.fillRect(0, 0, s, s);
@@ -335,11 +335,11 @@ interface Ribbon {
 }
 
 /** Ribbons at once, the most points along one, and how far apart they are dropped (m). */
-const RIBBONS = 8, RIBBON_POINTS = 20, RIBBON_SPACING = 0.8;
+const RIBBONS = 8, RIBBON_POINTS = 14, RIBBON_SPACING = 1.2;
 /** How wide a ribbon is where the dash ended and how high above the feet its middle runs (m). */
-const RIBBON_WIDTH = 1.5, RIBBON_LIFT = 0.95;
+const RIBBON_WIDTH = 1, RIBBON_LIFT = 0.95;
 /** Seconds a ribbon hangs in the air after the dash. It dissolves from where the dash began, so what is left points to where the player is. */
-const RIBBON_LINGER = 1.5;
+const RIBBON_LINGER = 0.55;
 /** Metres of ribbon one tile of streaks covers, and tiles a second they blow along it after the player. */
 const RIBBON_TILE = 4, RIBBON_DRIFT = 0.6;
 /** How bright the ribbon's streaks are drawn: a little over full, so they stay pale once tone mapped. */
@@ -696,10 +696,10 @@ export class Effects {
       let sx = ty * ez - tz * ey, sy = tz * ex - tx * ez, sz = tx * ey - ty * ex, sl = Math.hypot(sx, sy, sz);
       if (sl < 1e-5) { sx = -tz; sy = 0; sz = tx; sl = Math.hypot(sx, sz) || 1; }
       const along = total > 0 ? _ribbonLength[i] / total : 1;
-      const half = RIBBON_WIDTH * 0.5 * (0.6 + 0.4 * along) * (1 + 0.3 * gone) / sl;
+      const half = RIBBON_WIDTH * 0.5 * (0.6 + 0.4 * along) / sl;
       // Soft at both ends, fainter toward the start, eaten away from the start as it ages, and
       // thinned right at the lens so flying through one never whites out the screen.
-      const alpha = i === 0 || i === n - 1 ? 0 : r.strength * (0.7 + 0.3 * along)
+      const alpha = i === 0 || i === n - 1 ? 0 : r.strength * (0.5 + 0.3 * along)
         * Math.min(1, Math.max(0, (along + 0.35 - gone * 1.35) / 0.35)) * Math.min(1, Math.max(0, (far - 0.8) / 2));
       const u = _ribbonLength[i] / RIBBON_TILE - scroll;
       position.setXYZ(i * 2, p[c] + sx * half, p[c + 1] + sy * half, p[c + 2] + sz * half);
