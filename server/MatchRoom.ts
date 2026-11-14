@@ -109,6 +109,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   private botTarget = 0;
   botSkill: 0 | 1 | 2 = 1;
   private botSeq = 0;
+  private spottedUntil = new Map<string, number>();
   private voice?: VoiceRelay;
   /** Player analytics for the admin dashboard (absent in unit tests that borrow room methods). */
   analytics?: RoomRecorder;
@@ -486,6 +487,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     const t = now();
     if (phase === "ended") this.logClaims();
     this.state.phase = phase;
+    this.spottedUntil.clear();
     for (const p of this.players.values()) { p.st.emote = "idle"; p.lastEmoteAt = 0; }
     if (phase === "waiting") {
       this.state.phaseEndsAt = 0;
@@ -763,33 +765,55 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   /** F: spends the player's dash, and lets their next poses cover its distance. */
   private onDash(client: Client) {
     const p = this.players.get(client.sessionId);
-    if (!p || !p.st.alive || p.st.dash < 1) return;
+    if (p) this.dash(p);
+  }
+
+  /** Shared by human input and bot movement; both spend the same kill-refilled charges. */
+  dash(p: ServerPlayer): boolean {
+    if (!p.st.alive || p.st.dash < 1 || this.state.phase === "waiting" || this.state.phase === "ended") return false;
     p.st.dash--;
     p.dashUntil = now() + 1500;
     p.dashBudget = DASH_SPEED * DASH_SECONDS * 1.25;
+    return true;
   }
 
   /** A player marks the enemy in their sights: their team sees the mark follow that enemy for a while. */
   private onSpot(client: Client, id: unknown) {
     const p = this.players.get(client.sessionId), target = typeof id === "string" ? this.players.get(id) : undefined;
+    if (p && target) this.spot(p, target);
+  }
+
+  /** Lets bots avoid duplicating a mark their team already has. FFA marks belong to their maker. */
+  isSpotted(p: ServerPlayer, target: ServerPlayer, at: number): boolean {
+    return (this.spottedUntil.get(this.spotKey(p, target)) ?? 0) > at;
+  }
+
+  private spotKey(p: ServerPlayer, target: ServerPlayer): string {
+    return `${this.state.mode === "tdm" ? p.st.team : p.id}:${target.id}`;
+  }
+
+  /** Mark through the same aim, line-of-sight, team and cooldown checks for bots and humans. */
+  spot(p: ServerPlayer, target: ServerPlayer): boolean {
     const at = now();
-    if (!p || !target || target === p || this.state.phase === "waiting" || !p.st.alive || !target.st.alive) return;
-    if (at - p.lastSpotAt < SPOT_COOLDOWN_MS * 0.8) return;
+    if (target === p || this.state.phase === "waiting" || this.state.phase === "ended" || !p.st.alive || !target.st.alive) return false;
+    if (at - p.lastSpotAt < SPOT_COOLDOWN_MS * 0.8) return false;
     const tdm = this.state.mode === "tdm";
-    if (tdm && target.st.team === p.st.team) return;
+    if (tdm && target.st.team === p.st.team) return false;
     p.lastSpotAt = at;
     // The marker has to be looking roughly at the enemy, with a clear line to their head or chest.
     const eye = this.eyePos(p), cp = Math.cos(p.st.pitch);
     const dir: V3 = [-Math.sin(p.st.yaw) * cp, Math.sin(p.st.pitch), -Math.cos(p.st.yaw) * cp];
     const points: V3[] = [this.eyePos(target), [target.st.x, target.st.y + ((target.st.flags & F_SLIDE) ? 0.4 : 1), target.st.z]];
     const seen = pickSpot(eye, dir, [{ id: target.id, points }], (from, to) => lineOfSight(RAPIER, this.world, from, to), SPOT_SERVER_CONE);
-    if (!seen) return;
+    if (!seen) return false;
+    this.spottedUntil.set(this.spotKey(p, target), at + SPOT_MS);
     const event: SpotEvent = { id: target.id, by: p.id, ms: SPOT_MS };
     for (const mate of this.players.values()) {
       if (mate === p || (tdm && mate.st.team === p.st.team)) mate.client?.send("spotted", event);
     }
     // The marked player is warned, so they can break the line of sight.
     target.client?.send("marked", { ms: SPOT_MS });
+    return true;
   }
 
   canDamage(a: ServerPlayer, b: ServerPlayer) {

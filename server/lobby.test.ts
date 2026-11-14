@@ -8,7 +8,7 @@ vi.mock("./bot", () => ({ Bot: class {}, BOT_NAMES: [] }));
 
 function fixture() {
   const room = Object.assign(Object.create(MatchRoom.prototype), {
-    state: new MatchState(), players: new Map(), grenades: new Map(), maxClients: 6,
+    state: new MatchState(), players: new Map(), grenades: new Map(), spottedUntil: new Map(), maxClients: 6,
     updateMeta: vi.fn(), balanceBots: vi.fn(), spawn: vi.fn(), unlock: vi.fn(), setPrivate: vi.fn(),
     allowReconnection: vi.fn().mockResolvedValue(undefined),
   });
