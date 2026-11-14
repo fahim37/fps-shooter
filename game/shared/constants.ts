@@ -48,7 +48,7 @@ export const DASH_LIFT = 0.3;
 /** A life starts with DASH_MAX dashes, the most held at once. Below that, every DASH_KILLS kills give DASH_REFILL more. */
 export const DASH_MAX = 2;
 export const DASH_KILLS = 2;
-export const DASH_REFILL = 2;
+export const DASH_REFILL = 1;
 /** A jump pressed this long before landing still happens on landing (ms). */
 export const JUMP_BUFFER_MS = 130;
 

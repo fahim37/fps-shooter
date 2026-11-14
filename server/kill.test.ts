@@ -42,7 +42,7 @@ describe("elimination snapshots", () => {
     expect(broadcast.mock.calls[0][1].killerInfo).toBeUndefined();
   });
 
-  it("gives two dashes back every two kills, only while below the two a player can hold", () => {
+  it("gives one dash back every two kills, only while below the two a player can hold", () => {
     const killer = player("Killer", 30), room = { state: { phase: "live", mode: "ffa" }, players: new Map([[killer.id, killer]]), broadcast: vi.fn(), checkScoreLimit: vi.fn() };
     const kill = () => MatchRoom.prototype.damage.call(room as unknown as MatchRoom, player("Victim", 0), 100, killer, "ar", "body", [0, 0, 0]);
     const st = killer.st as unknown as { dash: number; dashKills: number };
@@ -53,6 +53,8 @@ describe("elimination snapshots", () => {
     kill();
     expect([st.dash, st.dashKills]).toEqual([0, 1]);
     kill();
+    expect([st.dash, st.dashKills]).toEqual([1, 0]);
+    kill(); kill();
     expect([st.dash, st.dashKills]).toEqual([2, 0]);
     st.dash = 1;
     kill(); kill();

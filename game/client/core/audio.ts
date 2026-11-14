@@ -928,7 +928,7 @@ export class AudioEngine {
     this.blip(out, "sine", 620, t, 0.022 * k, 0.07, 0.3, 1500);
   }
 
-  /** The dash is back after two kills: two quick rising notes. */
+  /** A dash is back after two kills: two quick rising notes. */
   dashReady() {
     const ctx = this.ctx;
     if (!ctx) return;
