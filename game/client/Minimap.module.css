@@ -20,9 +20,3 @@
 :global(.game-view[data-touch]) .panel { top: max(8px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); right: auto; width: 84px; border-color: #c8d4c130; background: #0e191cc4; }
 :global(.game-view[data-touch]) .heading, :global(.game-view[data-touch]) .legend { display: none; }
 
-/* Enemy marks: gunfire pulses where it came from; sprinting enemies leave red footprints. */
-.shot { pointer-events: none; }.shotDot { fill: #ff4a3d; stroke: #ffd2cc; stroke-width: .5; }
-.shotPulse { fill: none; stroke: #ff6a5c; stroke-width: .7; transform-origin: 0 0; animation: shotPulse .9s ease-out; }
-@keyframes shotPulse { 0% { transform: scale(.35); opacity: 1; } 100% { transform: scale(1); opacity: 0; } }
-.step { fill: #ff5a4d; pointer-events: none; }
-@media (prefers-reduced-motion: reduce) { .shotPulse { animation: none; opacity: .5; } }

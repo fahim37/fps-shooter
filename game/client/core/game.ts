@@ -25,7 +25,7 @@ import { PRESETS, useSettings } from "../settings";
 import { enemyAlongRay } from "./targeting";
 import { useLoadout } from "../loadout";
 import { DeathCamera } from "./deathcam";
-import { bearingYaw, liveView, MARK_MS, THREAT_MS, addMark, addThreat, mapRelation, relativeBearing, type MapMark, type MapPlayer } from "./minimap";
+import { bearingYaw, liveView, THREAT_MS, addThreat, mapRelation, relativeBearing, type MapPlayer } from "./minimap";
 import { buildSquad } from "./squad";
 import { liveSpots, screenSpot } from "./spots";
 import { pickSpot, SPOT_COOLDOWN_MS, type SpotTarget } from "../../shared/spot";
@@ -425,8 +425,6 @@ export class Game {
     const from = remote?.posed && remote.rig ? remote.rig.muzzle : new THREE.Vector3(...ev.origin);
     audio.shot(ev.weapon, from, false, friendly ? "ally" : "enemy");
     audio.cycle(ev.weapon, from);
-    // Like PUBG, enemy gunfire gives the shooter's position away on the minimap.
-    if (!friendly) this.mark({ key: ev.id, kind: "shot", x: ev.origin[0], z: ev.origin[2], yaw: remote?.yaw ?? 0, at: performance.now() });
     if (ev.ends[0]) this.effects.muzzleFlash(from, new THREE.Vector3(...ev.ends[0]).sub(from).normalize(), FLASH_SIZE[ev.weapon] ?? 1, false);
     if (!friendly) this.nearMiss(ev);
     let struck = 0;
@@ -527,10 +525,6 @@ export class Game {
       liveSpots.set(spot.id, { ...screenSpot(_spot.x, _spot.y, behind), distance });
     }
     if (stale) hud().set({ spots: spots.filter((spot) => liveSpots.has(spot.id)) });
-  }
-
-  private mark(mark: MapMark) {
-    hud().set({ mapMarks: addMark(hud().mapMarks, mark) });
   }
 
   /**
@@ -856,7 +850,6 @@ export class Game {
         killerMarker: local.alive ? null : this.deathCamera.marker(this.camera),
         mapPlayers, peek: local.leanSide, emoteMenu: local.emoteMenu && local.alive, emote: local.emote,
         threats: hud().threats.some((threat) => now - threat.at >= THREAT_MS) ? hud().threats.filter((threat) => now - threat.at < THREAT_MS) : hud().threats,
-        mapMarks: hud().mapMarks.some((mark) => now - mark.at >= MARK_MS[mark.kind]) ? hud().mapMarks.filter((mark) => now - mark.at < MARK_MS[mark.kind]) : hud().mapMarks,
       });
     }
   }

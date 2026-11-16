@@ -7,7 +7,7 @@ import { WEAPONS, reloadClipAt, reloadMs } from "../../shared/weapons";
 import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_RELOAD_SKIP_SHIFT, F_SLIDE, F_DASH, F_SPRINT } from "../../shared/messages";
 import type { PlayerState } from "../../shared/schema";
 import { MOVING_SPEED, rayVsPose, slideYaw, type Pose, type PoseHit } from "../../shared/hitboxes";
-import { HitShapes } from "../player/hitShapes";
+import { MeshHit } from "../player/meshHit";
 import { audio } from "./audio";
 import { setEnemyReadability } from "../assets/readability";
 import { isEmote } from "../../shared/showcase";
@@ -85,7 +85,7 @@ export class RemotePlayer {
     this.rig?.dispose();
     this.tint = tint;
     this.rig = new CharacterRig(template, weapons, tint, "tpp");
-    this.hitShapes = null;
+    this.meshHit = null;
     // Not posed until the next `animate`: a ray meanwhile would meet the bind pose at the origin.
     this.posed = false;
     this.readable = false;
@@ -125,17 +125,17 @@ export class RemotePlayer {
   }
 
   /**
-   * A ray against this player as drawn: the hit shapes on the animated skeleton, posed by the
-   * last `animate` (what is on screen when the trigger is pulled). Off-screen, the shared hitboxes.
+   * A ray against this player exactly as drawn: the skinned mesh, posed by the last `animate`
+   * (what is on screen when the trigger is pulled). Off-screen, the shared hitboxes.
    */
   hitTest(origin: [number, number, number], dir: [number, number, number], maxDist: number): PoseHit | null {
     if (this.posed && this.rig && this.alive) {
-      this.hitShapes ??= new HitShapes(this.rig.inst.bones);
-      return this.hitShapes.raycast(origin, dir, maxDist);
+      this.meshHit ??= new MeshHit(this.rig.inst.meshes, this.rig.inst.bones.get("pelvis")!);
+      return this.meshHit.raycast(origin, dir, maxDist);
     }
     return rayVsPose(origin, dir, maxDist, this.pose());
   }
-  private hitShapes: HitShapes | null = null;
+  private meshHit: MeshHit | null = null;
 
   /** Interpolates the network pose and plays footsteps; `animate` then poses the character. */
   update(dt: number, renderTime: number, listener: THREE.Vector3) {
@@ -266,6 +266,7 @@ export class RemotePlayer {
       sinceShot: this.sinceShot, sinceDraw: this.sinceDraw,
       emote: this.alive && isEmote(this.emote) ? this.emote : null,
     });
+    if (this.posed) this.meshHit?.invalidate();
     const headBone = this.posed ? this.rig.inst?.bones.get("Head") : undefined;
     if (headBone) headBone.getWorldPosition(this.head).y += 0.1;
     else this.head.set(this.pos.x, this.pos.y + ((this.flags & F_SLIDE) ? 0.7 : (this.flags & F_CROUCH) ? 1.15 : 1.64), this.pos.z);

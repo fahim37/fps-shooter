@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef } from "react";
 import { getMap, MAPS } from "../shared/map/maps";
 import type { MapId } from "../shared/map/types";
-import { MINIMAP_GRID, MINIMAP_RANGE, liveView, bearingYaw, mapHeading, markStrength, threatStrength, toFrame, viewPoint } from "./core/minimap";
+import { MINIMAP_GRID, MINIMAP_RANGE, liveView, bearingYaw, mapHeading, threatStrength, toFrame, viewPoint } from "./core/minimap";
 import { SQUAD_COLORS } from "./core/squad";
 import { useHud } from "./core/hud";
 import styles from "./Minimap.module.css";
@@ -26,7 +26,6 @@ const Terrain = memo(function Terrain({ map }: { map: MapId }) {
 export const Minimap = memo(function Minimap({ now, map }: { now: number; map: MapId }) {
   const players = useHud((state) => state.mapPlayers);
   const threats = useHud((state) => state.threats);
-  const marks = useHud((state) => state.mapMarks);
   const self = players.find((player) => player.relation === "self");
   // Like PUBG, the map follows you, turned so the way you face is up; while you are down it stays
   // where you fell.
@@ -56,7 +55,7 @@ export const Minimap = memo(function Minimap({ now, map }: { now: number; map: M
   const others = players.filter((player) => player.relation !== "self");
   return <section className={styles.panel} aria-label="Minimap">
     <div className={styles.heading}><span>{MAPS[map].name.toUpperCase()}</span><small>GRID {MINIMAP_GRID} M</small></div>
-    <svg ref={svg} viewBox="0 0 100 100" className={styles.map} role="img" aria-label={`${MAPS[map].name} map centered on you and turned to your facing, with your squad, enemy gunfire and recent hit directions`}>
+    <svg ref={svg} viewBox="0 0 100 100" className={styles.map} role="img" aria-label={`${MAPS[map].name} map centered on you and turned to your facing, with your squad and recent hit directions`}>
       <defs>
         <linearGradient id="minimap-threat" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stopColor="#ff4a3d" stopOpacity=".9" /><stop offset=".55" stopColor="#ff4a3d" stopOpacity=".35" /><stop offset="1" stopColor="#ff4a3d" stopOpacity="0" /></linearGradient>
       </defs>
@@ -66,23 +65,6 @@ export const Minimap = memo(function Minimap({ now, map }: { now: number; map: M
       {/* Range rings: 10 and 25 meters around you. */}
       <circle cx="50" cy="50" r={10 * scale} className={styles.ring} />
       <circle cx="50" cy="50" r={25 * scale} className={styles.ring} />
-      {marks.map((mark) => {
-        const strength = markStrength(mark, now);
-        if (strength <= 0) return null;
-        const point = viewPoint(mark.x, mark.z, cx, cz);
-        if (point.x < -4 || point.x > 104 || point.y < -4 || point.y > 104) return null;
-        if (mark.kind === "shot") {
-          return <g key={mark.key} transform={`translate(${point.x} ${point.y})`} opacity={strength} className={styles.shot} aria-label="Enemy gunfire">
-            <circle key={mark.at} r="4.5" className={styles.shotPulse} />
-            <circle r="1.9" className={styles.shotDot} />
-          </g>;
-        }
-        // Each footprint sits a little to its side of the line of travel.
-        const side = mark.left ? -0.55 : 0.55;
-        return <g key={mark.key} transform={`translate(${point.x} ${point.y}) rotate(${mapHeading(mark.yaw)}) translate(${side} 0)`} opacity={strength * 0.9} className={styles.step} aria-label="Enemy footsteps">
-          <path d="M0-1.5c.75 0 1 .7.95 1.4-.08.85-.38 1.1-.95 1.1S-1 .75-1-.1c-.05-.7.25-1.4 1-1.4ZM-.62 1.25h1.24l-.08.75c-.06.4-.3.55-.54.55s-.48-.15-.54-.55Z" />
-        </g>;
-      })}
       {self && threats.map((threat) => {
         const strength = threatStrength(threat, now);
         if (strength <= 0) return null;

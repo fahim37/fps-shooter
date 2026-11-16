@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { WeaponId } from "../../shared/weapons";
 import { MAX_SHIELD, type GameMode } from "../../shared/constants";
-import type { MapMark, MapPlayer, Threat } from "./minimap";
+import type { MapPlayer, Threat } from "./minimap";
 import type { SquadMember } from "./squad";
 import type { Spot } from "./spots";
 
@@ -93,8 +93,6 @@ export interface HudState {
   roomName: string;
   players: ScoreRow[];
   mapPlayers: MapPlayer[];
-  /** Enemy gunfire and sprint footprints on the minimap. */
-  mapMarks: MapMark[];
   /** Enemies marked with Z, by you or a teammate. */
   spots: Spot[];
   /** An enemy has marked this player until then (performance.now), or 0. */
@@ -177,7 +175,6 @@ export const useHud = create<HudState>((set, get) => ({
   roomName: "",
   players: [],
   mapPlayers: [],
-  mapMarks: [],
   spots: [],
   markedUntil: 0,
   dash: 2,

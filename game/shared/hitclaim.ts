@@ -6,10 +6,16 @@ type V3 = [number, number, number];
  * How far (m) a claimed hit point may lie outside the server's rewound hitboxes. The shooter's
  * client tests the character as drawn (hit shapes on the animated skeleton); the server's
  * hitboxes only know position, stance, aim and lean, not the stride phase or the exact arm pose.
- * Measured gaps (scripts/dev/hit-accuracy.ts): the head bobs ~0.13 m from its mean while
- * running, hands on a rifle reach ~0.35 m past the torso, a striding foot ~0.3 m past the legs.
+ * Sized by scripts/dev/hit-accuracy.ts so exact mesh hits are taken: the head bobs with the stride,
+ * hands on a rifle and a leaned shoulder reach ~0.47 m past the torso.
  */
-export const CLAIM_SLACK: Record<HitPart, number> = { head: 0.17, body: 0.38, legs: 0.38 };
+export const CLAIM_SLACK: Record<HitPart, number> = { head: 0.19, body: 0.48, legs: 0.38 };
+/**
+ * A moving player's legs: a striding foot swings well out in front of or behind the upright leg
+ * capsule. Clients score the skinned mesh itself (game/client/player/meshHit.ts); measured on it,
+ * exact leg hits on walking, running and sprinting players lie up to 0.72 m outside the capsule.
+ */
+export const MOVING_LEGS_SLACK = 0.75;
 /** Collision differences between client and server along the shot (m). */
 export const WALL_SLACK = 0.3;
 
@@ -24,7 +30,7 @@ export function claimFits(o: V3, dir: V3, dist: number, part: HitPart, pose: Pos
   const p: V3 = [o[0] + dir[0] * dist, o[1] + dir[1] * dist, o[2] + dir[2] * dist];
   const hb = hitboxes(pose);
   if (part === "head") return dist3(p, hb.head.c) <= hb.head.r + CLAIM_SLACK.head;
-  const slack = CLAIM_SLACK[part];
+  const slack = part === "legs" && (pose.moving ?? 0) > 0 && !pose.slide ? MOVING_LEGS_SLACK : CLAIM_SLACK[part];
   return dist3(p, hb.head.c) <= hb.head.r + slack
     || segDist(p, hb.body.a, hb.body.b) <= hb.body.r + slack
     || segDist(p, hb.legs.a, hb.legs.b) <= hb.legs.r + slack;

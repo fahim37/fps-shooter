@@ -9,6 +9,7 @@ import { chromium } from "playwright-core";
 import type * as Three from "three";
 import type { CharacterRig, RigState } from "../../game/client/player/CharacterRig";
 import type { HitShapes as HitShapesT, SHAPES as SHAPES_T } from "../../game/client/player/hitShapes";
+import type { MeshHit as MeshHitT } from "../../game/client/player/meshHit";
 import type { hitboxes as hitboxesT, rayVsPose as rayVsPoseT, HitPart } from "../../game/shared/hitboxes";
 import type { claimFits as claimFitsT } from "../../game/shared/hitclaim";
 
@@ -51,10 +52,10 @@ async function main() {
     const report = await page.evaluate(({ cases, yaw, phases, rays, tune, cover }) => {
       const w = window as unknown as {
         __rigs: CharacterRig[]; THREE: typeof Three;
-        __hit: { HitShapes: typeof HitShapesT; SHAPES: typeof SHAPES_T; rayVsPose: typeof rayVsPoseT; hitboxes: typeof hitboxesT; claimFits: typeof claimFitsT };
+        __hit: { HitShapes: typeof HitShapesT; SHAPES: typeof SHAPES_T; MeshHit: typeof MeshHitT; rayVsPose: typeof rayVsPoseT; hitboxes: typeof hitboxesT; claimFits: typeof claimFitsT };
       };
       const { THREE } = w;
-      const { HitShapes, SHAPES, rayVsPose, claimFits } = w.__hit;
+      const { HitShapes, SHAPES, MeshHit, rayVsPose, hitboxes, claimFits } = w.__hit;
       const rigs = w.__rigs.slice(0, 2);
       for (const r of w.__rigs.slice(2)) r.object.visible = false;
       const PART = (name: string): HitPart => name === "Head" || name === "neck_01" ? "head"
@@ -62,7 +63,7 @@ async function main() {
       let seed = 12345;
       const rand = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
 
-      interface PoseData { bones: Map<string, { matrixWorld: Three.Matrix4 }>; rays: { o: V3; d: V3; truth: HitPart | null }[]; pose: Parameters<typeof rayVsPose>[3]; c: Case; rig: number }
+      interface PoseData { bones: Map<string, { matrixWorld: Three.Matrix4 }>; rays: { o: V3; d: V3; truth: HitPart | null; dist: number; mesh: { part: HitPart; distance: number } | null }[]; pose: Parameters<typeof rayVsPose>[3]; c: Case; rig: number }
       const poses: PoseData[] = [];
       const fwd: V3 = [-Math.sin(yaw), 0, -Math.cos(yaw)], right: V3 = [Math.cos(yaw), 0, -Math.sin(yaw)];
       const headTable: Record<string, number[][]> = {};
@@ -114,6 +115,8 @@ async function main() {
             });
             box.expandByScalar(0.12);
             const raycaster = new THREE.Raycaster();
+            // What clients test now: the skinned mesh as posed (game/client/player/meshHit.ts).
+            const meshHit = new MeshHit(r.inst.meshes, r.inst.bones.get("pelvis")!);
             const list: PoseData["rays"] = [];
             for (let k = 0; k < rays; k++) {
               const ang = rand() * Math.PI * 2, dist = 8 + rand() * 30;
@@ -129,7 +132,7 @@ async function main() {
                 const f = [ps[hit.face.a], ps[hit.face.b], ps[hit.face.c]];
                 truth = f[1] === f[2] ? f[1] : f[0];
               }
-              list.push({ o, d: [d.x, d.y, d.z], truth });
+              list.push({ o, d: [d.x, d.y, d.z], truth, dist: hit?.distance ?? 0, mesh: meshHit.raycast(o, [d.x, d.y, d.z], 60) });
             }
             const bones = new Map<string, { matrixWorld: Three.Matrix4 }>();
             for (const [n, b] of r.inst.bones) bones.set(n, { matrixWorld: b.matrixWorld.clone() });
@@ -187,6 +190,39 @@ async function main() {
         return { ok: ok / n, m };
       };
 
+      /** The mesh test against the truth, and the share of its (exact) hits the server's claim check refuses. */
+      const meshScore = () => {
+        const m: Record<string, number> = {};
+        const refused: Record<string, [number, number]> = {};
+        const excess: Record<string, number[]> = {}, excessBy: Record<string, number[]> = {};
+        let ok = 0, n = 0;
+        for (const p of poses) for (const ray of p.rays) {
+          const got = ray.mesh?.part ?? null;
+          const key = `${ray.truth ?? "miss"}>${got ?? "miss"}`;
+          m[key] = (m[key] ?? 0) + 1;
+          n++; if (got === ray.truth) ok++;
+          if (ray.mesh) {
+            const row = refused[ray.mesh.part] ??= [0, 0];
+            row[1]++;
+            if (!claimFits(ray.o, ray.d, ray.mesh.distance, ray.mesh.part, p.pose, null, 80)) {
+              row[0]++;
+              // How far outside the server's shapes the exact hit lies (m), to size CLAIM_SLACK.
+              const at: V3 = [ray.o[0] + ray.d[0] * ray.mesh.distance, ray.o[1] + ray.d[1] * ray.mesh.distance, ray.o[2] + ray.d[2] * ray.mesh.distance];
+              const hb = hitboxes(p.pose);
+              const seg = (a: V3, b: V3) => { const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], l2 = ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2; const t = Math.max(0, Math.min(1, ((at[0] - a[0]) * ab[0] + (at[1] - a[1]) * ab[1] + (at[2] - a[2]) * ab[2]) / l2)); return Math.hypot(at[0] - a[0] - ab[0] * t, at[1] - a[1] - ab[1] * t, at[2] - a[2] - ab[2] * t); };
+              const out = ray.mesh.part === "head" ? Math.hypot(at[0] - hb.head.c[0], at[1] - hb.head.c[1], at[2] - hb.head.c[2]) - hb.head.r
+                : Math.min(Math.hypot(at[0] - hb.head.c[0], at[1] - hb.head.c[1], at[2] - hb.head.c[2]) - hb.head.r, seg(hb.body.a, hb.body.b) - hb.body.r, seg(hb.legs.a, hb.legs.b) - hb.legs.r);
+              (excess[ray.mesh.part] ??= []).push(out);
+              (excessBy[`${ray.mesh.part} ${p.c.name}`] ??= []).push(out);
+            }
+          }
+        }
+        const q = (v: number[]) => { v.sort((x, y) => x - y); return [0.5, 0.9, 0.99, 1].map((f) => v[Math.min(v.length - 1, Math.floor(v.length * f))].toFixed(3)).join(" / "); };
+        const slack = Object.fromEntries(Object.entries(excess).map(([k, v]) => [k, `needs ${q(v)} m (p50/p90/p99/max)`]));
+        const byCase = Object.fromEntries(Object.entries(excessBy).sort((a, b) => b[1].length - a[1].length).slice(0, 8).map(([k, v]) => [k, `${v.length} refused, ${q(v)}`]));
+        return { ok: ok / n, m, refused: Object.fromEntries(Object.entries(refused).map(([k, [bad, all]]) => [k, `${(bad / all * 100).toFixed(2)}% of ${all}`])), slack, byCase };
+      };
+
       const defs: Defs = SHAPES.map((s) => ({ ...s, at: s.at ? [...s.at] as V3 : undefined }));
       if (tune) {
         // Coordinate descent on radii and the head sphere's offset.
@@ -217,7 +253,7 @@ async function main() {
         const spread = [0, 2].map((i) => Math.max(...rows.map((r) => r[i])) - Math.min(...rows.map((r) => r[i])));
         head[k] = `fwd ${mean[0].toFixed(2)} right ${mean[1].toFixed(2)} up ${mean[2].toFixed(2)}  spread fwd ${spread[0].toFixed(2)} up ${spread[1].toFixed(2)}`;
       }
-      return { poses: poses.length, rays: poses.length * rays, shapes: score(defs), refused: refusals(defs), server: serverScore(), defs: tune ? defs : null, head };
+      return { poses: poses.length, rays: poses.length * rays, mesh: meshScore(), shapes: score(defs), refused: refusals(defs), server: serverScore(), defs: tune ? defs : null, head };
     }, { cases, yaw: YAW, phases: PHASES, rays: RAYS, tune, cover });
 
     const show = (label: string, r: { ok: number; m: Record<string, number> }) => {
@@ -230,7 +266,10 @@ async function main() {
       }
     };
     console.log(`${report.poses} poses, ${report.rays} rays`);
-    show("Bone hit shapes (client)", report.shapes);
+    show("Skinned mesh (client)", report.mesh);
+    console.log("  claims the server would refuse (no latency):", report.mesh.refused);
+    console.log("  slack beyond CLAIM_SLACK those refusals need:", report.mesh.slack, report.mesh.byCase);
+    show("Bone hit shapes (former client test)", report.shapes);
     console.log("  claims the server would refuse (no latency):", report.refused);
     show("Pose hitboxes (server)", report.server);
     if (args.includes("--head")) for (const [k, v] of Object.entries(report.head)) console.log(`${k.padEnd(20)} ${v}`);

@@ -108,11 +108,17 @@ function warmUp(gl: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camer
       if (t && !seen.has(t)) { seen.add(t); gl.initTexture(t); }
     }
   }
-  // compile() skips hidden objects; include decoration currently culled by distance.
-  const hidden = meshes.filter((m) => !m.visible);
-  hidden.forEach((m) => (m.visible = true));
+  // compile() skips hidden objects: include decoration culled by distance, and everything else
+  // waiting hidden (pooled tracers, particles, decals and blood, characters off-screen). Left
+  // out, the first impact or smoke puff of a match compiled its shader mid-fight (~90 ms on a UHD 730).
+  // compileAsync collects the materials synchronously, so the scene is restored straight after.
+  const hidden: THREE.Object3D[] = [];
+  // Lights stay as they are: shaders are built for the lights in the scene, and the muzzle lights
+  // switched off on Low would have them all built for lighting that never shows.
+  scene.traverse((o) => { if (!o.visible && !(o as THREE.Light).isLight) hidden.push(o); });
+  hidden.forEach((o) => (o.visible = true));
   void gl.compileAsync(scene, camera).catch(() => { /* compiled on first use instead */ });
-  hidden.forEach((m) => (m.visible = false));
+  hidden.forEach((o) => (o.visible = false));
 }
 
 function tuneMaterials(kits: Kit[]) {

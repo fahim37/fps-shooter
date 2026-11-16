@@ -15,7 +15,9 @@ import { pickSpot, SPOT_COOLDOWN_MS, SPOT_MS, SPOT_SERVER_CONE } from "../game/s
 
 const HIT_PARTS: HitPart[] = ["head", "body", "legs"];
 import { clampLean, leanOffset } from "../game/shared/lean";
-import { raycastWorld, lineOfSight, type World } from "../game/shared/physics";
+import { raycastWorld, lineOfSight, QUERY_MOVE, type World } from "../game/shared/physics";
+import { aimDir } from "../game/shared/aim";
+import { MoveGuard, type MoveCast } from "./movecheck";
 import {
   F_CROUCH, F_GROUNDED, F_MASK, F_SLIDE, type JoinOptions, type PoseMsg, type FireMsg, type GrenadeMsg, type GrenadeHitEvent, type LoadoutMsg, type ShotEvent,
   type HitConfirm, type DamagedEvent, type KillEvent, type SpawnEvent, type RoomMeta, type AmmoEvent, type LoadoutEvent, type SpotEvent,
@@ -66,6 +68,8 @@ export interface ServerPlayer {
   dashBudget: number;
   /** After a server spawn, ignore client poses until one arrives near this point. */
   expectSpawn: { x: number; z: number; until: number } | null;
+  /** Checks that the movement the client reports is physically possible. */
+  guard: MoveGuard;
   vel: V3;
   bot?: Bot;
   client?: Client;
@@ -95,6 +99,21 @@ const CLINK_GAP_MS = 90;
 const now = () => Date.now();
 /** Longest a reported pose is carried forward on its velocity while the next one is late. */
 const POSE_CARRY_MS = 50;
+/**
+ * Messages a client may send per second before it is dropped. A client sends poses at 30 Hz, a
+ * fire message and a pose per shot (about 90 a second with the SMG) and a few others; a network
+ * stall can deliver a couple of seconds of them at once.
+ */
+export const MAX_MESSAGES_PER_SECOND = 360;
+/** Fastest a reported velocity is believed (m/s): a dash, with slack. */
+const MAX_REPORTED_SPEED = DASH_SPEED * 1.1;
+/**
+ * How far (degrees) a shot may leave the view the shooter reports, beyond the gun's widest spread:
+ * the recoil kick drawn on top of the view, and a third-person camera's aim from over the shoulder.
+ */
+const AIM_SLACK_DEG = 12;
+/** A third-person shot at something this close (m) can leave the view much further. */
+const CLOSE_SHOT = 4, CLOSE_AIM_DEG = 75;
 
 export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   state = new MatchState();
@@ -141,6 +160,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
 
     this.world = createRoomWorld(this.map);
     this.world.timestep = TICK_MS / 1000;
+    this.maxMessagesPerSecond = MAX_MESSAGES_PER_SECOND;
 
     this.voice = new VoiceRelay({
       available: (id) => {
@@ -379,7 +399,18 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     if (s.taken + s.refused === 0) return;
     console.log(`[hits] room ${this.roomId}: ${s.taken} claimed hits taken, ${s.refused} refused (head ${s.headTaken} taken, ${s.headRefused} refused)`);
     this.claimStats = { taken: 0, refused: 0, headTaken: 0, headRefused: 0 };
+    const m = this.moveStats;
+    if (m.speed + m.wall + m.height + m.hover + m.aim > 0) {
+      console.log(`[moves] room ${this.roomId}: poses put back for speed ${m.speed}, walls ${m.wall}, height ${m.height}, hovering ${m.hover}; ${m.aim} shots off the view`);
+    }
+    this.moveStats = { speed: 0, wall: 0, height: 0, hover: 0, aim: 0 };
   }
+
+  /** Reported movement the server refused, and shots that left the shooter's view: see MoveGuard. */
+  private moveStats = { speed: 0, wall: 0, height: 0, hover: 0, aim: 0 };
+
+  /** Map geometry and player clips, for the movement checks. */
+  private moveCast: MoveCast = (o, d, dist) => raycastWorld(RAPIER, this.world, o, d, dist, QUERY_MOVE)?.distance ?? null;
 
   onDispose() {
     this.logClaims();
@@ -411,6 +442,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       dashUntil: 0,
       dashBudget: 0,
       expectSpawn: null,
+      guard: new MoveGuard([st.x, st.y, st.z], now()),
       vel: [0, 0, 0],
     };
     this.players.set(id, p);
@@ -572,30 +604,37 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     const p = this.players.get(client.sessionId);
     if (!p || !p.st.alive || !m || !finite(m.x, m.y, m.z, m.yaw, m.pitch)) return;
     const t = now();
+    // Where the player looks is taken even from a pose whose position is refused: the shot that
+    // follows it is checked against this view.
+    p.st.yaw = m.yaw;
+    p.st.pitch = clamp(m.pitch, -1.55, 1.55);
+    const h = this.map.half;
+    const to: V3 = [clamp(m.x, -h, h), clamp(m.y, -2, 40), clamp(m.z, -h, h)];
+    let impact = 0;
     if (p.expectSpawn) {
       const near = Math.hypot(m.x - p.expectSpawn.x, m.z - p.expectSpawn.z) < 3;
       if (!near && t < p.expectSpawn.until) return;
       p.expectSpawn = null;
-      p.lastPoseAt = t;
+      p.guard.reset(to, t);
     } else {
-      // Speed check: allow sprint speed with generous slack for jitter and lag bursts.
-      const dt = Math.max(0.05, (t - p.lastPoseAt) / 1000);
-      const dist = Math.hypot(m.x - p.pose[0], m.z - p.pose[2]);
-      const limit = SPRINT_SPEED * dt * 1.6 + 1.2;
-      if (dist > limit + (t < p.dashUntil ? p.dashBudget : 0)) {
+      const verdict = p.guard.check(p.pose, to, t, t < p.dashUntil ? p.dashBudget : 0, this.moveCast);
+      if (!verdict.ok) {
+        this.moveStats[verdict.reason]++;
+        // Back to the last possible position; one off the ground goes back down to the last floor.
+        if (verdict.reason === "height" || verdict.reason === "hover") {
+          p.pose = [...verdict.to];
+          [p.st.x, p.st.y, p.st.z] = verdict.to;
+          p.vel = [0, 0, 0];
+        }
         client.send("correct", { x: p.pose[0], y: p.pose[1], z: p.pose[2] });
         return;
       }
-      if (dist > limit) p.dashBudget -= dist - limit;
-      p.lastPoseAt = t;
+      p.dashBudget = Math.max(0, p.dashBudget - verdict.dashUsed);
+      impact = verdict.impact;
     }
-    const h = this.map.half;
-    p.st.x = clamp(m.x, -h, h);
-    p.st.y = clamp(m.y, -2, 40);
-    p.st.z = clamp(m.z, -h, h);
-    p.pose = [p.st.x, p.st.y, p.st.z];
-    p.st.yaw = m.yaw;
-    p.st.pitch = clamp(m.pitch, -1.55, 1.55);
+    p.lastPoseAt = t;
+    [p.st.x, p.st.y, p.st.z] = to;
+    p.pose = to;
     p.st.flags = m.flags & F_MASK;
     // Re-check the peek against the map so a modified client cannot lean through walls.
     const lean = typeof m.lean === "number" && finite(m.lean) ? clamp(m.lean, -1, 1) : 0;
@@ -606,9 +645,13 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       if (p.st.weapon !== m.weapon) this.cancelReload(p);
       p.st.weapon = m.weapon;
     }
-    p.vel = [m.vx || 0, m.vy || 0, m.vz || 0];
-    if (m.land && m.land > FALL_DAMAGE_MIN_SPEED) {
-      this.damage(p, (m.land - FALL_DAMAGE_MIN_SPEED) * 11, null, "fall", "body", [p.st.x, p.st.y + 3, p.st.z]);
+    // Velocity only carries the pose forward between messages and animates it: no faster than a dash.
+    const vx = finite(m.vx) ? m.vx : 0, vy = finite(m.vy) ? m.vy : 0, vz = finite(m.vz) ? m.vz : 0;
+    const flat = Math.hypot(vx, vz), k = flat > MAX_REPORTED_SPEED ? MAX_REPORTED_SPEED / flat : 1;
+    p.vel = [vx * k, clamp(vy, -MAX_REPORTED_SPEED, MAX_REPORTED_SPEED), vz * k];
+    // Fall damage from the height the server saw the player fall, not from the client's own report.
+    if (impact > FALL_DAMAGE_MIN_SPEED) {
+      this.damage(p, (impact - FALL_DAMAGE_MIN_SPEED) * 11, null, "fall", "body", [p.st.x, p.st.y + 3, p.st.z]);
     }
   }
 
@@ -671,7 +714,9 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     }
     const ammo = p.ammo[m.weapon];
     if (ammo.mag <= 0) return;
-    // Shooting always ends an emote, even if the client's own cancel was lost.
+    // Shooting always ends an emote, even if the client's own cancel was lost. While one plays, the
+    // reported yaw is the body's, not the view's.
+    const emoting = p.st.emote !== "idle";
     p.st.emote = "idle";
     if (!Array.isArray(m.dirs) || m.dirs.length !== def.pellets || !Array.isArray(m.origin)) return;
     const eye = this.eyePos(p);
@@ -686,6 +731,20 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     p.st.protectedUntil = 0;
 
     const viewTime = clamp(finite(m.viewTime) ? m.viewTime : t, t - MAX_REWIND_MS, t);
+    // Every pellet has to leave along the view the shooter reports, within the gun's widest spread:
+    // a modified client cannot fire where it is not looking. Off the view, the shot goes off but hits nothing.
+    const aim = aimDir(p.st.yaw, p.st.pitch);
+    const cone = Math.cos((def.spreadHip + def.spreadMove + def.spreadAir + AIM_SLACK_DEG) * Math.PI / 180);
+    const wideCone = Math.cos(CLOSE_AIM_DEG * Math.PI / 180);
+    const offView = !emoting && m.dirs.some((raw, i) => {
+      const len = Math.hypot(raw[0], raw[1], raw[2]);
+      if (!finite(...raw) || len < 0.5) return false;
+      const cos = (raw[0] * aim[0] + raw[1] * aim[1] + raw[2] * aim[2]) / len;
+      const claim = Array.isArray(m.claims) ? m.claims[i] : undefined;
+      const close = !!claim && typeof claim.dist === "number" && claim.dist < CLOSE_SHOT;
+      return cos < (close ? wideCone : cone);
+    });
+    if (offView) this.moveStats.aim++;
     const damages = new Map<string, { dmg: number; part: HitPart; point: V3; dir: V3 }>();
     const ends: V3[] = [];
     const impacts: boolean[] = [];
@@ -695,7 +754,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     const poseOf = (o: ServerPlayer) => p.bot ? this.livePose(o) : o.history.sample(viewTime);
     m.dirs.forEach((raw, i) => {
       const len = Math.hypot(raw[0], raw[1], raw[2]);
-      if (!finite(...raw) || len < 0.5) return;
+      if (offView || !finite(...raw) || len < 0.5) return;
       const dir: V3 = [raw[0] / len, raw[1] / len, raw[2] / len];
       const wall = raycastWorld(RAPIER, this.world, m.origin, dir, def.range);
       const maxDist = wall ? wall.distance : def.range;
@@ -770,8 +829,11 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   dash(p: ServerPlayer): boolean {
     if (!p.st.alive || p.st.dash < 1 || this.state.phase === "waiting" || this.state.phase === "ended") return false;
     p.st.dash--;
-    p.dashUntil = now() + 1500;
+    const t = now();
+    p.dashUntil = t + 1500;
     p.dashBudget = DASH_SPEED * DASH_SECONDS * 1.25;
+    // Bots move on the server's own mover; only reported (human) movement is checked.
+    if (!p.bot) p.guard.dashed(t);
     return true;
   }
 
@@ -952,6 +1014,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     p.damagedBy.clear();
     p.history.clear();
     p.expectSpawn = { x: sp.x, z: sp.z, until: t + 2500 };
+    if (!p.bot) p.guard.reset([sp.x, sp.y, sp.z], t);
     if (p.bot) p.bot.onSpawn(sp);
     p.client?.send("spawn", { x: sp.x, y: sp.y, z: sp.z, yaw: sp.yaw, primary: p.st.primary as WeaponId } satisfies SpawnEvent);
   }

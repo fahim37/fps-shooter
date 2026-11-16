@@ -122,13 +122,13 @@ export interface RayHit {
   normal: [number, number, number];
 }
 
-/** Raycast against map geometry only. */
+/** Raycast against map geometry only (`filter` QUERY_MOVE adds the player clips). */
 export function raycastWorld(
   R: Rapier, world: World,
-  origin: [number, number, number], dir: [number, number, number], maxDist: number,
+  origin: [number, number, number], dir: [number, number, number], maxDist: number, filter = QUERY_WORLD,
 ): RayHit | null {
   const ray = new R.Ray({ x: origin[0], y: origin[1], z: origin[2] }, { x: dir[0], y: dir[1], z: dir[2] });
-  const hit = world.castRayAndGetNormal(ray, maxDist, true, undefined, QUERY_WORLD);
+  const hit = world.castRayAndGetNormal(ray, maxDist, true, undefined, filter);
   if (!hit) return null;
   const t = hit.timeOfImpact;
   return {
