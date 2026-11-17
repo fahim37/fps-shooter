@@ -571,9 +571,21 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
 
   // ---------------------------------------------------------------- simulation
 
-  private tick() {
+  /**
+   * Stamps each patch with the moment it leaves, and records every player's pose as it goes out.
+   * Patches run on their own timer, apart from our ticks, and poses that arrive between a tick and
+   * a patch move players on: stamped at the tick, a patch showed each running player some 0-30 ms
+   * ahead of the pose rewound for that time, and claimed hits on them, headshots most of all, missed.
+   * Recorded here, the rewind holds exactly the poses clients draw, at the same times.
+   */
+  onBeforePatch() {
     const t = now();
     this.state.serverTime = t;
+    for (const p of this.players.values()) if (p.st.alive) p.history.push(t, this.livePose(p));
+  }
+
+  private tick() {
+    const t = now();
     if (this.state.phase === "waiting") return;
     if (t >= this.state.phaseEndsAt) {
       if (this.state.phase === "warmup") this.startPhase("live");
@@ -591,7 +603,6 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
         if (p.reloadingUntil) this.advanceReload(p, t);
         // Nothing to carry until the client has reported a pose.
         if (!p.bot && !p.expectSpawn && p.lastPoseAt) this.carryPose(p, t);
-        p.history.push(t, this.livePose(p));
       } else if (p.respawnAt && t >= p.respawnAt) {
         this.spawn(p);
       }

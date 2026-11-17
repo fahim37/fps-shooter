@@ -135,6 +135,17 @@ const FLASH_SIZE: Partial<Record<WeaponId, number>> = { sniper: 1.5 };
 
 export class Game {
   readonly clock = new ServerClock();
+  /**
+   * The server time remote players were last posed and drawn at: what is on screen when the
+   * trigger is pulled, and so the time a shot asks the server to rewind them to. A shot is fired
+   * before this frame poses anyone, so it is last frame's; the clock has moved on by a frame since,
+   * which at 30 FPS put a sprinting target a quarter of a metre off where it was drawn.
+   */
+  shownTime = 0;
+  /** The time a shot fired now asks the server to rewind targets to (see shownTime). */
+  viewTime() {
+    return this.shownTime || this.clock.now() - INTERP_DELAY_MS;
+  }
   readonly input: Input;
   readonly remotes = new Map<string, RemotePlayer>();
   readonly effects = new Effects();
@@ -390,9 +401,9 @@ export class Game {
     if (!this.local?.scoped) this.effects.muzzleFlash(muzzle, new THREE.Vector3(...dirs[0]), FLASH_SIZE[weapon] ?? 1);
     audio.shot(weapon, undefined, true);
     let struck = 0;
-    for (const hit of traces) {
+    for (const [i, hit] of traces.entries()) {
       const point = new THREE.Vector3(...hit.point);
-      this.effects.tracer(muzzle, point, "local");
+      if (this.effects.tracesPellet(i, traces.length)) this.effects.tracer(muzzle, point, "local");
       if (hit.target) {
         // Prediction is visual only. Damage, scores and kill confirmation stay server-owned.
         if (performance.now() - hud().hitmarker.at > 150 || !hud().hitmarker.confirmed) {
@@ -427,15 +438,16 @@ export class Game {
     audio.cycle(ev.weapon, from);
     if (ev.ends[0]) this.effects.muzzleFlash(from, new THREE.Vector3(...ev.ends[0]).sub(from).normalize(), FLASH_SIZE[ev.weapon] ?? 1, false);
     if (!friendly) this.nearMiss(ev);
-    let struck = 0;
+    let struck = 0, shown = 0;
     ev.ends.forEach((end, i) => {
       const to = new THREE.Vector3(...end);
-      this.effects.tracer(from, to, friendly ? "friendly" : "enemy");
+      if (this.effects.tracesPellet(i, ev.ends.length)) this.effects.tracer(from, to, friendly ? "friendly" : "enemy");
       if (ev.hits?.[i]) {
         const delta = to.clone().sub(new THREE.Vector3(...ev.origin)).normalize();
         this.confirmedBlood(end, delta.toArray() as V3, ev.hits[i] === "head");
       }
-      if (ev.impacts[i] && this.world) {
+      if (ev.impacts[i] && this.world && this.effects.remoteImpact(to, this.camera.position, shown)) {
+        shown++;
         const delta = to.clone().sub(new THREE.Vector3(...ev.origin));
         const distance = delta.length(); delta.normalize();
         const wall = raycastWorld(this.R, this.world, ev.origin, delta.toArray() as V3, distance + 0.1);
@@ -718,9 +730,10 @@ export class Game {
     if (!active) { this.input.releaseAll(); local.cancelActions(); }
     const scoreboard = this.input.held("Tab");
     local.thirdPerson = useSettings.getState().thirdPerson;
+    const renderTime = this.clock.now() - INTERP_DELAY_MS;
     for (const remote of this.remotes.values()) {
       remote.setReadability(useSettings.getState().quality === "low" && (hud().mode !== "tdm" || remote.team !== hud().myTeam));
-      remote.update(dt, this.clock.now() - INTERP_DELAY_MS, this.camera.position);
+      remote.update(dt, renderTime, this.camera.position);
       remote.updateTag(this.scene, hud().mode === "tdm" && remote.team === hud().myTeam);
       // The ribbon is drawn at any distance: it is how you tell where a dashing player went.
       if (remote.dashing || remote.dashEnded) this.effects.dashRibbon(remote.id, remote.pos, remote.dashFrom);
@@ -768,6 +781,7 @@ export class Game {
       _bounds.center.set(remote.pos.x, remote.pos.y + 1, remote.pos.z);
       remote.animate(dt, _frustum.intersectsSphere(_bounds) || remote.pos.distanceTo(this.camera.position) < shadowReach);
     }
+    this.shownTime = renderTime;
     this.updateSpots(now);
     if (local.alive && local.ads > 0.4) updateSightMotion(dt, {
       swayX: local.sway.x, swayY: local.sway.y, bobX: local.bob.x, bobY: local.bob.y,

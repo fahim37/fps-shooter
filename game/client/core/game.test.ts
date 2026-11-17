@@ -26,7 +26,7 @@ describe("local shot presentation", () => {
     const state = {
       local: { scoped: true, thirdPerson: false },
       fpp: { muzzle: new THREE.Vector3(-20, 1.4, 0) },
-      effects: { tracer, muzzleFlash: flash },
+      effects: { tracer, muzzleFlash: flash, tracesPellet: () => true },
       traceFrom: () => ({ point: [8, 1.62, -20], target: null, wall: null }),
     };
     Game.prototype.onLocalShot.call(state as unknown as Game, "sniper", [8, 1.62, -3], [[0, 0, -1]]);
@@ -38,7 +38,7 @@ describe("local shot presentation", () => {
     const blood = vi.fn();
     const state = {
       local: { scoped: false, thirdPerson: false },
-      effects: { tracer: vi.fn(), muzzleFlash: vi.fn(), blood },
+      effects: { tracer: vi.fn(), muzzleFlash: vi.fn(), blood, tracesPellet: () => true },
       traceFrom: () => ({ point: [0, 1.62, -5], target: {}, part: "head", wall: null }),
     };
     Game.prototype.onLocalShot.call(state as unknown as Game, "ar", [0, 1.62, 0], [[0, 0, -1]]);

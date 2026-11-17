@@ -23,18 +23,62 @@ describe("combat effects", () => {
       const from = new THREE.Vector3(0, 1.5, 0), to = new THREE.Vector3(0, 1.5, -2);
       effects.tracer(from, to, "enemy");
       effects.update(1 / 30);
-      const streaks = effects.group.children.filter((o): o is THREE.Mesh => o instanceof THREE.Mesh && o.visible && o.geometry instanceof THREE.CylinderGeometry);
+      // The streak and the glow behind it, each one instanced mesh for every tracer.
+      const streaks = effects.group.children.filter((o): o is THREE.InstancedMesh => o instanceof THREE.InstancedMesh && (o.material as THREE.Material).blending === THREE.AdditiveBlending);
       expect(streaks).toHaveLength(2);
+      const at = new THREE.Vector3(), turn = new THREE.Quaternion(), size = new THREE.Vector3(), m = new THREE.Matrix4(), color = new THREE.Color();
       for (const mesh of streaks) {
-        expect(mesh.position.z).toBe(-2);
-        expect(mesh.scale.z).toBeLessThanOrEqual(2);
-        expect((mesh.material as THREE.MeshBasicMaterial).opacity).toBeGreaterThan(0);
+        expect(mesh.visible).toBe(true);
+        expect(mesh.count).toBe(1);
+        mesh.getMatrixAt(0, m);
+        m.decompose(at, turn, size);
+        expect(at.z).toBeCloseTo(-2);
+        expect(size.z).toBeLessThanOrEqual(2);
+        mesh.getColorAt(0, color);
+        expect(color.r).toBeGreaterThan(0);
       }
       effects.update(0.2);
-      expect(streaks.every((mesh) => !mesh.visible)).toBe(true);
+      expect(streaks.every((mesh) => !mesh.visible && mesh.count === 0)).toBe(true);
       effects.tracer(new THREE.Vector3(4, 1.5, 0), new THREE.Vector3(4, 1.5, -20), "friendly");
-      const recycled = effects.group.children.filter((o) => o instanceof THREE.Mesh && o.visible && o.geometry instanceof THREE.CylinderGeometry);
-      expect(recycled.every((mesh) => mesh.position.x === 4)).toBe(true);
+      for (const mesh of streaks) {
+        expect(mesh.count).toBe(1);
+        mesh.getMatrixAt(0, m);
+        expect(at.setFromMatrixPosition(m).x).toBeCloseTo(4);
+      }
+    } finally { effects.dispose(); }
+  });
+
+  it("draws every tracer in flight with two draws, and drops the glow behind them on Low", () => {
+    vi.stubGlobal("document", canvasDocument());
+    const effects = new Effects();
+    try {
+      const streaks = () => effects.group.children.filter((o): o is THREE.InstancedMesh => o instanceof THREE.InstancedMesh && (o.material as THREE.Material).blending === THREE.AdditiveBlending);
+      for (let i = 0; i < 40; i++) effects.tracer(new THREE.Vector3(i, 1.5, 0), new THREE.Vector3(i, 1.5, -60), i % 2 ? "enemy" : "local");
+      effects.update(1 / 60);
+      expect(streaks()).toHaveLength(2);
+      expect(streaks().every((mesh) => mesh.visible && mesh.count === 40)).toBe(true);
+      effects.setQuality("low");
+      effects.update(1 / 60);
+      const [heads, trails] = streaks();
+      expect(heads.count).toBe(16);
+      expect(trails.visible).toBe(false);
+    } finally { effects.dispose(); }
+  });
+
+  it("shows a few tracers and strikes of a load of buckshot on Low, all of it on Ultra", () => {
+    vi.stubGlobal("document", canvasDocument());
+    const effects = new Effects();
+    try {
+      const eye = new THREE.Vector3();
+      effects.setQuality("low");
+      expect(Array.from({ length: 9 }, (_, i) => effects.tracesPellet(i, 9)).filter(Boolean)).toHaveLength(3);
+      expect(effects.tracesPellet(0, 1)).toBe(true);
+      expect(effects.remoteImpact(new THREE.Vector3(0, 0, -20), eye, 0)).toBe(true);
+      expect(effects.remoteImpact(new THREE.Vector3(0, 0, -20), eye, 2)).toBe(false);
+      expect(effects.remoteImpact(new THREE.Vector3(0, 0, -90), eye, 0)).toBe(false);
+      effects.setQuality("ultra");
+      expect(Array.from({ length: 9 }, (_, i) => effects.tracesPellet(i, 9)).every(Boolean)).toBe(true);
+      expect(effects.remoteImpact(new THREE.Vector3(0, 0, -400), eye, 8)).toBe(true);
     } finally { effects.dispose(); }
   });
   it("keeps sustained combat bounded and retires transient effects after switching to Low", () => {

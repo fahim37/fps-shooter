@@ -5,7 +5,7 @@ import { aimDir, spreadDir, zoomSensitivity } from "../../shared/aim";
 import { WEAPONS, GRENADE, SCOPE_UP, currentSpread, fireIntervalMs, reloadClipAt, reloadMs, reloadNeed, reloadSkip, reloadedRounds, type WeaponId } from "../../shared/weapons";
 import { quickScope } from "../player/quickScope";
 import { grenadeVelocity } from "../../shared/grenade";
-import { EYE_HEIGHT, CROUCH_EYE_HEIGHT, SLIDE_EYE_HEIGHT, GRENADES_PER_LIFE, INTERP_DELAY_MS, JUMP_BUFFER_MS, SPRINT_SPEED } from "../../shared/constants";
+import { EYE_HEIGHT, CROUCH_EYE_HEIGHT, SLIDE_EYE_HEIGHT, GRENADES_PER_LIFE, JUMP_BUFFER_MS, SPRINT_SPEED } from "../../shared/constants";
 import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_RELOAD_SKIP_SHIFT, F_SLIDE, F_DASH, F_SPRINT, type AmmoEvent, type GrenadeMsg, type LoadoutEvent, type PoseMsg, type SpawnEvent } from "../../shared/messages";
 import type { Input } from "./input";
 import type { Game } from "./game";
@@ -662,7 +662,7 @@ export class LocalPlayer {
     this.sendPose();
     const shot = ++this.shotSeq;
     this.pendingShots.push({ shot, weapon: this.weapon });
-    this.game.send("fire", { weapon: this.weapon, shot, viewTime: this.game.clock.now() - INTERP_DELAY_MS, origin: eye, dirs, claims });
+    this.game.send("fire", { weapon: this.weapon, shot, viewTime: this.game.viewTime(), origin: eye, dirs, claims });
     this.game.onLocalShot(this.weapon, eye, dirs, traces);
     // The last round goes straight into a reload, whose own pump chambers the next.
     if (a.mag > 0) audio.cycle(this.weapon);

@@ -287,22 +287,36 @@ interface EffectBudget {
   /** Spent cases lying about at once. */
   casings: number;
   lights: boolean;
+  /** The faint wide glow behind each tracer: a second streak the length of the shot. */
+  trails: boolean;
+  /** Tracers drawn for one load of buckshot; the rest of its pellets go unseen. */
+  pelletTracers: number;
+  /**
+   * Other players' bullet strikes: drawn no further than this from the eye (m), and no more than
+   * `impactsPerShot` of one shot's pellets. Each costs a ray into the world, smoke and a hole.
+   */
+  impactRange: number;
+  impactsPerShot: number;
 }
 
 const EFFECT_BUDGETS: Record<Quality, EffectBudget> = {
-  low: { smoke: 140, glow: 90, blood: 64, density: 0.35, tracers: 16, flashes: 8, decals: 40, bloodDecals: 12, casings: 6, lights: false },
-  medium: { smoke: 320, glow: 180, blood: 120, density: 0.65, tracers: 32, flashes: 16, decals: 80, bloodDecals: 24, casings: 12, lights: false },
-  high: { smoke: 700, glow: 400, blood: 200, density: 1, tracers: 48, flashes: 24, decals: 140, bloodDecals: 40, casings: 24, lights: true },
-  ultra: { smoke: 900, glow: 500, blood: 260, density: 1.15, tracers: 64, flashes: 32, decals: 180, bloodDecals: 48, casings: 40, lights: true },
+  low: { smoke: 140, glow: 90, blood: 64, density: 0.35, tracers: 16, flashes: 8, decals: 40, bloodDecals: 12, casings: 6, lights: false, trails: false, pelletTracers: 3, impactRange: 45, impactsPerShot: 2 },
+  medium: { smoke: 320, glow: 180, blood: 120, density: 0.65, tracers: 32, flashes: 16, decals: 80, bloodDecals: 24, casings: 12, lights: false, trails: true, pelletTracers: 4, impactRange: 70, impactsPerShot: 3 },
+  high: { smoke: 700, glow: 400, blood: 200, density: 1, tracers: 48, flashes: 24, decals: 140, bloodDecals: 40, casings: 24, lights: true, trails: true, pelletTracers: 6, impactRange: 120, impactsPerShot: 6 },
+  ultra: { smoke: 900, glow: 500, blood: 260, density: 1.15, tracers: 64, flashes: 32, decals: 180, bloodDecals: 48, casings: 40, lights: true, trails: true, pelletTracers: 9, impactRange: Infinity, impactsPerShot: 9 },
 };
+/** The most tracers any setting keeps in flight. */
+const MAX_TRACERS = 64;
 
 // ---------------------------------------------------------------- effects manager
 
+/** One bullet's streak. All of them are drawn together, as instances of two meshes. */
 interface Tracer {
-  mesh: THREE.Mesh;
-  trail: THREE.Mesh;
   from: THREE.Vector3;
   dir: THREE.Vector3;
+  /** Turns the streak's -Z to point back along `dir`; fixed for its flight. */
+  turn: THREE.Quaternion;
+  color: THREE.Color;
   length: number;
   t: number;
 }
@@ -350,8 +364,15 @@ const _origin = new THREE.Vector3();
 /** Tracers by who fired: your own, a teammate's, an enemy's. */
 const TRACER_COLORS = { local: new THREE.Color(4, 3.2, 1.8), friendly: new THREE.Color(1.1, 2.7, 4), enemy: new THREE.Color(4, 1.55, 0.65) };
 
+/** How bright a tracer's streak and the glow behind it are drawn. */
+const TRACER_OPACITY = 0.9, TRAIL_OPACITY = 0.15;
+
 const _v = new THREE.Vector3();
-const Z = new THREE.Vector3(0, 0, 1);
+const _at = new THREE.Vector3();
+const _size = new THREE.Vector3();
+const _m = new THREE.Matrix4();
+const _c = new THREE.Color();
+const Z =new THREE.Vector3(0, 0, 1);
 const Y = new THREE.Vector3(0, 1, 0);
 const NEG_Z = new THREE.Vector3(0, 0, -1);
 
@@ -366,7 +387,15 @@ export class Effects {
   private tracerPool: Tracer[] = [];
   private tracerIndex = 0;
   private tracerGeo = new THREE.CylinderGeometry(0.012, 0.006, 1, 5, 1, true).rotateX(Math.PI / 2).translate(0, 0, -0.5);
-  private tracerMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 3.2, 1.8), transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
+  // White: each instance's colour carries the shooter's tint and its fade (added light, so
+  // dimming the colour is the same as lowering the opacity).
+  private tracerMat = new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
+  /**
+   * Every tracer's streak in one draw, and the glow behind it in one more, however much shooting
+   * there is. Each was two meshes before, each its own draw: a firefight cost office PCs dozens.
+   */
+  private tracerHeads: THREE.InstancedMesh;
+  private tracerTrails: THREE.InstancedMesh;
   private flashes: Flash[] = [];
   private flashIndex = 0;
   private flashMat: THREE.MeshBasicMaterial;
@@ -444,20 +473,27 @@ export class Effects {
       this.group.add(sprite);
       this.flashes.push({ sprite, life: 0 });
     }
-    for (let i = 0; i < 64; i++) {
-      const mesh = new THREE.Mesh(this.tracerGeo, this.tracerMat.clone());
-      const trail = new THREE.Mesh(this.tracerGeo, this.tracerMat.clone());
+    const streaks = () => {
+      const mesh = new THREE.InstancedMesh(this.tracerGeo, this.tracerMat, MAX_TRACERS);
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      // Made up front, so the shader is built with per-instance colour from the first draw.
+      mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(MAX_TRACERS * 3), 3).setUsage(THREE.DynamicDrawUsage);
+      mesh.count = 0;
       mesh.frustumCulled = false;
-      trail.frustumCulled = false;
-      mesh.visible = trail.visible = false;
-      this.group.add(mesh, trail);
-      this.tracerPool.push({ mesh, trail, from: new THREE.Vector3(), dir: new THREE.Vector3(), length: 0, t: 0 });
+      mesh.visible = false;
+      this.group.add(mesh);
+      return mesh;
+    };
+    this.tracerHeads = streaks();
+    this.tracerTrails = streaks();
+    for (let i = 0; i < MAX_TRACERS; i++) {
+      this.tracerPool.push({ from: new THREE.Vector3(), dir: new THREE.Vector3(), turn: new THREE.Quaternion(), color: new THREE.Color(), length: 0, t: 0 });
     }
 
-    const streaks = canvasTexture(256, windStreaks);
-    streaks.wrapS = THREE.RepeatWrapping;
+    const wind = canvasTexture(256, windStreaks);
+    wind.wrapS = THREE.RepeatWrapping;
     // Not additive: a pale glow vanishes against bright sand and sky, where a dash most needs to be seen.
-    this.ribbonMat = new THREE.MeshBasicMaterial({ map: streaks, vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+    this.ribbonMat = new THREE.MeshBasicMaterial({ map: wind, vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide });
     const index: number[] = [];
     for (let i = 0; i < RIBBON_POINTS - 1; i++) index.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
     for (let i = 0; i < RIBBONS; i++) {
@@ -485,11 +521,8 @@ export class Effects {
     this.glow.setLimit(this.budget.glow);
     this.droplets.setLimit(this.budget.blood);
     this.casings.setLimit(this.budget.casings);
-    while (this.tracers.length > this.budget.tracers) {
-      const tr = this.tracers.pop()!;
-      tr.mesh.visible = tr.trail.visible = false;
-      this.tracerPool.push(tr);
-    }
+    while (this.tracers.length > this.budget.tracers) this.tracerPool.push(this.tracers.pop()!);
+    this.drawTracers();
     for (let i = this.budget.flashes; i < this.flashes.length; i++) {
       this.flashes[i].life = 0;
       this.flashes[i].sprite.visible = false;
@@ -517,10 +550,7 @@ export class Effects {
   dispose() {
     this.group.removeFromParent();
     this.smoke.dispose(); this.glow.dispose(); this.droplets.dispose(); this.casings.dispose();
-    for (const tr of [...this.tracers, ...this.tracerPool]) {
-      (tr.mesh.material as THREE.Material).dispose();
-      (tr.trail.material as THREE.Material).dispose();
-    }
+    this.tracerHeads.dispose(); this.tracerTrails.dispose();
     this.tracerGeo.dispose(); this.tracerMat.dispose();
     this.flashGeo.dispose(); this.flashMat.map?.dispose(); this.flashMat.dispose();
     this.decals.geometry.dispose();
@@ -576,30 +606,64 @@ export class Effects {
       this.tracerIndex %= this.tracers.length;
       tr = this.tracers[this.tracerIndex++];
     }
-    tr.mesh.visible = tr.trail.visible = true;
     tr.from.copy(from);
     tr.dir.copy(d).normalize();
+    tr.turn.setFromUnitVectors(NEG_Z, _v.copy(tr.dir).negate());
+    tr.color.copy(TRACER_COLORS[source]);
     tr.length = length;
     tr.t = 0;
-    const color = TRACER_COLORS[source];
-    (tr.mesh.material as THREE.MeshBasicMaterial).color.copy(color);
-    (tr.trail.material as THREE.MeshBasicMaterial).color.copy(color);
-    // Initialize immediately: a recycled streak must never flash at its old position.
-    this.placeTracer(tr);
+    // Drawn at once: a recycled streak must never flash at its old position.
+    this.drawTracers();
   }
 
-  private placeTracer(tr: Tracer) {
-    const head = Math.min(tr.length, Math.max(0.15, tr.t * 380));
-    const tail = Math.max(0, head - 7);
-    const fade = Math.max(0, 1 - Math.max(0, tr.t - tr.length / 380) / 0.12);
-    tr.mesh.position.copy(tr.from).addScaledVector(tr.dir, head);
-    tr.mesh.quaternion.setFromUnitVectors(NEG_Z, _v.copy(tr.dir).negate());
-    tr.mesh.scale.set(1, 1, Math.max(0.01, head - tail));
-    (tr.mesh.material as THREE.MeshBasicMaterial).opacity = 0.9 * fade;
-    tr.trail.position.copy(tr.mesh.position);
-    tr.trail.quaternion.copy(tr.mesh.quaternion);
-    tr.trail.scale.set(1.8, 1.8, head);
-    (tr.trail.material as THREE.MeshBasicMaterial).opacity = 0.15 * fade;
+  /**
+   * Of a load of `pellets` buckshot, whether pellet `i` gets a tracer. A few spread across the
+   * load show the spray as well as nine; Ultra draws them all.
+   */
+  tracesPellet(i: number, pellets: number) {
+    return pellets <= this.budget.pelletTracers || i % Math.ceil(pellets / this.budget.pelletTracers) === 0;
+  }
+
+  /**
+   * Whether to draw another player's bullet striking `point`, seen from `eye`, as the `nth` of
+   * that shot's strikes drawn so far. Lower settings leave out distant ones and most of a load of
+   * buckshot: too small to see, and each costs a ray into the world, smoke and a hole.
+   */
+  remoteImpact(point: THREE.Vector3, eye: THREE.Vector3, nth: number) {
+    const range = this.budget.impactRange;
+    return nth < this.budget.impactsPerShot && (range === Infinity || point.distanceToSquared(eye) < range * range);
+  }
+
+  /** Lays every tracer in flight into the two instanced meshes. */
+  private drawTracers() {
+    const heads = this.tracerHeads, trails = this.tracerTrails, withTrails = this.budget.trails;
+    const n = this.tracers.length;
+    for (let i = 0; i < n; i++) {
+      const tr = this.tracers[i];
+      // Travel at bullet speed, then keep a brief fading path even at close range.
+      const head = Math.min(tr.length, Math.max(0.15, tr.t * 380));
+      const tail = Math.max(0, head - 7);
+      const fade = Math.max(0, 1 - Math.max(0, tr.t - tr.length / 380) / 0.12);
+      _at.copy(tr.from).addScaledVector(tr.dir, head);
+      heads.setMatrixAt(i, _m.compose(_at, tr.turn, _size.set(1, 1, Math.max(0.01, head - tail))));
+      heads.setColorAt(i, _c.copy(tr.color).multiplyScalar(TRACER_OPACITY * fade));
+      if (!withTrails) continue;
+      trails.setMatrixAt(i, _m.compose(_at, tr.turn, _size.set(1.8, 1.8, head)));
+      trails.setColorAt(i, _c.copy(tr.color).multiplyScalar(TRAIL_OPACITY * fade));
+    }
+    heads.count = n;
+    trails.count = withTrails ? n : 0;
+    heads.visible = n > 0;
+    trails.visible = withTrails && n > 0;
+    for (const mesh of [heads, trails]) {
+      if (mesh.count === 0) continue;
+      mesh.instanceMatrix.clearUpdateRanges();
+      mesh.instanceMatrix.addUpdateRange(0, mesh.count * 16);
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.instanceColor!.clearUpdateRanges();
+      mesh.instanceColor!.addUpdateRange(0, mesh.count * 3);
+      mesh.instanceColor!.needsUpdate = true;
+    }
   }
 
   /**
@@ -869,19 +933,16 @@ export class Effects {
     this.bloodDecals.visible = stains;
     if (alphaChanged) this.bloodDecalAlpha.needsUpdate = true;
 
-    // Travel at bullet speed, then retain a brief fading path even at close range.
+    if (this.tracers.length === 0 && !this.tracerHeads.visible) return;
     for (let i = this.tracers.length - 1; i >= 0; i--) {
       const tr = this.tracers[i];
       tr.t += dt;
-      if (tr.t >= tr.length / 380 + 0.12) {
-        tr.mesh.visible = tr.trail.visible = false;
-        this.tracerPool.push(tr);
-        // Order does not affect tracer rendering; avoid shifting the active pool.
-        this.tracers[i] = this.tracers[this.tracers.length - 1];
-        this.tracers.pop();
-        continue;
-      }
-      this.placeTracer(tr);
+      if (tr.t < tr.length / 380 + 0.12) continue;
+      this.tracerPool.push(tr);
+      // Order does not affect tracer rendering; avoid shifting the active pool.
+      this.tracers[i] = this.tracers[this.tracers.length - 1];
+      this.tracers.pop();
     }
+    this.drawTracers();
   }
 }
