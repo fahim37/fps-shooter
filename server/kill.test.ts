@@ -61,15 +61,15 @@ describe("elimination snapshots", () => {
     expect(st.dash).toBe(2);
   });
 
-  it("refills the killer's shield every third kill in a row, unless the killer has died", () => {
+  it("refills the killer's shield every fifth kill in a row, unless the killer has died", () => {
     const killer = player("Killer", 30), room = { state: { phase: "live", mode: "ffa" }, players: new Map([[killer.id, killer]]), broadcast: vi.fn(), checkScoreLimit: vi.fn() };
     const kill = () => MatchRoom.prototype.damage.call(room as unknown as MatchRoom, player("Victim", 0), 100, killer, "ar", "body", [0, 0, 0]);
-    kill(); kill();
+    kill(); kill(); kill(); kill();
     expect(killer.st.shield).toBe(0);
     kill();
     expect(killer.st.shield).toBe(MAX_SHIELD);
     killer.st.shield = 5;
-    kill(); kill();
+    kill(); kill(); kill(); kill();
     expect(killer.st.shield).toBe(5);
     killer.st.alive = false;
     kill();
