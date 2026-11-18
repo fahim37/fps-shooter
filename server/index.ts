@@ -44,27 +44,36 @@ const server = defineServer({
     // Public rooms for the lobby browser.
     app.get("/rooms", async (_req, res) => {
       const rooms = await matchMaker.query({ name: ROOM_NAME, private: false });
-      res.json(
-        rooms.map((r) => {
-          const meta = (r.metadata ?? {}) as Partial<RoomMeta>;
-          return {
-            code: r.roomId,
-            name: meta.roomName ?? "Match",
-            mode: meta.mode ?? "tdm",
-            map: meta.map ?? "village",
-            humans: meta.humans ?? r.clients,
-            bots: meta.bots ?? 0,
-            botFill: meta.botFill ?? 0,
-            max: r.maxClients,
-            locked: r.locked,
-            format: meta.format ?? "custom",
-            phase: meta.phase ?? "live",
-          };
-        }),
-      );
+      res.json(rooms.map((r) => publicRoom(r)));
+    });
+    // One room by its invite code (private ones too: the code is the invite), so a link can ask for a team first.
+    app.get("/rooms/:code", async (req, res) => {
+      const code = String(req.params.code ?? "").trim().toUpperCase();
+      const [room] = /^[A-Z0-9]{3,16}$/.test(code) ? await matchMaker.query({ name: ROOM_NAME, roomId: code }) : [];
+      if (!room) { res.status(404).json({ error: "not found" }); return; }
+      res.json(publicRoom(room));
     });
   },
 });
+
+function publicRoom(r: { roomId: string; metadata?: unknown; clients: number; maxClients: number; locked?: boolean }) {
+  const meta = (r.metadata ?? {}) as Partial<RoomMeta>;
+  return {
+    code: r.roomId,
+    name: meta.roomName ?? "Match",
+    mode: meta.mode ?? "tdm",
+    map: meta.map ?? "village",
+    humans: meta.humans ?? r.clients,
+    blue: meta.blue ?? 0,
+    red: meta.red ?? 0,
+    bots: meta.bots ?? 0,
+    botFill: meta.botFill ?? 0,
+    max: r.maxClients,
+    locked: !!r.locked,
+    format: meta.format ?? "custom",
+    phase: meta.phase ?? "live",
+  };
+}
 
 // COLYSEUS_LATENCY=150 simulates a 150 ms round trip for testing netcode.
 if (process.env.SIM_LATENCY_MS) process.env.COLYSEUS_LATENCY = process.env.SIM_LATENCY_MS;

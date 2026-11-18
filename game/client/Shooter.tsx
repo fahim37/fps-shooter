@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import { assetUrl } from "./assets/url";
 import { useUpdateCheck } from "./updateCheck";
-import { createRoom, joinByCode, joinErrorMessage, leaveCurrentRoom, listRooms, quickPlay, type GameRoom, type PublicRoom } from "./net/session";
+import { createRoom, joinByCode, joinErrorMessage, leaveCurrentRoom, listRooms, quickPlay, roomInfo, type GameRoom, type PublicRoom } from "./net/session";
 import { useSettings } from "./settings";
 import { MAX_PLAYERS, MODE_INFO, ROOM_SIZES, SCORE_LIMITS, scoreLimitFor, type GameMode } from "../shared/constants";
 import type { JoinOptions } from "../shared/messages";
@@ -21,6 +21,7 @@ import { MAPS, mapId } from "../shared/map/maps";
 import type { MapId } from "../shared/map/types";
 import { MapPicker } from "./MapPicker";
 import { HowToPlay } from "./HowToPlay";
+import { TeamPrompt } from "./TeamPrompt";
 import { NAME_MAX, randomName } from "../shared/names";
 
 /** The 3D backdrop loads after the lobby itself, so three.js never holds up the first paint. */
@@ -88,6 +89,8 @@ export default function Shooter() {
   const joining = useRef(false);
   const [help, setHelp] = useState(false);
   const [settings, setSettings] = useState(false);
+  /** The Team DM room an invite link points at, while the player picks a side. */
+  const [invite, setInvite] = useState<PublicRoom | null>(null);
 
   useUpdateCheck(!room && !busy && !help && !settings);
 
@@ -103,24 +106,30 @@ export default function Shooter() {
     return () => { live = false; clearInterval(timer); };
   }, [room, refreshKey]);
 
-  // An invite link (/CODE) goes straight into its room; if that fails, the Join tab shows why.
+  // An invite link (/CODE) asks for a team first in Team DM (lobby or live match), else goes straight in;
+  // if joining fails, the Join tab shows why.
   const inviteCode = useRef(code);
   useEffect(() => {
     if (!inviteCode.current) return;
     const selected = inviteCode.current;
     inviteCode.current = "";
-    void join("code", selected);
+    setBusy("Opening invite…");
+    void roomInfo(selected).then((info) => {
+      setBusy("");
+      if (info?.mode === "tdm") setInvite(info);
+      else void join("code", selected);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, for the link the page opened with
   }, []);
 
-  async function join(kind: "quick" | "create" | "code", selectedCode = code) {
+  async function join(kind: "quick" | "create" | "code", selectedCode = code, team = joinTeam) {
     if (joining.current) return;
     joining.current = true;
     setBusy(kind === "create" ? "Creating your room…" : kind === "quick" ? "Finding a match…" : "Joining room…");
     setError(""); audio.unlock();
     const playerName = name.trim().slice(0, NAME_MAX) || randomName();
     useSettings.getState().set({ name: playerName });
-    const opts: JoinOptions = { name: playerName, char: 0, mode, ...(kind === "code" ? { team: joinTeam } : { map }) };
+    const opts: JoinOptions = { name: playerName, char: 0, mode, ...(kind === "code" ? { team } : { map }) };
     try {
       const joined = await (kind === "code" ? joinByCode(parseRoomCode(selectedCode), opts) : kind === "quick" ? quickPlay(opts) : createRoom({
         ...opts, mode,
@@ -136,6 +145,7 @@ export default function Shooter() {
     setName(useSettings.getState().name || name);
     window.history.replaceState(null, "", lobbyUrl(window.location.href)); setCode(""); setError("");
   }
+  function closeInvite() { setInvite(null); }
   if (room) return <ConnectedRoom room={room} onLeave={() => void leave()} />;
 
   const visibleRooms = rooms.filter((r) => (filter !== "humans" || r.botFill === 0) && (filter !== "waiting" || r.phase === "waiting") && `${r.name} ${r.code} ${r.format}`.toLowerCase().includes(search.toLowerCase()));
@@ -215,5 +225,6 @@ export default function Shooter() {
     </section>
     {help && <HowToPlay onClose={() => setHelp(false)} touch={window.matchMedia("(pointer: coarse)").matches} />}
     {settings && <SettingsDialog onClose={() => setSettings(false)} />}
+    {invite && <TeamPrompt room={invite} onCancel={closeInvite} onPick={(team) => { const selected = invite.code; setInvite(null); setJoinTeam(team); void join("code", selected, team); }} />}
   </main>;
 }

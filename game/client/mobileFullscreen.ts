@@ -19,7 +19,7 @@ export async function enterMobileFullscreen(element: HTMLElement): Promise<strin
   }
   // Orientation locking is optional and may require fullscreen on mobile browsers.
   try { await (screen.orientation as LockableOrientation | undefined)?.lock?.("landscape"); }
-  catch { return "Fullscreen enabled. Rotate your phone to landscape; rotation lock is unavailable."; }
+  catch { return window.innerHeight > window.innerWidth ? "Rotate your phone to landscape to play." : ""; }
   return "";
 }
 

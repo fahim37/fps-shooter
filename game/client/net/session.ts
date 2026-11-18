@@ -14,6 +14,9 @@ export interface PublicRoom {
   mode: GameMode;
   map: MapId;
   humans: number;
+  /** Humans on each team (Team DM; older servers send nothing). */
+  blue?: number;
+  red?: number;
   bots: number;
   botFill: number;
   max: number;
@@ -73,6 +76,16 @@ export async function listRooms(): Promise<PublicRoom[]> {
   const res = await fetch(`${gameServerHttp()}/rooms`, { cache: "no-store" });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
+}
+
+/** One room by its code, private rooms included; null when it doesn't exist (or the server can't say). */
+export async function roomInfo(code: string): Promise<PublicRoom | null> {
+  try {
+    const res = await fetch(`${gameServerHttp()}/rooms/${encodeURIComponent(code.trim().toUpperCase())}`, { cache: "no-store" });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function serverOnline(): Promise<boolean> {

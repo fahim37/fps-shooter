@@ -28,3 +28,10 @@
   .status { margin-top: 2px; font-size: 7px; line-height: 1.2; letter-spacing: .02em; }
 }
 @media (prefers-reduced-motion: reduce) { .track i, .shield i { transition: none; } }
+.panel.touchStrip { width: 176px; bottom: calc(55px + env(safe-area-inset-bottom, 0px)); padding: 3px 6px; display: flex; align-items: center; gap: 6px; border: 0; background: #101914bf; }
+.touchStrip strong, .protection { font: 700 10px/1.1 var(--font-geist-mono), monospace; color: var(--health-color); white-space: nowrap; }
+.meters { flex: 1; }
+.meters .shield { height: 2px; margin-bottom: 1px; }
+.meters .track { height: 4px; }
+.protection { display: flex; align-items: center; gap: 2px; color: #f5df9e; }
+.protection svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.5; }

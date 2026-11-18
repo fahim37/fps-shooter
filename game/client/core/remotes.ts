@@ -9,7 +9,7 @@ import type { PlayerState } from "../../shared/schema";
 import { MOVING_SPEED, rayVsPose, slideYaw, type Pose, type PoseHit } from "../../shared/hitboxes";
 import { MeshHit } from "../player/meshHit";
 import { audio } from "./audio";
-import { setEnemyReadability } from "../assets/readability";
+import { setEnemyReadability, type EnemyReadability } from "../assets/readability";
 import { isEmote } from "../../shared/showcase";
 
 interface Snap {
@@ -59,7 +59,7 @@ export class RemotePlayer {
   /** A footstep landed this frame (heard or not), and on which foot. */
   stepped = false;
   footLeft = false;
-  private readable = false;
+  private readable: EnemyReadability = false;
   /** Name over the head (teammates only), redrawn when the name changes. */
   private tag: THREE.Sprite | null = null;
   private tagName = "";
@@ -101,7 +101,7 @@ export class RemotePlayer {
     this.rig?.setWeapon(w);
   }
 
-  setReadability(enabled: boolean) {
+  setReadability(enabled: EnemyReadability) {
     if (!this.rig || enabled === this.readable) return;
     setEnemyReadability(this.rig.inst.meshes, enabled);
     this.readable = enabled;

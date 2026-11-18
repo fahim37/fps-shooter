@@ -9,7 +9,7 @@ import { EYE_HEIGHT, CROUCH_EYE_HEIGHT, SLIDE_EYE_HEIGHT, GRENADES_PER_LIFE, JUM
 import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_RELOAD_SKIP_SHIFT, F_SLIDE, F_DASH, F_SPRINT, type AmmoEvent, type GrenadeMsg, type LoadoutEvent, type PoseMsg, type SpawnEvent } from "../../shared/messages";
 import type { Input } from "./input";
 import type { Game } from "./game";
-import { useSettings } from "../settings";
+import { TUNING_DEFAULTS, useSettings } from "../settings";
 import { audio } from "./audio";
 import { ShotCadence } from "./cadence";
 import { RenderMotion } from "./motion";
@@ -295,7 +295,8 @@ export class LocalPlayer {
     // ---- look
     const [lx, ly] = input.consumeLook();
     const sens = 0.0022 * s.sensitivity * zoomSensitivity(s.fov, this.currentFov(), this.ads, s.adsSensitivity);
-    const touchScale = input.touch ? 2.2 : 1;
+    // Faster hip turns blend back to the calibrated scope sensitivity as ADS settles.
+    const touchScale = input.touch ? ((1.2 - this.ads * 0.2) * 2 * Math.PI) / (Math.max(window.innerWidth, 1) * 0.0022 * TUNING_DEFAULTS.sensitivity) : 1;
     this.yaw -= lx * sens * touchScale;
     this.pitch -= ly * sens * touchScale * (s.invertY ? -1 : 1);
     this.pitch = THREE.MathUtils.clamp(this.pitch, -1.5, 1.5);
@@ -315,8 +316,11 @@ export class LocalPlayer {
         if (input.consume(`Digit${i + 1}`) || input.consume(`Emote${i + 1}`)) this.startEmote(emote.id);
       });
     }
+    const firePressed = input.consume("TouchFire");
+    const jumpPressed = input.consume("TouchJump");
+    const firing = input.fire || firePressed;
     const [fwd, right] = input.axes();
-    if (this.emote && (fwd || right || input.jump || input.crouch || input.fire || input.ads || !this.ms.grounded)) this.endEmote(now);
+    if (this.emote && (fwd || right || jumpPressed || input.jump || input.crouch || firing || input.ads || !this.ms.grounded)) this.endEmote(now);
 
     // ---- actions
     if (input.consume("KeyV")) {
@@ -370,12 +374,12 @@ export class LocalPlayer {
 
     // ---- movement (fixed substeps for stable collision)
     const wasSprinting = this.ms.sprinting;
-    const wantsSprint = input.sprint && now > this.sprintBlockUntil && !input.fire && !input.ads;
+    const wantsSprint = input.sprint && now > this.sprintBlockUntil && !firing && !input.ads;
     const adsHeld = input.ads;
     this.acc += Math.min(dt, 0.1);
     const wasGrounded = this.ms.grounded, wasSliding = this.ms.sliding;
     // A jump pressed just before landing is kept for the landing.
-    if (input.jump && !this.jumpHeld) this.jumpBufferUntil = now + JUMP_BUFFER_MS;
+    if (jumpPressed || (input.jump && !this.jumpHeld)) this.jumpBufferUntil = now + JUMP_BUFFER_MS;
     this.jumpHeld = input.jump;
     let jumped = false;
     while (this.acc >= STEP) {
@@ -400,7 +404,7 @@ export class LocalPlayer {
     // Eased out in about a tenth of a second.
     this.stepEase *= Math.exp(-dt * 22);
     this.motion.sample(this.ms, this.acc / STEP);
-    if (wasSprinting && input.fire) this.switchEnd = Math.max(this.switchEnd, now + 150);
+    if (wasSprinting && firing) this.switchEnd = Math.max(this.switchEnd, now + 150);
     if (jumped) audio.jump();
     if (this.ms.sliding !== wasSliding) audio.slide(this.ms.sliding);
     if (this.ms.landSpeed > 0) {
@@ -428,12 +432,13 @@ export class LocalPlayer {
     this.ads = THREE.MathUtils.smoothstep(this.adsProgress, 0, 1);
 
     // ---- fire
-    if (!input.fire) {
+    if (firePressed) this.triggerReleased = true;
+    if (!firing) {
       this.triggerReleased = true;
       this.burst = Math.max(0, this.burst - dt * 8);
     }
     this.updateView();
-    if (input.fire) this.tryFire(now);
+    if (firing) this.tryFire(now);
     // An empty magazine always reloads by itself (startReload waits out weapon switches).
     if (this.ammo[this.weapon].mag === 0 && !this.reloading && !this.grenadeAt && !this.emote) this.startReload(now);
 

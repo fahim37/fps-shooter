@@ -167,6 +167,25 @@ describe("touch input", () => {
     expect(input.axes()).toEqual([0, 0]);
   });
 
+  it("retains a quick fire or jump tap for one frame and clears it on interruption", () => {
+    const input = makeInput();
+    for (const [action, edge] of [["fire", "TouchFire"], ["jump", "TouchJump"]] as const) {
+      input.setAction(action, true);
+      input.setAction(action, false);
+      expect(input[action]).toBe(false);
+      expect(input.consume(edge)).toBe(true);
+      expect(input.consume(edge)).toBe(false);
+      input.setAction(action, true);
+      input.endFrame();
+      input.setAction(action, true);
+      expect(input.consume(edge)).toBe(false);
+      input.setAction(action, false);
+      input.setAction(action, true);
+      input.releaseAll();
+      expect(input.consume(edge)).toBe(false);
+    }
+  });
+
   it("registers one grenade press per hold and updates held keyboard movement", () => {
     const input = makeInput();
     input.hold("KeyG", true);

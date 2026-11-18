@@ -74,17 +74,11 @@
 .ads { position: absolute; right: calc(var(--safe-right) + 109px); bottom: calc(253px + var(--safe-bottom)); border-color: #d9dc86b5; color: #f2f0ca; background: #6d74362e; }
 .jump { position: absolute; right: calc(var(--safe-right) + 83px); bottom: calc(158px + var(--safe-bottom)); }
 .crouch { position: absolute; right: var(--safe-right); bottom: calc(158px + var(--safe-bottom)); }
-.sprint { --control-size: 49px; position: absolute; left: calc(var(--safe-left) + 171px); bottom: calc(116px + var(--safe-bottom)); }
 .utilities { position: absolute; right: var(--safe-right); bottom: calc(85px + var(--safe-bottom)); display: flex; gap: 13px; }
-.peekLeft, .peekRight { --control-size: 46px; position: absolute; top: calc(29% + 12px); border-color: #e2e9a39c; background: #3b432a2e; }
-.peekLeft { left: calc(var(--safe-left) + 112px); }
-.peekRight { left: calc(var(--safe-left) + 166px); }
-.peekLeft svg, .peekRight svg { width: 23px; height: 23px; }
 .utility { --control-size: 48px; border-color: #f7ae978c; background: #67312f26; }
 .utility svg { width: 25px; height: 25px; }
 .toolbar { position: absolute; top: max(78px, calc(env(safe-area-inset-top) + 64px)); right: calc(var(--safe-right) + 128px); display: flex; gap: 11px; }
 .screenTools { position: absolute; z-index: 9; right: max(18px, env(safe-area-inset-right)); top: max(78px, calc(env(safe-area-inset-top) + 64px)); display: flex; gap: 8px; }
-.editing .toolbar { right: var(--safe-right); }
 .tool { --control-size: 38px; background: #101d2052; border-color: #ffffff62; }
 .tool svg { width: 21px; height: 21px; }
 .tool > span { font-size: 7px; }
@@ -120,15 +114,11 @@
   .button > span { font-size: 7px; }
   .joystick { --control-size: 110px; left: calc(var(--safe-left) + 12px); bottom: calc(82px + var(--safe-bottom)); }
   .leftFire { --control-size: 58px; top: 28%; left: calc(var(--safe-left) + 28px); }
-  .peekLeft, .peekRight { --control-size: 40px; top: calc(28% + 9px); }
-  .peekLeft { left: calc(var(--safe-left) + 98px); }
-  .peekRight { left: calc(var(--safe-left) + 146px); }
   .rightFire { --control-size: 62px; bottom: calc(206px + var(--safe-bottom)); right: calc(var(--safe-right) + 8px); }
   .rightFire svg, .leftFire svg { width: 31px; height: 31px; }
   .ads { bottom: calc(214px + var(--safe-bottom)); right: calc(var(--safe-right) + 89px); }
   .jump { bottom: calc(146px + var(--safe-bottom)); right: calc(var(--safe-right) + 65px); }
   .crouch { bottom: calc(146px + var(--safe-bottom)); }
-  .sprint { --control-size: 44px; left: calc(var(--safe-left) + 144px); bottom: calc(96px + var(--safe-bottom)); }
   .utilities { bottom: calc(82px + var(--safe-bottom)); gap: 11px; }
   .toolbar, .screenTools { top: max(72px, calc(env(safe-area-inset-top) + 58px)); }
   .toolbar { gap: 10px; }
@@ -149,7 +139,6 @@
   .ads { --control-size: 50px; right: calc(var(--safe-right) + 88px); bottom: calc(290px + var(--safe-bottom)); }
   .jump { --control-size: 50px; right: calc(var(--safe-right) + 73px); bottom: calc(209px + var(--safe-bottom)); }
   .crouch { --control-size: 50px; bottom: calc(209px + var(--safe-bottom)); }
-  .sprint { --control-size: 44px; left: calc(var(--safe-left) + 8px); bottom: calc(284px + var(--safe-bottom)); }
   .utilities { bottom: calc(131px + var(--safe-bottom)); gap: 10px; }
   .utility { --control-size: 42px; }
   .utilitySlot { width: 42px; height: 42px; }
@@ -170,7 +159,6 @@
   .jump, .crouch { bottom: calc(125px + var(--safe-bottom)); }
   .utilities { bottom: calc(68px + var(--safe-bottom)); }
   .joystick { bottom: calc(68px + var(--safe-bottom)); }
-  .sprint { bottom: calc(112px + var(--safe-bottom)); }
 }
 
 @media (prefers-reduced-motion: reduce) { .button { transition: none; } }
@@ -187,3 +175,55 @@
 .rotateCard small { color: #95a788; font-size: 11px; line-height: 1.6; margin: 18px 0; }
 .rotateCard .rotateMessage { color: #d9ed79; font-size: 12px; }
 .rotateCard button { min-height: 48px; border-radius: 6px; touch-action: manipulation; }
+
+.more { --control-size: 44px; background: #13201ed9; }
+.more[aria-expanded="true"] { color: #e8edaa; border-color: currentColor; }
+.actionGrid {
+  position: absolute;
+  top: 0;
+  right: calc(100% + 10px);
+  display: grid;
+  grid-template-columns: repeat(3, 52px);
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid #ffffff40;
+  border-radius: 12px;
+  background: #101b1bf2;
+  box-shadow: 0 4px 16px #0005;
+  pointer-events: auto;
+}
+.optionSlot { position: relative; width: 52px; height: 48px; }
+.option {
+  --control-size: 48px;
+  align-content: center;
+  justify-self: center;
+  gap: 2px;
+  margin: auto;
+  border: 0;
+  border-radius: 6px;
+  background: #ffffff0a;
+  box-shadow: none;
+}
+.option svg { width: 20px; height: 20px; }
+.option > span { position: static; font-size: 9px; letter-spacing: 0; color: inherit; }
+.displayOptions { grid-column: 1 / -1; display: flex; gap: 4px; border-top: 1px solid #ffffff25; padding-top: 5px; }
+.displayOptions > * { flex: 1; }
+.displayOptions button { width: 100%; min-height: 44px; border: 0; border-radius: 6px; background: #ffffff0c; color: #e8eddf; font: 600 10px system-ui, sans-serif; touch-action: manipulation; }
+.displayOptions button small { display: block; font-size: 8px; color: #bdc4ad; }
+.toolbar, .editing .toolbar { right: var(--safe-right); top: max(44px, calc(env(safe-area-inset-top) + 32px)); }
+@media (max-height: 360px) { .toolbar, .editing .toolbar { top: max(36px, env(safe-area-inset-top)); } }
+.button { color: #fff; background-color: #0f191e85; box-shadow: inset 0 0 0 2px #ffffff0d, 0 1px 4px #0003; }
+.button svg { filter: drop-shadow(0 1px 1px #0009); }
+.rightFire, .leftFire { background-color: #251b178c; border-color: #ffe4c7c4; }
+.rightFire { box-shadow: inset 0 0 0 3px #ffe1bf22, 0 1px 4px #0003; }
+.option { background: #ffffff0c; box-shadow: none; }
+@media (orientation: landscape) {
+  .leftFire, .rightFire { --control-size: clamp(54px, 10vw, 90px); }
+  .peek, .ads, .crouch, .jump { --control-size: clamp(44px, 7vw, 62px); }
+  .utilities { right: 17%; bottom: max(60px, 14%); gap: 6px; }
+  .toolbar, .editing .toolbar { top: max(8px, env(safe-area-inset-top)); right: calc(max(12px, env(safe-area-inset-right)) + clamp(60px, 20vh, 84px) + 56px); }
+  .actionGrid { top: calc(100% + 14px); right: 0; }
+  .leftFire svg { transform: rotate(-35deg); }
+  .leftFire svg, .rightFire svg { width: 52%; height: 52%; }
+}
+.quantity { position: absolute; right: 2px; bottom: 1px; padding: 1px 3px; border-radius: 3px; background: #142024; font: 700 10px/1.1 system-ui, sans-serif; }

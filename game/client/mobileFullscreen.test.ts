@@ -27,7 +27,10 @@ describe("mobile fullscreen", () => {
   it("keeps fullscreen usable when orientation locking fails", async () => {
     vi.stubGlobal("document", { fullscreenElement: {} });
     vi.stubGlobal("screen", { orientation: { lock: vi.fn().mockRejectedValue(new Error("unsupported")) } });
+    vi.stubGlobal("window", { innerWidth: 390, innerHeight: 844 });
     expect(await enterMobileFullscreen({} as HTMLElement)).toContain("Rotate your phone");
+    vi.stubGlobal("window", { innerWidth: 844, innerHeight: 390 });
+    expect(await enterMobileFullscreen({} as HTMLElement)).toBe("");
   });
 
   it("supports prefixed fullscreen and releases orientation on exit", async () => {

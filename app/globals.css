@@ -956,3 +956,23 @@ small { display: block; }
 .game-view .match-modal input:not([type=range]):not([type=checkbox]), .game-view .match-modal select { border-color: var(--line-strong); background-color: #05080cb8; }
 .game-view .scoreboard { border-color: var(--line-strong); background: #0b1016f2; }
 .game-view .scoreboard .self { background: #c8f75114; }
+
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 600px) {
+  .home-lobby:not([data-tab=join]) .panel-body { overflow-y: auto; }
+  .home-lobby:not([data-tab=join]) .panel-body > fieldset { display: block; height: auto; }
+  .home-lobby:not([data-tab=join]) .panel-body .map-picker { display: block; margin-top: 0; }
+  .home-lobby:not([data-tab=join]) .map-picker > [role=radiogroup] {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(96px, 31%);
+    grid-auto-rows: 64px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    padding: 2px;
+  }
+  .home-lobby .map-picker [data-map] { scroll-snap-align: start; }
+  .home-lobby .choice-row { flex-wrap: wrap; }
+  .home-lobby .choice-row button { min-width: 44px; min-height: 44px; }
+}
+.game-view[data-touch] .match-stats { position: absolute; top: calc(max(8px, env(safe-area-inset-top)) + clamp(60px, 20vh, 84px) + 3px); right: max(12px, env(safe-area-inset-right)); gap: 2px; }
+@media (max-height: 450px) { .game-view[data-touch] .match-stats { font-size: 8px; } }

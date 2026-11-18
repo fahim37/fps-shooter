@@ -69,7 +69,7 @@ export default function GameView({ room, map: mapId, onLeave, voice }: { room: G
   const fullscreenAttempted = useRef(false);
   useEffect(() => () => { if (game?.input.touch) void exitMobileFullscreen(); }, [game]);
   return <div className="game-view" data-quality={quality} data-touch={game?.input.touch || undefined} onPointerDownCapture={(e) => {
-    if (!game?.input.touch || !hud().ready || fullscreenAttempted.current || (e.target as HTMLElement).closest('[aria-label="Mobile screen options"], [aria-label="Landscape required"]')) return;
+    if (!game?.input.touch || !hud().ready || fullscreenAttempted.current || (e.target as HTMLElement).closest('[data-fullscreen-control], [aria-label="Landscape required"]')) return;
     fullscreenAttempted.current = true;
     void enterMobileFullscreen(e.currentTarget).then(setScreenMessage);
   }}>
@@ -78,7 +78,7 @@ export default function GameView({ room, map: mapId, onLeave, voice }: { room: G
         <PerformanceTuner />
         <Suspense fallback={null}><SkyAndSun /><Ground map={map.id} /><StaticWorld map={map} /><PostFX /><Runtime room={room} map={map.id} onGame={setGame} /></Suspense>
       </Canvas>
-      <MatchHud game={game} map={map.id} onLeave={onLeave} />
+      <MatchHud setScreenMessage={setScreenMessage} game={game} map={map.id} onLeave={onLeave} />
       <GraphicsControl />
       {voice && <VoiceChat room={room} session={voice} />}
       {game?.input.touch && <MobileScreen message={screenMessage} setMessage={setScreenMessage} onLeave={onLeave} />}
@@ -96,7 +96,7 @@ function FpsMeter({ fps, low }: { fps: number; low: number }) {
   </span>;
 }
 
-function MatchHud({ game, map, onLeave }: { game: Game | null; map: MapId; onLeave: () => void }) {
+function MatchHud({ game, map, onLeave, setScreenMessage }: { setScreenMessage: (message: string) => void; game: Game | null; map: MapId; onLeave: () => void }) {
   const h = useHud();
   const fpsMeter = useSettings((s) => s.fpsMeter);
   const clearView = useSettings((s) => s.clearView);
@@ -133,7 +133,7 @@ function MatchHud({ game, map, onLeave }: { game: Game | null; map: MapId; onLea
         {h.hurtAt > 0 && now - h.hurtAt < 550 && <div className="hurt-vignette" />}
         <DamageIndicator now={now} />
         <GrenadeWarning angle={h.grenadeThreat} />
-        {h.protectedUntil > now + h.serverOffset && <div className="protected">SPAWN PROTECTION · {Math.ceil((h.protectedUntil - now - h.serverOffset) / 1000)}<small>FIRING OR THROWING ENDS IT</small></div>}
+        {!h.touch && h.protectedUntil > now + h.serverOffset && <div className="protected">SPAWN PROTECTION · {Math.ceil((h.protectedUntil - now - h.serverOffset) / 1000)}<small>FIRING OR THROWING ENDS IT</small></div>}
         {h.grenadeAim?.fuse != null && <svg className="fuse-ring" viewBox="0 0 60 60" aria-hidden="true" data-urgent={h.grenadeAim.fuse < 1000 || undefined}>
           <circle cx="30" cy="30" r="26" pathLength="100" className="fuse-track" />
           <circle cx="30" cy="30" r="26" pathLength="100" className="fuse-left" strokeDasharray={`${(h.grenadeAim.fuse / GRENADE.fuseMs) * 100} 100`} />
@@ -146,13 +146,13 @@ function MatchHud({ game, map, onLeave }: { game: Game | null; map: MapId; onLea
         </div>}
       </>}
       {h.announce && now - h.announce.at < 3000 && <div className="announcement"><h2>{h.announce.text}</h2><p>{h.announce.sub}</p></div>}
-      {h.alive && <div className="hud-bottom"><div className="hud-hints">WASD MOVE · Q / E PEEK · R RELOAD · HOLD X GRENADE<br />V CAMERA · T EMOTE · N / M VOICE · TAB SCORES · H HELP · ESC PAUSE</div><div className="ammo"><small>{WEAPONS[h.weapon].name} · {h.thirdPerson ? "TPP" : "FPP"}</small><strong>{h.mag}<span> / {h.reserve}</span></strong><small>{h.reloading >= 0 ? `RELOADING ${Math.round(h.reloading * 100)}%` : `${h.grenades} GRENADES`}</small></div></div>}
+      {h.alive && !h.touch && <div className="hud-bottom"><div className="hud-hints">WASD MOVE · Q / E PEEK · R RELOAD · HOLD X GRENADE<br />V CAMERA · T EMOTE · N / M VOICE · TAB SCORES · H HELP · ESC PAUSE</div><div className="ammo"><small>{WEAPONS[h.weapon].name} · {h.thirdPerson ? "TPP" : "FPP"}</small><strong>{h.mag}<span> / {h.reserve}</span></strong><small>{h.reloading >= 0 ? `RELOADING ${Math.round(h.reloading * 100)}%` : `${h.grenades} GRENADES`}</small></div></div>}
       {h.ready && h.alive && !paused && !scoreboard && !h.loadoutOpen && !h.customizingControls && <HealthBar h={h} now={now} />}
       {!h.alive && h.ready && !scoreboard && !paused && !h.loadoutOpen && <DeathRecap h={h} now={now} />}
     </div>
     {h.ready && h.alive && !h.mobilePortrait && !paused && !h.loadoutOpen && !scoreboard && !h.customizingControls && h.conn === "connected" && h.phase !== "ended" && game && <WeaponBar game={game} />}
     {h.loadoutOpen && h.ready && !failed && h.conn === "connected" && h.phase !== "ended" && game && <LoadoutPanel game={game} />}
-    {h.touch && !h.mobilePortrait && h.ready && (h.alive || h.customizingControls) && !h.menu && !h.loadoutOpen && h.conn === "connected" && h.phase !== "ended" && game && <MobileControls game={game} />}
+    {h.touch && !h.mobilePortrait && h.ready && (h.alive || h.customizingControls) && !h.menu && !h.loadoutOpen && h.conn === "connected" && h.phase !== "ended" && game && <MobileControls setScreenMessage={setScreenMessage} game={game} />}
     {h.emoteMenu && h.ready && h.alive && !paused && !scoreboard && !h.loadoutOpen && !h.customizingControls && h.conn === "connected" && game && <EmoteMenu game={game} touch={h.touch} />}
     {scoreboard && <div className="scoreboard"><span className="eyebrow">{h.phase === "ended" ? "MATCH COMPLETE" : "FIELD REPORT"}</span><h2>{h.phase === "ended" ? winner : h.roomName}</h2><table><thead><tr><th>PLAYER</th><th>K</th><th>D</th><th>A</th><th>SCORE</th><th>PING</th></tr></thead><tbody>{h.players.map((p) => <tr key={p.id} className={p.me ? "self" : ""}><td><span className={relation(p)}>{p.name}</span>{p.me ? " (YOU)" : p.bot ? " [BOT]" : ""}{!p.connected && " · OFFLINE"}</td><td>{p.kills}</td><td>{p.deaths}</td><td>{p.assists}</td><td>{p.score}</td><td>{p.bot ? "—" : p.ping}</td></tr>)}</tbody></table>{h.phase === "ended" && <p>Next match in {seconds}s <button onClick={onLeave}>Leave match</button></p>}</div>}
     {h.help && h.ready && <HowToPlay touch={h.touch} locked={h.locked && !paused} onClose={() => hud().set({ help: false })} />}

@@ -40,6 +40,9 @@ export interface RoomMeta {
   roomName: string;
   code: string;
   humans: number;
+  /** Humans on each team (Team DM). */
+  blue?: number;
+  red?: number;
   bots: number;
   botFill: number;
   format: string;

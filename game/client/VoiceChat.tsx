@@ -143,6 +143,7 @@ function ChannelButton({ channel, session, live, pressed, label, title, children
 export function VoiceChat({ room, session, placement = "match" }: { room: GameRoom; session: VoiceSession; placement?: "match" | "room" }) {
   const teams = room.state?.mode === "tdm";
   const { state, openMic, selected } = useSyncExternalStore(session.subscribe, session.snapshot, session.snapshot);
+  const [expanded, setExpanded] = useState(false);
   const [panel, setPanel] = useState(false);
   const client = session.client;
   if (!client) return null;
@@ -163,7 +164,9 @@ export function VoiceChat({ room, session, placement = "match" }: { room: GameRo
     : open ? `Mic on: ${to(selected)} can hear you`
     : `Mic off: you can hear others${state.connected ? ` (${state.connected} in voice)` : ""}`;
   const others = state.members.filter((m) => m.id !== room.sessionId && m.mic);
-  return <aside className={`${styles.voice} ${placement === "room" ? styles.room : ""}`} aria-label="Voice chat" data-voice={state.mic ? "on" : state.pending ? "pending" : "off"} data-talking={state.talking ? state.channel : ""} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+  return <aside className={`${styles.voice} ${placement === "room" ? styles.room : ""}`} aria-label="Voice chat" data-expanded={expanded} data-voice={state.mic ? "on" : state.pending ? "pending" : "off"} data-talking={state.talking ? state.channel : ""} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+    {placement === "match" && <button type="button" className={styles.touchToggle} aria-label="Voice controls" aria-expanded={expanded}
+      onClick={() => { setExpanded(!expanded); setPanel(false); }}><MicIcon open={open || state.talking} /></button>}
     <div className={styles.bar}>
       {teams && <ChannelButton channel="team" session={session} live={live("team")} pressed={open && selected === "team"} label="Team voice" title="Hold to talk to your team (or hold N)"><TeamIcon /><span>TEAM</span></ChannelButton>}
       <ChannelButton channel="all" session={session} live={live("all")} pressed={open && selected === "all"} label="All voice" title={`Hold to talk to everyone (or hold ${teams ? "M" : "N"})`}><AllIcon /><span>ALL</span></ChannelButton>

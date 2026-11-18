@@ -5,18 +5,15 @@ import { useHud } from "./core/hud";
 import { enterMobileFullscreen, exitMobileFullscreen, fullscreenElement } from "./mobileFullscreen";
 import styles from "./MobileControls.module.css";
 
-export function MobileScreen({ message, setMessage, onLeave }: { message: string; setMessage: (message: string) => void; onLeave: () => void }) {
-  const editing = useHud((s) => s.customizingControls);
-  const portrait = useHud((s) => s.mobilePortrait && s.conn === "connected");
-  const available = useHud((s) => s.ready && !s.menu && s.conn === "connected" && s.phase !== "ended");
-  const [fullscreen, setFullscreen] = useState(() => !!fullscreenElement());
-  function command(action: () => void) {
-    return {
-      onPointerDown: (e: PointerEvent<HTMLButtonElement>) => { e.preventDefault(); e.stopPropagation(); action(); },
-      onClick: (e: MouseEvent<HTMLButtonElement>) => { if (e.detail === 0) action(); },
-    };
-  }
+function command(action: () => void) {
+  return {
+    onPointerDown: (e: PointerEvent<HTMLButtonElement>) => { e.preventDefault(); e.stopPropagation(); action(); },
+    onClick: (e: MouseEvent<HTMLButtonElement>) => { if (e.detail === 0) action(); },
+  };
+}
 
+export function FullscreenButton({ setMessage }: { setMessage: (message: string) => void }) {
+  const [fullscreen, setFullscreen] = useState(() => !!fullscreenElement());
   useEffect(() => {
     const change = () => { setFullscreen(!!fullscreenElement()); if (!fullscreenElement()) screen.orientation?.unlock?.(); };
     document.addEventListener("fullscreenchange", change);
@@ -27,6 +24,14 @@ export function MobileScreen({ message, setMessage, onLeave }: { message: string
     };
   }, []);
 
+  return <button type="button" aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"} data-fullscreen-control="" {...command(() => { if (fullscreen) { setMessage(""); void exitMobileFullscreen(); } else void enterMobileFullscreen(document.querySelector<HTMLElement>(".game-view")!).then(setMessage); })}>{fullscreen ? "Exit fullscreen" : "Fullscreen"}</button>;
+}
+
+export function MobileScreen({ message, setMessage, onLeave }: { message: string; setMessage: (message: string) => void; onLeave: () => void }) {
+  const editing = useHud((s) => s.customizingControls);
+  const portrait = useHud((s) => s.mobilePortrait && s.conn === "connected");
+  const available = useHud((s) => s.ready && !s.menu && s.conn === "connected" && s.phase !== "ended");
+  const alive = useHud((s) => s.alive);
   return <>
     {portrait && <div className={styles.rotateShade} role="dialog" aria-modal="true" aria-label="Landscape required">
       <div className={styles.rotateCard}>
@@ -40,9 +45,7 @@ export function MobileScreen({ message, setMessage, onLeave }: { message: string
         <button type="button" className="outline-button" {...command(onLeave)}>RETURN TO LOBBY</button>
       </div>
     </div>}
-    {!editing && available && <div className={styles.screenTools} aria-label="Mobile screen options">
-      <button type="button" {...command(() => { if (fullscreen) { setMessage(""); void exitMobileFullscreen(); } else void enterMobileFullscreen(document.querySelector<HTMLElement>(".game-view")!).then(setMessage); })}>{fullscreen ? "Exit fullscreen" : "Fullscreen"}</button>
-    </div>}
+    {!editing && available && !portrait && !alive && <div className={styles.screenTools}><FullscreenButton setMessage={setMessage} /></div>}
     {message && !portrait && <div className={styles.screenMessage} role="status">{message}<button type="button" aria-label="Dismiss screen message" onClick={() => setMessage("")}>×</button></div>}
   </>;
 }

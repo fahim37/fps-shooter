@@ -89,3 +89,9 @@
 :global(.game-view:not([data-touch])) .voice:not(.room) .panel { width: min(300px, calc(100vw - var(--minimap-size) - 104px)); }
 :global(.game-view:not([data-touch])) .voice:not(.room) .panel .error { position: static; width: auto; }
 @media (max-width: 800px), (max-height: 550px) { :global(.game-view:not([data-touch])) .voice:not(.room) { right: calc(max(12px, env(safe-area-inset-right)) + var(--minimap-size) + 6px); } }
+.touchToggle { display: none; }
+:global(.game-view[data-touch]) .voice:not(.room) { top: max(8px, env(safe-area-inset-top)); left: auto; right: calc(max(12px, env(safe-area-inset-right)) + clamp(60px, 20vh, 84px) + 6px); transform: none; align-items: flex-end; }
+:global(.game-view[data-touch]) .touchToggle { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid #ffffff58; border-radius: 50%; background: #101b1bcc; color: #ced9c5; }
+:global(.game-view[data-touch]) .voice[data-talking]:not([data-talking=""]) .touchToggle { color: #d8ed79; border-color: currentColor; }
+:global(.game-view[data-touch]) .voice[data-expanded=false] .bar { display: none; }
+:global(.game-view[data-touch]) .voice .bar { margin-top: 4px; }

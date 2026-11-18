@@ -3,40 +3,21 @@
 import { memo, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from "react";
 import type { Game } from "./core/game";
 import { hud, useHud } from "./core/hud";
-import { useMobileLayout, type MobileControlId, type MobileOrientation } from "./mobileLayout";
+import { THREE_FINGER_CLAW, useMobileLayout, type MobileControlId, type MobileOrientation } from "./mobileLayout";
+import { TouchGraphicsButton } from "./GraphicsControl";
+import { FullscreenButton } from "./MobileScreen";
+import { TouchIcon as Icon, type TouchIconName as IconName } from "./TouchIcon";
 import styles from "./MobileControls.module.css";
 
 type HeldAction = "fire" | "ads" | "jump" | "grenade";
-type IconName = "fire" | "ads" | "jump" | "crouch" | "sprint" | "reload" | "switch" | "peekLeft" | "peekRight" | "grenade" | "camera" | "emote" | "scores" | "menu" | "layout";
-type Gesture = { element: HTMLButtonElement; action?: HeldAction; look?: { x: number; y: number } };
-
-const ICON_PATHS: Record<IconName, string> = {
-    fire: "M10 20V8l2-4 2 4v12z M8 20h8 M10 15h4 M7 6l-2-2 M17 6l2-2",
-    ads: "M12 2v4 M12 18v4 M2 12h4 M18 12h4 M8 12a4 4 0 1 0 8 0 4 4 0 1 0-8 0 M4 12a8 8 0 1 0 16 0 8 8 0 1 0-16 0",
-    jump: "M10 4a2 2 0 1 0 4 0 2 2 0 1 0-4 0 M12 8v6 M12 10l-5-3 M12 10l5-3 M12 14l-5 6 M12 14l5 6",
-    crouch: "M12 4a2 2 0 1 0 4 0 2 2 0 1 0-4 0 M14 8l-4 5 6 2-3 5 M10 13l-5 4 5 3 M14 9l4 3h3",
-    sprint: "M14 3a2 2 0 1 0 4 0 2 2 0 1 0-4 0 M16 7l-5 5 5 3-3 6 M12 11l-5 6H3 M15 8l5 3 M11 7H6 M7 4H3",
-    reload: "M19 8a8 8 0 1 0 1 8 M19 3v5h-5 M10 8v8h4V8z",
-    switch: "M3 7h17 M16 3l4 4-4 4 M21 17H4 M8 13l-4 4 4 4",
-    peekLeft: "M18 3v18 M15 12H5 M9 8l-4 4 4 4",
-    peekRight: "M6 3v18 M9 12h10 M15 8l4 4-4 4",
-    grenade: "M8 5h8v4 M10 3h6l3 4 M8 10a7 7 0 1 0 8 0z M12 11v9 M6 15h12",
-    camera: "M3 7h5l2-3h4l2 3h5v13H3z M8 13a4 4 0 1 0 8 0 4 4 0 1 0-8 0",
-    emote: "M3 12a9 9 0 1 0 18 0 9 9 0 1 0-18 0 M8 14c1 1.5 2.3 2.2 4 2.2s3-.7 4-2.2 M9 9.5h.01 M15 9.5h.01",
-    scores: "M4 4h16v17H4z M8 8h1 M12 8h5 M8 12h1 M12 12h5 M8 16h1 M12 16h5",
-    menu: "M6 5h4v14H6z M14 5h4v14h-4z",
-    layout: "M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z",
-};
-
-function Icon({ name }: { name: IconName }) {
-  return <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={ICON_PATHS[name]} /></svg>;
-}
+type Gesture = { element: HTMLButtonElement; action?: HeldAction; tap?: { time: number; x: number; y: number }; look?: { x: number; y: number } };
 
 /** Independent pointer ownership lets both thumbs move/aim while other fingers fire. */
-export const MobileControls = memo(function MobileControls({ game }: { game: Game }) {
+export const MobileControls = memo(function MobileControls({ game, setScreenMessage }: { game: Game; setScreenMessage: (message: string) => void }) {
   const input = game.input;
   const scoreboard = useHud((s) => s.scoreboard);
   const editing = useHud((s) => s.customizingControls);
+  const grenades = useHud((s) => s.grenades);
   const peek = useHud((s) => s.peek);
   const emoteMenu = useHud((s) => s.emoteMenu);
   const layout = useMobileLayout();
@@ -53,6 +34,9 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
   const [sprintLocked, setSprintLocked] = useState(false);
   const look = useRef<{ id: number; x: number; y: number } | null>(null);
   const gestures = useRef(new Map<number, Gesture>());
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [scoped, setScoped] = useState(false);
+  const scopeLock = useRef(false);
   const [sprinting, setSprinting] = useState(false);
   const [crouching, setCrouching] = useState(false);
 
@@ -63,7 +47,7 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
   }, []);
 
   function controlStyle(id: MobileControlId): CSSProperties {
-    const control = layout.controls[orientation][id];
+    const control = { ...(orientation === "landscape" ? THREE_FINGER_CLAW[id] : undefined), ...layout.controls[orientation][id] };
     const scale = Math.min(id === "joystick" ? 1.4 : 1.5, (control?.size ?? 1) * (id === "joystick" ? 1 : layout.buttonScale));
     const positioned = control?.x !== undefined && control?.y !== undefined;
     const half = `var(--control-size) * ${scale} / 2`;
@@ -99,6 +83,9 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
   useEffect(() => {
     const reset = () => {
       input.releaseAll();
+      scopeLock.current = false;
+      setScoped(false);
+      setMoreOpen(false);
       gestures.current.forEach((gesture) => { gesture.element.dataset.pressed = "false"; });
       gestures.current.clear();
       stick.current = look.current = null;
@@ -129,7 +116,7 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
   function syncAction(action: HeldAction) {
     const down = [...gestures.current.values()].some((gesture) => gesture.action === action);
     if (action === "grenade") input.hold("KeyG", down);
-    else input.setAction(action, down);
+    else input.setAction(action, down || (action === "ads" && scopeLock.current));
   }
 
   function endButton(e: PointerEvent<HTMLButtonElement>) {
@@ -138,7 +125,17 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
     if (!gesture || gesture.element !== e.currentTarget) return;
     gestures.current.delete(e.pointerId);
     e.currentTarget.dataset.pressed = "false";
-    if (gesture.action) syncAction(gesture.action);
+    if (gesture.tap && e.type === "pointerup" && e.timeStamp - gesture.tap.time <= 250) {
+      scopeLock.current = !scopeLock.current;
+      setScoped(scopeLock.current);
+    }
+    if (gesture.action) {
+      syncAction(gesture.action);
+      if (e.type !== "pointerup") {
+        if (gesture.action === "fire" && !input.fire) input.consume("TouchFire");
+        if (gesture.action === "jump" && !input.jump) input.consume("TouchJump");
+      }
+    }
   }
 
   function button(name: Exclude<IconName, "layout">, label: string, className: string, action?: HeldAction, press?: () => void, toggle?: boolean, aim = false, id: MobileControlId = name as MobileControlId) {
@@ -147,8 +144,9 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
       onPointerDown={(e) => {
         if (editing) { beginEdit(e, id); return; }
         if (!input.enabled || [...gestures.current.values()].some((g) => g.element === e.currentTarget)) return;
+        if (className === styles.option) { e.preventDefault(); e.stopPropagation(); press?.(); return; }
         capture(e);
-        gestures.current.set(e.pointerId, { element: e.currentTarget, action, look: aim ? { x: e.clientX, y: e.clientY } : undefined });
+        gestures.current.set(e.pointerId, { element: e.currentTarget, action, tap: action === "ads" ? { time: e.timeStamp, x: e.clientX, y: e.clientY } : undefined, look: aim ? { x: e.clientX, y: e.clientY } : undefined });
         e.currentTarget.dataset.pressed = "true";
         if (action) syncAction(action);
         press?.();
@@ -156,6 +154,7 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
       onPointerMove={(e) => {
         if (editing) { moveEdit(e); return; }
         const gesture = gestures.current.get(e.pointerId);
+        if (gesture?.tap && Math.hypot(e.clientX - gesture.tap.x, e.clientY - gesture.tap.y) > 8) gesture.tap = undefined;
         if (gesture?.look) {
           input.addLook(e.clientX - gesture.look.x, e.clientY - gesture.look.y);
           gesture.look.x = e.clientX; gesture.look.y = e.clientY;
@@ -163,7 +162,7 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
       }}
       onPointerUp={endButton} onPointerCancel={endButton} onLostPointerCapture={endButton}
       onClick={(e) => { if (e.detail === 0) { if (editing) setSelected(id); else if (!action) press?.(); } }}>
-      <Icon name={name} /><span>{label}</span>
+      <Icon name={name} />{name === "grenade" && <b className={styles.quantity}>{grenades}</b>}<span>{label}</span>
     </button>;
     return className === styles.tool || className === styles.utility ? <span className={className === styles.tool ? styles.toolSlot : styles.utilitySlot}>{control}</span> : control;
   }
@@ -188,7 +187,8 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
     const scale = distance > current.radius ? current.radius / distance : 1;
     const nx = dx * scale / current.radius, ny = -dy * scale / current.radius;
     const magnitude = Math.hypot(nx, ny);
-    const response = magnitude > 0.12 ? (magnitude - 0.12) / (0.88 * magnitude) : 0;
+    // Ignore thumb jitter, then reach full movement just inside the stick rim.
+    const response = magnitude > 0.08 ? Math.min(1, (magnitude - 0.08) / 0.82) / magnitude : 0;
     input.setStick(sprintLock.current ? { x: 0, y: 1 } : { x: nx * response, y: ny * response });
     if (knob.current) knob.current.style.transform = `translate(calc(-50% + ${dx * scale}px), calc(-50% + ${dy * scale}px))`;
   }
@@ -223,8 +223,10 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
     if (knob.current) knob.current.style.transform = "translate(-50%, -50%)";
   }
 
-  function toggleScores() {
-    const open = !input.held("Tab");
+  function clearGameplay() {
+    scopeLock.current = false;
+    setScoped(false);
+    setMoreOpen(false);
     input.releaseAll();
     gestures.current.forEach((gesture) => { gesture.element.dataset.pressed = "false"; });
     gestures.current.clear();
@@ -233,20 +235,17 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
     setSprintLocked(false);
     setStickOrigin(null);
     if (knob.current) knob.current.style.transform = "translate(-50%, -50%)";
-    input.hold("Tab", open);
     setSprinting(false); setCrouching(false);
   }
 
+  function toggleScores() {
+    const open = !input.held("Tab");
+    clearGameplay();
+    input.hold("Tab", open);
+  }
+
   function openEditor() {
-    input.releaseAll();
-    gestures.current.forEach((gesture) => { gesture.element.dataset.pressed = "false"; });
-    gestures.current.clear();
-    stick.current = look.current = null;
-    sprintLock.current = false;
-    setSprintLocked(false);
-    setStickOrigin(null);
-    if (knob.current) knob.current.style.transform = "translate(-50%, -50%)";
-    setSprinting(false); setCrouching(false);
+    clearGameplay();
     setSaveError("");
     setEditorCollapsed(false);
     hud().set({ scoreboard: false, customizingControls: true });
@@ -261,7 +260,15 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
     };
   }
 
-  return <div className={`${styles.controls} ${editing ? styles.editing : ""}`} aria-label="Mobile game controls" data-scoreboard={scoreboard || undefined}>
+  function option(name: Exclude<IconName, "layout" | "more">, label: string, run: () => void, active?: boolean, id = name as MobileControlId) {
+    return <div className={styles.optionSlot}>{button(name, label, styles.option, undefined, () => {
+      setMoreOpen(false);
+      run();
+    }, active, false, id)}</div>;
+  }
+
+  return <div className={`${styles.controls} ${editing ? styles.editing : ""}`} aria-label="Mobile game controls" data-scoreboard={scoreboard || undefined}
+    onPointerDownCapture={(e) => { if (moreOpen && !(e.target as Element).closest("[data-more]")) setMoreOpen(false); }}>
     {!scoreboard && <>
       {!editing && <div className={styles.moveZone} aria-label="Touch left to move"
         onPointerDown={beginStick}
@@ -293,24 +300,34 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
       </button>}
       {button("fire", "Fire", styles.leftFire, "fire", undefined, undefined, false, "leftFire")}
       {button("fire", "Fire / aim", styles.rightFire, "fire", undefined, undefined, true, "rightFire")}
-      {button("ads", "Aim", styles.ads, "ads", undefined, undefined, true)}
+      {button("peekLeft", "Peek left", styles.peek, undefined, () => input.press("PeekLeft"), peek === -1, true)}
+      {button("peekRight", "Peek right", styles.peek, undefined, () => input.press("PeekRight"), peek === 1, true)}
+      {button("ads", "Aim", styles.ads, "ads", undefined, scoped, true)}
       {button("jump", "Jump", styles.jump, "jump")}
       {button("crouch", "Crouch", styles.crouch, undefined, () => { const down = !crouching; if (down) stopSprintLock(); setCrouching(down); input.setAction("crouch", down); if (down) { setSprinting(false); input.setAction("sprint", false); } }, crouching)}
-      {button("sprint", "Sprint", styles.sprint, undefined, () => { const down = !sprinting; stopSprintLock(); setSprinting(down); input.setAction("sprint", down); if (down) { setCrouching(false); input.setAction("crouch", false); } }, sprinting)}
       <div className={styles.utilities}>
-        {button("grenade", "Grenade", styles.utility, "grenade")}
+        {button("grenade", "Grenade", styles.utility, "grenade", undefined, undefined, true)}
         {button("reload", "Reload", styles.utility, undefined, () => input.press("KeyR"))}
-        {button("switch", "Switch", styles.utility, undefined, () => input.press("SwapWeapon"))}
       </div>
-      {button("peekLeft", "Peek left", styles.peekLeft, undefined, () => input.press("PeekLeft"), peek === -1)}
-      {button("peekRight", "Peek right", styles.peekRight, undefined, () => input.press("PeekRight"), peek === 1)}
     </>}
-    <div className={styles.toolbar}>
-      {!scoreboard && button("camera", "Camera", styles.tool, undefined, () => input.press("KeyV"))}
-      {!scoreboard && button("emote", "Emote", styles.tool, undefined, () => input.press("EmoteMenu"), emoteMenu)}
-      {button("scores", scoreboard ? "Close scores" : "Scores", styles.tool, undefined, toggleScores, scoreboard)}
-      {button("menu", "Pause", styles.tool, undefined, () => { input.releaseAll(); hud().set({ menu: true }); }, undefined, false, "pause")}
-      {!editing && <button type="button" aria-label="Customize controls" title="Customize controls" className={`${styles.button} ${styles.tool}`} {...editorAction(openEditor)}><Icon name="layout" /><span>Layout</span></button>}
+    <div className={styles.toolbar} data-more="">
+      {!scoreboard && <button type="button" aria-label="More actions" aria-expanded={editing || moreOpen} aria-controls="mobile-more-actions"
+        className={`${styles.button} ${styles.more}`} disabled={editing} {...editorAction(() => setMoreOpen(!moreOpen))}><Icon name="more" /><span>More</span></button>}
+      {(editing || moreOpen) && !scoreboard && <div className={styles.actionGrid} id="mobile-more-actions" role="group" aria-label="More actions">
+        {option("sprint", "Sprint", () => { const down = !sprinting; stopSprintLock(); setSprinting(down); input.setAction("sprint", down); if (down) { setCrouching(false); input.setAction("crouch", false); } }, sprinting)}
+        {option("switch", "Switch", () => input.press("SwapWeapon"))}
+        {option("camera", "Camera", () => input.press("KeyV"))}
+        {option("emote", "Emote", () => input.press("EmoteMenu"), emoteMenu)}
+        {option("scores", "Scores", toggleScores)}
+        {option("menu", "Pause", () => { clearGameplay(); hud().set({ menu: true }); }, undefined, "pause")}
+        {!editing && <button type="button" aria-label="Open loadout and scopes" className={`${styles.button} ${styles.option}`} {...editorAction(() => { clearGameplay(); game.openLoadout(); })}><Icon name="ads" /><span>Loadout</span></button>}
+        {!editing && <button type="button" aria-label="Customize controls" className={`${styles.button} ${styles.option}`} {...editorAction(openEditor)}><Icon name="layout" /><span>Layout</span></button>}
+        {!editing && <div className={styles.displayOptions}><TouchGraphicsButton /><FullscreenButton setMessage={setScreenMessage} /></div>}
+      </div>}
+      {scoreboard && <>
+        {button("scores", "Close scores", styles.tool, undefined, toggleScores, true)}
+        {button("menu", "Pause", styles.tool, undefined, () => { clearGameplay(); hud().set({ menu: true }); }, undefined, false, "pause")}
+      </>}
     </div>
     {!scoreboard && !editing && <span className={styles.lookHint}>DRAG TO AIM</span>}
     {editing && <div className={`${styles.editor} ${editorCollapsed ? styles.collapsedEditor : ""}`} aria-label="Control layout editor">
@@ -320,7 +337,7 @@ export const MobileControls = memo(function MobileControls({ game }: { game: Gam
         <label><span>OPACITY <b>{Math.round(layout.opacity * 100)}%</b></span><input aria-label="Control opacity" type="range" min="0.25" max="1" step="0.05" value={layout.opacity} onChange={(e) => layout.setOpacity(Number(e.target.value))} /></label>
       </>}
       <div className={styles.editorActions}>
-        {!editorCollapsed && <button type="button" {...editorAction(() => { layout.reset(orientation); setSelected("joystick"); })}>Reset layout</button>}
+        {!editorCollapsed && <button type="button" {...editorAction(() => { layout.reset(orientation); layout.setButtonScale(1); layout.setOpacity(0.8); setSelected("joystick"); })}>3-finger claw</button>}
         {!editorCollapsed && <button type="button" {...editorAction(() => { layout.restoreSaved(); hud().set({ customizingControls: false }); })}>Cancel changes</button>}
         <button type="button" className={styles.save} {...editorAction(() => { if (layout.save()) hud().set({ customizingControls: false }); else setSaveError("Storage unavailable. Your controls work for this session."); })}>Save &amp; play</button>
         {saveError && <button type="button" className={styles.save} {...editorAction(() => hud().set({ customizingControls: false }))}>Play without saving</button>}

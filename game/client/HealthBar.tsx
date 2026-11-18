@@ -11,6 +11,17 @@ export function HealthBar({ h, now }: { h: HudState; now: number }) {
   const shield = Math.max(0, Math.min(MAX_SHIELD, Math.round(h.shield)));
   const restored = h.shieldAt > 0 && now - h.shieldAt < SHIELD_NOTICE_MS;
   const status = restored ? "SHIELD RESTORED" : hp === MAX_HEALTH ? "FULL HEALTH" : h.regenerating ? "REGENERATING" : delay > 0 ? `HEAL IN ${delay}s · TAKE COVER` : "TAKE COVER TO HEAL";
+  if (h.touch) {
+    const protection = Math.ceil((h.protectedUntil - now - h.serverOffset) / 1000);
+    return <div className={`${styles.panel} ${styles.touchStrip} ${hp <= 30 ? styles.critical : hp <= 60 ? styles.wounded : ""} ${h.regenerating ? styles.healing : ""}`} data-health-state={h.regenerating ? "healing" : hp <= 30 ? "critical" : "normal"}>
+      <strong aria-label={`${hp} health`}>+ {hp}</strong>
+      <div className={styles.meters}>
+        <div className={styles.shield} role="progressbar" aria-label="Shield" aria-valuemin={0} aria-valuemax={MAX_SHIELD} aria-valuenow={shield}><i style={{ width: `${shield / MAX_SHIELD * 100}%` }} /></div>
+        <div className={styles.track} role="progressbar" aria-label="Health" aria-valuemin={0} aria-valuemax={MAX_HEALTH} aria-valuenow={hp} aria-valuetext={status}><i style={{ width: `${hp}%` }} /></div>
+      </div>
+      {protection > 0 && <span className={styles.protection} aria-label={`Spawn protection, ${protection} seconds. Firing or throwing ends it.`}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m8 1 5 2v5q0 4-5 7-5-3-5-7V3z" /></svg>{protection}s</span>}
+    </div>;
+  }
   return <div className={`${styles.panel} ${hp <= 30 ? styles.critical : hp <= 60 ? styles.wounded : ""} ${h.regenerating ? styles.healing : ""} ${restored ? styles.restored : ""}`} data-health-state={h.regenerating ? "healing" : hp <= 30 ? "critical" : "normal"}>
     <div className={styles.heading}><span><b aria-hidden="true">+</b> HEALTH</span><strong>{hp}{shield > 0 && <em aria-label={`plus ${shield} shield`}> +{shield}</em>}<small> / {MAX_HEALTH}</small></strong></div>
     <div className={styles.shield} role="progressbar" aria-label="Shield" aria-valuemin={0} aria-valuemax={MAX_SHIELD} aria-valuenow={shield}><i style={{ width: `${shield / MAX_SHIELD * 100}%` }} /></div>

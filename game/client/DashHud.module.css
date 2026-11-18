@@ -28,3 +28,4 @@
 @media (prefers-reduced-motion: reduce) {
   .chip[data-ready=true] svg { animation: none; }
 }
+:global(.game-view[data-touch]) .chip { left: calc(50% + 44px); bottom: calc(6px + env(safe-area-inset-bottom)); width: 44px; height: 44px; }

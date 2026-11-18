@@ -11,6 +11,11 @@ function cycleQuality() {
   settings.set({ quality: QUALITY_ORDER[(index + 1) % QUALITY_ORDER.length] });
 }
 
+export function TouchGraphicsButton() {
+  const quality = useSettings((s) => s.quality);
+  return <button type="button" aria-label="Change graphics quality" title={`Graphics: ${quality}`} onClick={cycleQuality}><small>GRAPHICS</small><span>{quality.toUpperCase()} <span aria-hidden="true">↻</span></span></button>;
+}
+
 /** F6 is available during pointer lock, when clicking a normal select is impossible.
  *  While paused on desktop the pause menu's own settings take over and this stays hidden. */
 export function GraphicsControl() {
@@ -36,10 +41,7 @@ export function GraphicsControl() {
 
   if (!ready || scoreboard || customizing || loadoutOpen || (touch && menu) || (!alive && (locked || touch) && !menu)) return null;
   // Paused on desktop: the docked copy in the deploy menu takes over.
-  if (!touch && !locked) return null;
-  if (touch && !menu) return <div className={`${styles.control} ${styles.touchControl}`}>
-    <button type="button" aria-label="Change graphics quality" title={`Graphics: ${quality}`} onClick={cycleQuality}><small>GRAPHICS</small><span>{quality.toUpperCase()} <span aria-hidden="true">↻</span></span></button>
-  </div>;
+  if (touch || !locked) return null;
   return <div className={`${styles.control} ${styles.compact}`} aria-label="Live graphics settings">
     <label htmlFor="match-graphics-quality">GRAPHICS <kbd>F6</kbd></label>
     <select id="match-graphics-quality" aria-label="In-match graphics quality" value={quality} onChange={(e) => useSettings.getState().set({ quality: e.target.value as Quality })}>

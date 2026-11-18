@@ -35,17 +35,22 @@ function OpticIcon({ optic }: { optic: OpticId }) {
   </svg>;
 }
 
+function TouchAmmo() {
+  const ammo = useHud((s) => s.reloading >= 0 ? `Reload ${Math.round(s.reloading * 100)}%` : `${s.mag} / ${s.reserve}`);
+  return <strong className={styles.touchAmmo}>{ammo}</strong>;
+}
+
 export const WeaponBar = memo(function WeaponBar({ game }: { game: Game }) {
   const h = useHud(useShallow((s) => ({ primary: s.primary, weapon: s.weapon, touch: s.touch })));
   const optic = useLoadout((s) => s.optics[h.weapon]);
   return <nav className={styles.bar} aria-label="Quick weapons">
     {[h.primary, "pistol" as const].map((weapon, i) => <button key={weapon} type="button" aria-label={`Equip ${WEAPONS[weapon].name}`} aria-pressed={h.weapon === weapon}
       onClick={() => game.input.press(i === 0 ? "Digit1" : "Digit2")}>
-      <span className={styles.shortcut}>{i + 1}</span><GunIcon weapon={weapon} /><span>{WEAPONS[weapon].name}</span>
+      <span className={styles.shortcut}>{i + 1}</span><GunIcon weapon={weapon} />{h.touch && h.weapon === weapon ? <TouchAmmo /> : <span>{WEAPONS[weapon].name}</span>}
     </button>)}
-    <button type="button" aria-label="Open loadout and scopes" onClick={() => game.openLoadout()}>
-      <OpticIcon optic={optic} /><span>{OPTICS[optic].name}</span><small>{h.touch ? "GUNS / SCOPES" : "B · LOADOUT"}</small>
-    </button>
+    {!h.touch && <button type="button" aria-label="Open loadout and scopes" onClick={() => game.openLoadout()}>
+      <OpticIcon optic={optic} /><span>{OPTICS[optic].name}</span><small>B · LOADOUT</small>
+    </button>}
   </nav>;
 });
 

@@ -42,23 +42,19 @@ const KEYBOARD: { title: string; rows: Row[] }[] = [
 ];
 
 const TOUCH: Row[] = [
-  [["Left side"], "Move", "Drag anywhere on the left"],
-  [["Right side"], "Aim", "Drag anywhere on the right"],
-  [["Fire"], "Shoot"],
-  [["Aim"], "Aim down sights"],
-  [["Peek left", "Peek right"], "Peek", "Aims down sights while peeking"],
-  [["Jump"], "Jump"],
-  [["Crouch"], "Crouch", "Steadier aim, quieter steps"],
-  [["Sprint"], "Sprint"],
+  [["Left side"], "Move", "Drag forward to the sprint target to keep running. Touch movement again to stop."],
+  [["Right side"], "Look", "Swipe to turn. Adjust look and ADS sensitivity in settings."],
+  [["Fire"], "Shoot", "Hold either fire button. Use your left index finger on the upper fire buttons while your right thumb tracks the target."],
+  [["Aim"], "Aim down sights", "Tap to stay scoped. Tap again to exit. Hold or drag for momentary aim."],
+  [["Peek left", "Peek right"], "Lean", "The peek buttons sit either side of Aim."],
+  [["Jump", "Crouch"], "Change stance"],
   [["Reload"], "Reload"],
-  [["Switch"], "Primary / sidearm"],
-  [["Grenade"], "Grenade", "Hold to aim along the arc, release to throw · Aim to lob"],
-  [["Camera"], "First / third person"],
-  [["Emote"], "Emote", "Pick one; move or shoot to stop"],
-  [["Pause"], "Pause", "Invite friends, settings, leave"],
-  [["Team", "All"], "Voice chat", "Icons under the scores: hold to talk to your team or everyone"],
+  [["Weapon bar"], "Equip a gun"],
+  [["Grenade"], "Throw a grenade", "Hold and drag to aim the arc. Release to throw."],
+  [["More"], "Quick actions", "Open your loadout, change optics, sprint, switch weapons, change camera, emote, check scores or pause."],
+  [["More", "Layout"], "Move and resize controls"],
+  [["Team", "All"], "Voice chat", "Open Voice controls beside the minimap, then hold a channel to talk"],
   [["Mic"], "Open mic on / off", "Keeps your mic on for the selected channel"],
-  [["Layout"], "Move and resize buttons"],
 ];
 
 const TIPS = [
@@ -99,7 +95,7 @@ export function HowToPlay({ onClose, touch = false, locked = false }: { onClose:
         </div>)}
         <div className={styles.group}>
           <h3>TIPS</h3>
-          <ul className={styles.tips}>{TIPS.map((tip) => <li key={tip}>{tip}</li>)}</ul>
+          <ul className={styles.tips}>{(touch ? TIPS.slice(1) : TIPS).map((tip) => <li key={tip}>{tip}</li>)}</ul>
         </div>
       </div>
     </section>

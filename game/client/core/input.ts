@@ -224,6 +224,11 @@ export class Input {
   setStick(value: { x: number; y: number } | null) { if (value && !this.enabled) return; this.stick = value; }
   setAction(action: "fire" | "ads" | "jump" | "sprint" | "crouch", down: boolean) {
     if (down && !this.enabled) return;
+    // A touch can begin and end before the next simulation frame.
+    if (down && !this[action]) {
+      if (action === "fire") this.pressed.add("TouchFire");
+      if (action === "jump") this.pressed.add("TouchJump");
+    }
     if (action === "fire" || action === "ads") this[action] = down;
     else {
       if (down) this.touchActions.add(action); else this.touchActions.delete(action);

@@ -44,7 +44,7 @@ const _dashPosition = new THREE.Vector3(), _dashVelocity = new THREE.Vector3();
 /** After a dash, how long the next press is ignored and the server's count of dashes is not yet believed (ms). */
 const DASH_LOCK_MS = 700;
 /** Keep the map introduction readable even when all assets are already cached. */
-const MIN_MAP_LOADING_MS = 2000;
+const MIN_MAP_LOADING_MS = 1000;
 /** A dash's wake is drawn for players within this far (m); past it the streaks are smaller than a pixel. */
 const WAKE_RANGE = 70;
 /** How strongly your own dash ribbon is drawn (others' are 1): at full it hides what you dashed away from. */
@@ -731,8 +731,9 @@ export class Game {
     const scoreboard = this.input.held("Tab");
     local.thirdPerson = useSettings.getState().thirdPerson;
     const renderTime = this.clock.now() - INTERP_DELAY_MS;
+    const enemyReadability = this.input.touch ? "touch" : useSettings.getState().quality === "low";
     for (const remote of this.remotes.values()) {
-      remote.setReadability(useSettings.getState().quality === "low" && (hud().mode !== "tdm" || remote.team !== hud().myTeam));
+      remote.setReadability((hud().mode !== "tdm" || remote.team !== hud().myTeam) && enemyReadability);
       remote.update(dt, renderTime, this.camera.position);
       remote.updateTag(this.scene, hud().mode === "tdm" && remote.team === hud().myTeam);
       // The ribbon is drawn at any distance: it is how you tell where a dashing player went.

@@ -26,6 +26,15 @@ describe("Low enemy visibility", () => {
     const variant = b.material;
     setEnemyReadability([a], true);
     expect(a.material).toBe(variant);
+    setEnemyReadability([a], "touch");
+    expect(a.material).not.toBe(variant);
+    expect(a.material.depthTest).toBe(true);
+    const mobileShader = { fragmentShader: "#include <opaque_fragment>\n#include <fog_fragment>" } as THREE.WebGLProgramParametersWithUniforms;
+    a.material.onBeforeCompile(mobileShader, {} as THREE.WebGLRenderer);
+    expect(mobileShader.fragmentShader).toContain("vViewPosition.z");
+    expect(mobileShader.fragmentShader).toContain("#include <fog_fragment>");
+    setEnemyReadability([b], "touch");
+    expect(a.material).toBe(b.material);
   });
   it("leaves materials that are not the soldier's alone", () => {
     const meshes = ["Skin", "Hair", "Eyes"].map((name) => {

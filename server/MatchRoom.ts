@@ -232,6 +232,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       const count = this.humans().filter((other) => other.st.team === team).length;
       if (count >= Math.ceil(this.maxClients / 2)) { client.send("lobbyError", "That team is full. Choose the other team."); return; }
       p.st.team = team;
+      this.updateMeta();
     });
     this.onMessage("managePlayer", (client, message: unknown) => this.managePlayer(client, message));
     this.onMessage("rename", (client, name: unknown) => this.renamePlayer(client, name));
@@ -280,12 +281,14 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
         if (!other || other.bot || !other.st.connected || other.st.team !== m.team) return;
         other.st.team = target.st.team;
         target.st.team = m.team;
+        this.updateMeta();
         return;
       }
       if (this.humans().filter((p) => p.st.team === m.team).length >= Math.ceil(this.maxClients / 2)) {
         client.send("lobbyError", "That team is full. Swap with a player on that team instead."); return;
       }
       target.st.team = m.team;
+      this.updateMeta();
     } else if (target.id !== client.sessionId && m.action === "host") {
       this.state.hostId = target.id;
     } else if (target.id !== client.sessionId && m.action === "kick") {
@@ -454,7 +457,8 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   }
 
   private updateMeta() {
-    const humans = this.humans().length;
+    const people = this.humans();
+    const humans = people.length;
     this.setMetadata({
       queue: this.state.lobby ? "rooms" : "quick",
       mode: this.state.mode as GameMode,
@@ -462,6 +466,8 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       roomName: this.state.roomName,
       code: this.roomId,
       humans,
+      blue: people.filter((p) => p.st.team === 1).length,
+      red: people.filter((p) => p.st.team === 2).length,
       bots: this.players.size - humans,
       botFill: this.botTarget,
       format: this.state.format,

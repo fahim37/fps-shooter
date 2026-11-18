@@ -10,6 +10,17 @@ export type MobileOrientation = "landscape" | "portrait";
 /** x/y are normalized viewport centers; omitted values retain the responsive CSS defaults. */
 export interface MobileControlPlacement { x?: number; y?: number; size?: number }
 export type MobileControlMap = Partial<Record<MobileControlId, MobileControlPlacement>>;
+/** Resting thumb and index-finger positions of the built-in landscape claw preset. */
+export const THREE_FINGER_CLAW: MobileControlMap = {
+  leftFire: { x: 0.17, y: 0.21 },
+  rightFire: { x: 0.285, y: 0.21 },
+  joystick: { x: 0.157, y: 0.76 },
+  peekLeft: { x: 0.70, y: 0.43 },
+  ads: { x: 0.81, y: 0.43 },
+  peekRight: { x: 0.915, y: 0.43 },
+  jump: { x: 0.915, y: 0.64 },
+  crouch: { x: 0.915, y: 0.83 },
+};
 export interface MobileLayoutData {
   controls: Record<MobileOrientation, MobileControlMap>;
   buttonScale: number;

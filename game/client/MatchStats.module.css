@@ -18,7 +18,7 @@
   .cell dd { font-size: 12px; }
 }
 /* Touch: one slim row beside the compact map, numbers only. */
-:global(.game-view[data-touch]) .card { top: max(8px, env(safe-area-inset-top)); left: calc(max(12px, env(safe-area-inset-left)) + 92px); width: auto; display: flex; border-color: #d9ed7926; background: #111812a8; }
+:global(.game-view[data-touch]) .card { top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); width: auto; display: flex; border-color: #d9ed7926; background: #111812a8; }
 :global(.game-view[data-touch]) .cell { display: flex; align-items: center; gap: 4px; padding: 4px 7px; }
 :global(.game-view[data-touch]) .cell dt { display: flex; }
 :global(.game-view[data-touch]) .cell dt span { display: none; }

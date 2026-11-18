@@ -1,0 +1,13 @@
+.panel { width: min(520px, 100%); }
+.room { margin: 10px 0 0; font-size: 12px; color: #b0bac3; }
+.sides { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
+.side { --team: #79b8ff; display: grid; gap: 6px; padding: 22px 16px; border: 1px solid color-mix(in srgb, var(--team) 45%, transparent); background: color-mix(in srgb, var(--team) 8%, transparent); color: #dfe6ed; text-align: left; cursor: pointer; }
+.side strong { font-size: 24px; letter-spacing: .02em; text-transform: uppercase; color: var(--team); }
+.side span { font: 11px var(--font-geist-mono), monospace; letter-spacing: .08em; color: #b0bac3; }
+.side:hover:not(:disabled), .side:focus-visible { border-color: var(--team); background: color-mix(in srgb, var(--team) 16%, transparent); outline: none; }
+.side:disabled { opacity: .4; cursor: not-allowed; }
+.blue { --team: var(--team-blue, #79b8ff); }
+.red { --team: var(--team-red, #ff8b77); }
+.footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+.footer small { font-size: 11px; color: #939da6; }
+@media (max-width: 420px) { .sides { grid-template-columns: 1fr; } }

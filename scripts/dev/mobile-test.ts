@@ -1,6 +1,7 @@
 import { chromium, type Locator } from "playwright-core";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
+import { parseRoomCode } from "../../game/client/net/invite";
 import { Client, type Room } from "@colyseus/sdk";
 import type { Game } from "../../game/client/core/game";
 
@@ -45,6 +46,11 @@ async function main() {
   async function cancel() { contacts.clear(); await dispatch("touchCancel"); }
   async function tap(locator: Locator) { await down(99, await center(locator)); await up(99); }
 
+  async function chooseMore(name: string) {
+    await tap(action("More actions"));
+    await tap(action(name));
+  }
+
   async function state() {
     return page.evaluate(() => {
       const game = (window as TestWindow).__mobileTestGame!;
@@ -79,10 +85,10 @@ async function main() {
     await peer?.leave();
     await page.getByText("SERVER ONLINE", { exact: true }).waitFor({ timeout: 60000 });
     await page.getByRole("tab", { name: "With friends" }).tap();
-    await page.getByRole("button", { name: /^1v1/ }).tap();
-    await page.getByRole("button", { name: /CREATE 1V1 ROOM/ }).tap();
+    await page.getByRole("radio", { name: "2 players", exact: true }).tap();
+    await page.getByRole("button", { name: /CREATE ROOM/ }).tap();
     const invite = await page.getByLabel("Invite link", { exact: true }).inputValue();
-    const roomCode = new URL(invite).searchParams.get("room")!;
+    const roomCode = parseRoomCode(invite);
     peer = await new Client(process.env.GAME_SERVER_URL || "ws://localhost:2567").joinById(roomCode, { name: "Mobile QA peer" });
     peer.onMessage("*", () => {});
     peer.send("ready", true);
@@ -98,7 +104,9 @@ async function main() {
       return { label: target.getAttribute("aria-label"), x: rect.x, y: rect.y, width: rect.width, height: rect.height, radius: getComputedStyle(target).borderRadius };
     }));
     const viewport = page.viewportSize()!;
-    assert.ok(circles.length >= 13, "Both fire buttons, joystick and all utility buttons must be present");
+    assert.deepEqual(circles.map((circle) => circle.label).sort(),
+      ["Movement joystick", "Fire", "Fire / aim", "Aim", "Jump", "Crouch", "Peek left", "Peek right", "Grenade", "Reload", "More actions"].sort(),
+      "The default HUD must keep secondary actions tucked away");
     for (const circle of circles) {
       assert.ok(circle.x >= -1 && circle.y >= -1 && circle.x + circle.width <= viewport.width + 1 && circle.y + circle.height <= viewport.height + 1, `${circle.label} is outside the viewport`);
       assert.ok(Math.abs(circle.width - circle.height) < 1, `${circle.label} should be circular`);
@@ -125,8 +133,8 @@ async function main() {
       const health = await page.locator('[data-health-state]').boundingBox();
       const weapons = await page.getByRole("navigation", { name: "Quick weapons" }).boundingBox();
       assert.ok(health && weapons);
-      assert.ok(health.width <= 184 && health.height <= 40, `Mobile health must stay compact: ${JSON.stringify(health)}`);
-      assert.ok(weapons.width <= 224 && weapons.height >= 44 && weapons.height <= 46, "Compact guns must retain 44px touch targets");
+      assert.ok(health.width <= 176 && health.height <= 20, `Mobile health must stay compact: ${JSON.stringify(health)}`);
+      assert.ok(weapons.width <= 128 && weapons.height >= 44 && weapons.height <= 46, "Compact guns must retain 44px touch targets");
       assert.ok(health.y + health.height + 5 <= weapons.y, "Health and weapons must have a clear gap");
       for (const box of [health, weapons]) {
         for (const circle of circles) {
@@ -134,11 +142,27 @@ async function main() {
         }
       }
       await page.screenshot({ path: `out/qa/mobile-hud-${viewport.width}.png` });
+      await tap(action("More actions"));
+      const menu = controls.getByRole("group", { name: "More actions" });
+      await menu.waitFor();
+      for (const entry of await menu.getByRole("button").all()) {
+        assert.ok(await entry.evaluate((button) => {
+          const rect = button.getBoundingClientRect();
+          return button.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+        }), `Menu entry is obstructed at ${viewport.width}px: ${await entry.innerText()}`);
+      }
+      await page.screenshot({ path: `out/qa/mobile-actions-${viewport.width}.png` });
+      await tap(action("More actions"));
     }
     await page.setViewportSize({ width: 844, height: 390 });
     await page.waitForTimeout(180);
     await page.screenshot({ path: "out/qa/mobile-landscape.png" });
     console.log("Landscape circles fit the screen");
+
+    await chooseMore("Open loadout and scopes");
+    await page.getByRole("dialog", { name: "Your gun. Your sights." }).waitFor();
+    await page.getByRole("button", { name: /BACK TO MATCH/ }).tap();
+    await controls.waitFor();
 
     // Four simultaneous contacts exercise independent movement, look, ADS and fire ownership.
     const joystick = await center(controls.getByLabel("Movement joystick", { exact: true }));
@@ -169,9 +193,11 @@ async function main() {
     console.log("Simultaneous movement, view, ADS and fire released independently");
 
     assert.equal(await page.evaluate(() => !!document.fullscreenElement), true, "The first gameplay touch must enter fullscreen");
-    const fullscreenOptions = page.getByLabel("Mobile screen options", { exact: true });
+    const fullscreenOptions = controls;
+    await tap(action("More actions"));
     await tap(fullscreenOptions.getByRole("button", { name: "Exit fullscreen", exact: true }));
     await page.waitForFunction(() => !document.fullscreenElement);
+    if (await action("More actions").getAttribute("aria-expanded") === "false") await tap(action("More actions"));
     await tap(fullscreenOptions.getByRole("button", { name: "Fullscreen", exact: true }));
     await page.waitForFunction(() => !!document.fullscreenElement);
     console.log("Automatic fullscreen entry, exit and manual re-entry passed");
@@ -226,16 +252,9 @@ async function main() {
     assert.equal(await action("Stop auto sprint").count(), 0);
     console.log("Forward sprint lock, release, steering, manual takeover, drag-back, stop, crouch and cancellation passed");
 
-    const screenButton = await fullscreenOptions.getByRole("button", { name: "Exit fullscreen", exact: true }).boundingBox();
-    assert.ok(screenButton && screenButton.x > page.viewportSize()!.width / 2, "Fullscreen must sit on the right side");
-    for (const tool of await controls.locator('[data-control-id="camera"], [data-control-id="scores"], [data-control-id="pause"]').all()) {
-      const box = await tool.boundingBox();
-      assert.ok(box && box.x + box.width < screenButton.x, "Fullscreen must not cover the toolbar");
-    }
-
     // A fresh left-side touch anchors a neutral stick wherever the thumb lands.
     // Keep these probes in the movement surface, clear of the graphics/loadout buttons.
-    for (const origin of [{ x: 270, y: 60 }, { x: 370, y: 200 }, { x: 6, y: 220 }]) {
+    for (const origin of [{ x: 306, y: 140 }, { x: 370, y: 200 }, { x: 6, y: 220 }]) {
       assert.equal(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.getAttribute("aria-label"), origin), "Touch left to move");
       const initialYaw = (await state()).yaw;
       await down(30, origin);
@@ -259,11 +278,11 @@ async function main() {
       assert.equal((await state()).stick, null, "Lifting the floating thumb must stop movement");
       assert.equal(await controls.getByLabel("Movement joystick", { exact: true }).getAttribute("data-active"), "false");
     }
-    await down(32, { x: 270, y: 60 });
+    await down(32, { x: 306, y: 140 });
     await move(32, { x: 290, y: 80 });
     await cancel();
     assert.equal((await state()).stick, null, "Touch cancellation must stop floating movement");
-    await down(33, { x: 270, y: 60 });
+    await down(33, { x: 306, y: 140 });
     await move(33, { x: 290, y: 80 });
     await page.evaluate(() => window.dispatchEvent(new Event("blur")));
     await move(33, { x: 300, y: 90 });
@@ -290,15 +309,22 @@ async function main() {
     await cancel();
     assert.equal((await state()).adsHeld, false, "Touch cancellation must release ADS");
 
+    await tap(action("Aim"));
+    assert.equal((await state()).adsHeld, true, "A quick scope tap must free the thumb for firing");
+    await down(6, fire);
+    assert.ok((await state()).adsHeld && (await state()).fire);
+    await up(6);
+    await tap(action("Aim"));
+    assert.equal((await state()).adsHeld, false);
     await action("Reload").tap();
     await page.waitForTimeout(100);
     assert.equal((await state()).reloading, true);
     await page.waitForFunction(() => !(window as TestWindow).__mobileTestGame?.local?.reloading, undefined, { timeout: 5000 });
-    assert.equal((await state()).mag, 30, "Touch reload must refill the rifle");
+    assert.equal((await state()).mag, before.mag, "Touch reload must refill the rifle");
     await action("Crouch").tap();
     assert.equal((await state()).crouch, true);
     assert.equal(await action("Crouch").getAttribute("aria-pressed"), "true");
-    await action("Sprint").tap();
+    await chooseMore("Sprint");
     assert.equal((await state()).sprint, true); assert.equal((await state()).crouch, false);
     await action("Crouch").tap();
     assert.equal((await state()).crouch, true); assert.equal((await state()).sprint, false);
@@ -315,7 +341,7 @@ async function main() {
 
     await lockSprint(); await up(40);
     await down(9, fire);
-    await tap(action("Scores"));
+    await chooseMore("Scores");
     await page.locator(".scoreboard").waitFor();
     assert.equal((await state()).fire, false, "Opening scores must release shooting");
     assert.equal((await state()).sprint, false, "Opening scores must stop auto sprint");
@@ -329,7 +355,7 @@ async function main() {
     await controls.getByLabel("Movement joystick", { exact: true }).waitFor();
     await lockSprint(); await up(40);
     await down(10, fire);
-    await tap(action("Pause"));
+    await chooseMore("Pause");
     await page.getByRole("button", { name: "ENTER MATCH" }).waitFor();
     assert.equal((await state()).fire, false); assert.equal((await state()).stick, null);
     assert.equal((await state()).sprint, false, "Pausing must stop auto sprint");
@@ -339,12 +365,14 @@ async function main() {
     await page.waitForTimeout(150);
     assert.equal((await state()).fire, false, "Resuming must not retain a finger held before pause");
 
+    await tap(action("More actions"));
     const graphics = page.getByRole("button", { name: "Change graphics quality", exact: true });
     const graphicsBefore = await graphics.innerText();
     await graphics.tap();
     await page.waitForTimeout(250);
     assert.notEqual(await graphics.innerText(), graphicsBefore, "Graphics must change live on touch");
     assert.equal(await page.locator(".modal-shade").count(), 0, "Changing graphics must keep the match running");
+    await tap(action("More actions"));
     await lockSprint(); await up(40);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.getByRole("dialog", { name: "Landscape required" }).waitFor();
@@ -362,7 +390,7 @@ async function main() {
     const landscapeDefault = await center(controls.getByLabel("Movement joystick", { exact: true }));
     const editor = page.getByLabel("Control layout editor", { exact: true });
     await lockSprint(); await up(40);
-    await action("Customize controls").tap();
+    await chooseMore("Customize controls");
     await editor.waitFor();
     await page.waitForTimeout(150);
     const editingState = await state();
@@ -418,16 +446,16 @@ async function main() {
     assert.ok(Math.abs(restoredStick.x - savedStick.x) < 2 && Math.abs(restoredStick.y - savedStick.y) < 2, "A new match must render the saved joystick position");
     const restoredBox = await controls.getByLabel("Movement joystick", { exact: true }).boundingBox();
     assert.ok(restoredBox && Math.abs(restoredBox.width - savedBox.width) < 1, "The saved joystick size must be restored");
-    await action("Customize controls").tap();
+    await chooseMore("Customize controls");
     await editor.waitFor();
-    await editor.getByRole("button", { name: "Reset layout", exact: true }).tap();
+    await editor.getByRole("button", { name: "3-finger claw", exact: true }).tap();
     await editor.getByRole("button", { name: "Save & play", exact: true }).tap();
     await editor.waitFor({ state: "hidden" });
     const resetStick = await center(controls.getByLabel("Movement joystick", { exact: true }));
     assert.ok(Math.abs(resetStick.x - landscapeDefault.x) < 2 && Math.abs(resetStick.y - landscapeDefault.y) < 2, "Reset must restore the default landscape placement");
     const resetText = await page.evaluate(() => localStorage.getItem("hollowmere.mobile-controls.v1"));
     assert.deepEqual(JSON.parse(resetText!).controls.landscape, {});
-    await action("Customize controls").tap();
+    await chooseMore("Customize controls");
     await editor.waitFor();
     const previewDefault = await center(controls.getByLabel("Movement joystick", { exact: true }));
     assert.ok(Math.abs(previewDefault.x - resetStick.x) < 1 && Math.abs(previewDefault.y - resetStick.y) < 1);
@@ -440,7 +468,7 @@ async function main() {
     assert.ok(liveSized);
     assert.ok(Math.abs(liveSized.x - previewSized.x) < 1 && Math.abs(liveSized.y - previewSized.y) < 1 && Math.abs(liveSized.width - previewSized.width) < 1, "Saving size alone must keep preview and live control geometry identical");
     const resizedText = await page.evaluate(() => localStorage.getItem("hollowmere.mobile-controls.v1"));
-    await action("Customize controls").tap();
+    await chooseMore("Customize controls");
     await editor.waitFor();
     await editor.getByLabel("Control opacity", { exact: true }).press("End");
     await editor.getByRole("button", { name: "Cancel changes", exact: true }).tap();
@@ -453,7 +481,7 @@ async function main() {
     // Oversized edge placements must stay reachable when the same orientation shrinks.
     await page.setViewportSize({ width: 844, height: 390 });
     await page.waitForTimeout(200);
-    await action("Customize controls").tap();
+    await chooseMore("Customize controls");
     await editor.waitFor();
     const edgeStick = await center(controls.locator('[data-control-id="joystick"]'));
     await down(22, edgeStick); await move(22, { x: 2, y: 2 }); await up(22);
@@ -471,7 +499,7 @@ async function main() {
     await page.screenshot({ path: "out/qa/mobile-compact-landscape.png" });
     console.log("Large edge controls stay in bounds at 844, 640 and 568 pixel widths");
     assert.deepEqual(errors, []);
-    await action("Pause").tap();
+    await chooseMore("Pause");
     await page.getByRole("button", { name: "RETURN TO LOBBY" }).tap();
     console.log(JSON.stringify({ passed: true, checks: ["fullscreen entry / exit / re-entry", "mobile landscape and portrait bounds", "four-contact movement / look / ADS / fire", "independent release", "both fire reference count", "right-fire and ADS drag aim", "touch cancel", "reload", "crouch / sprint", "grenade", "scores close", "pause reset", "live graphics", "control drag / size / opacity", "editing pauses gameplay", "save on device and restore after reload", "orientation independence", "reset and cancel", "editor preview equals live geometry", "collapsible editor", "large edge controls at 844 / 640 / 568 widths"], errors }));
   } catch (error) {
