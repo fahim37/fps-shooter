@@ -65,7 +65,7 @@ async function main() {
       await panel.getByRole("button", { name: /BACK TO MATCH/ }).click();
       await page.waitForFunction(() => (window as TestWindow).__loadoutGame!.input.enabled);
       if (mobile) {
-        await page.getByRole("button", { name: "Equip Peacemaker", exact: true }).tap();
+        await page.getByRole("button", { name: "Equip Rattler", exact: true }).tap();
         await page.waitForFunction(() => (window as TestWindow).__loadoutGame!.local!.weapon === "pistol");
         await page.getByRole("button", { name: "Equip Honey Badger", exact: true }).tap();
       } else {
@@ -86,14 +86,14 @@ async function main() {
       await page.screenshot({ path: `out/qa/scope-${mobile ? "mobile" : "desktop"}.png` });
       if (mobile) await page.getByRole("button", { name: "Open loadout and scopes" }).tap();
       else await page.keyboard.press("b");
-      await panel.getByRole("button", { name: "Choose STM-556", exact: true }).click();
+      await panel.getByRole("button", { name: "Choose Panther", exact: true }).click();
       await page.waitForFunction(() => (window as TestWindow).__loadoutGame!.local!.primary === "ar");
       await panel.getByRole("button", { name: "Choose Honey Badger", exact: true }).click();
       await page.waitForFunction(() => (window as TestWindow).__loadoutGame!.local!.primary === "smg");
       assert.equal(await page.evaluate(() => (window as TestWindow).__loadoutGame!.local!.ammo.smg.mag), ammo, "Swapping guns must not refill ammunition");
-      await panel.getByRole("button", { name: "Choose Kalamit 52B", exact: true }).click();
+      await panel.getByRole("button", { name: "Choose Nighthawk", exact: true }).click();
       await page.waitForFunction(() => (window as TestWindow).__loadoutGame!.local!.primary === "sniper");
-      await panel.getByRole("button", { name: "Attach 4× scope to Kalamit 52B", exact: true }).click();
+      await panel.getByRole("button", { name: "Attach 4× scope to Nighthawk", exact: true }).click();
       await panel.getByRole("button", { name: /BACK TO MATCH/ }).click();
       if (mobile) {
         await page.evaluate(() => { const game = (window as TestWindow).__loadoutGame!; game.input.setAction("fire", true); game.input.setAction("ads", true); });
