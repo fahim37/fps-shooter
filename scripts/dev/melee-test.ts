@@ -73,8 +73,9 @@ async function main() {
     assert.ok(await game(page, (g) => g.local!.sinceInspect(performance.now()) >= 0 && !g.local!.emoteMenu));
     await page.screenshot({ path: ".next/melee-inspect.png" });
 
+    // A second press is queued and plays once the first trick (the long showcase) is done.
     await page.keyboard.press("KeyT");
-    await sleep(1200);
+    await sleep(2400);
     assert.equal(await game(page, (g) => g.local!.trick), 1);
 
     // The peer stands just ahead, its back turned: one stab from behind kills through the shield.
@@ -103,6 +104,22 @@ async function main() {
     assert.equal(await game(page, (g) => g.local!.weapon), "katana");
     await page.screenshot({ path: ".next/melee-katana.png" });
 
+    await page.keyboard.press("KeyT");
+    await sleep(1050);
+    const presented = await game(page, (g) => {
+      const rig = g["fpp"]!;
+      const tip = rig.muzzle.clone().project(g.camera);
+      const pommel = rig.gunToWorld([0, 0, 0.234], rig.muzzle.clone()).project(g.camera);
+      return {
+        active: rig.object.visible && g.local!.sinceInspect(performance.now()) >= 0,
+        inFrame: [tip, pommel].every((p) => Math.abs(p.x) < 1 && Math.abs(p.y) < 1 && Math.abs(p.z) < 1),
+        width: Math.abs(tip.x - pommel.x) / 2,
+      };
+    });
+    assert.ok(presented.active && presented.inFrame && presented.width > 0.34,
+      `First-person katana presentation: ${JSON.stringify(presented)}`);
+    await page.screenshot({ path: ".next/melee-katana-inspect.png" });
+
     await page.mouse.click(640, 400, { button: "right" });
     await until(() => swings.some((s) => s.weapon === "katana" && s.blow === "heavy"));
     assert.equal(await game(page, (g) => g.local!.heavy), true);
@@ -118,7 +135,7 @@ async function main() {
 
     if (errors.length) console.error("Browser errors:", errors);
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ passed: true, checks: ["slot 3 equips the knife", "T cycles knife tricks", "backstab kill credited to the knife", "katana chosen and remembered", "right-click heavy replicated", "wheel cycles to the primary"] }));
+    console.log(JSON.stringify({ passed: true, checks: ["slot 3 equips the knife", "T cycles knife tricks", "backstab kill credited to the knife", "katana chosen and remembered", "T inspects the katana in first person", "right-click heavy replicated", "wheel cycles to the primary"] }));
   } catch (error) {
     console.error("Browser errors:", errors);
     await page.screenshot({ path: ".next/melee-test-failure.png" }).catch(() => {});

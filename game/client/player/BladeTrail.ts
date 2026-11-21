@@ -1,12 +1,15 @@
 import * as THREE from "three";
 
+const TRAIL_SECONDS = 0.065;
+
 /** The last 65 ms of the outer blade. One unlit strip, allocated on the first visible cut. */
 export class BladeTrail {
   private positions = new Float32Array(8 * 6);
+  private colors = new Uint8Array(8 * 2 * 4).fill(255);
   private times = new Float64Array(8);
   private count = 0;
   private mesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({
-    color: 0xb9daeb, side: THREE.DoubleSide, transparent: true, depthWrite: false, toneMapped: false,
+    color: 0xd9e9f1, vertexColors: true, side: THREE.DoubleSide, transparent: true, depthWrite: false, toneMapped: false,
   }));
   private inner = new THREE.Vector3();
   private outer = new THREE.Vector3();
@@ -15,6 +18,7 @@ export class BladeTrail {
   constructor(parent: THREE.Object3D) {
     const geometry = this.mesh.geometry;
     geometry.setAttribute("position", new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage));
+    geometry.setAttribute("color", new THREE.BufferAttribute(this.colors, 4, true).setUsage(THREE.DynamicDrawUsage));
     const indices: number[] = [];
     for (let i = 0; i < 14; i += 2) indices.push(i, i + 1, i + 2, i + 1, i + 3, i + 2);
     geometry.setIndex(indices);
@@ -32,7 +36,7 @@ export class BladeTrail {
     if (this.count && age === this.times[this.count - 1]) return;
     if (this.count && age < this.times[this.count - 1]) this.reset();
     let expired = 0;
-    while (expired < this.count && (age - this.times[expired] > 0.065 || this.count - expired >= this.times.length)) expired++;
+    while (expired < this.count && (age - this.times[expired] > TRAIL_SECONDS || this.count - expired >= this.times.length)) expired++;
     if (expired) {
       this.times.copyWithin(0, expired, this.count);
       this.positions.copyWithin(0, expired * 6, this.count * 6);
@@ -51,11 +55,18 @@ export class BladeTrail {
     this.inner.toArray(this.positions, offset);
     this.outer.toArray(this.positions, offset + 3);
     this.times[this.count++] = age;
+    // Feather the inner edge into the scene and the outer edge into its own history.
+    for (let i = 0; i < this.count; i++) {
+      const freshness = 1 - (age - this.times[i]) / TRAIL_SECONDS;
+      this.colors[i * 8 + 3] = 0;
+      this.colors[i * 8 + 7] = Math.round(255 * freshness * freshness);
+    }
     const movement = this.count > 1 ? this.outer.distanceTo(this.inner.fromArray(this.positions, offset - 3)) : 0;
     this.mesh.material.opacity = Math.min(0.21, movement * 1.8);
     this.mesh.visible = this.count > 1 && this.mesh.material.opacity > 0.003;
     this.mesh.geometry.setDrawRange(0, (this.count - 1) * 6);
     this.mesh.geometry.attributes.position.needsUpdate = true;
+    this.mesh.geometry.attributes.color.needsUpdate = true;
   }
 
   dispose() {

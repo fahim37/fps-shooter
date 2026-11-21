@@ -756,7 +756,7 @@ export class CharacterRig {
       if (flight > 0 && flight < 1) {
         // Offset in view/world vertical so the airborne arc stays upright as the wrist banks.
         const height = 4 * flight * (1 - flight);
-        knife.position.add(_v.set(0, 0.23 * height, 0).applyQuaternion(_q.copy(this.gunPivot.quaternion).invert()));
+        knife.position.add(_v.set(0, 0.18 * height, 0).applyQuaternion(_q.copy(this.gunPivot.quaternion).invert()));
       }
     }
     if (parts.shell) {
