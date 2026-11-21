@@ -1,10 +1,30 @@
-export type WeaponId = "ar" | "smg" | "shotgun" | "sniper" | "pistol";
+export type GunId = "ar" | "smg" | "shotgun" | "sniper" | "pistol";
+/** Blades, in slot 3: always carried, chosen in the loadout. */
+export type MeleeId = "knife" | "katana";
+export type WeaponId = GunId | MeleeId;
 export const PRIMARIES: WeaponId[] = ["ar", "smg", "shotgun", "sniper"];
+export const MELEES: MeleeId[] = ["knife", "katana"];
+
+/**
+ * How a blade strikes. A swing is resolved on the server the moment it starts: a fan of rays from
+ * the eye out to `range`, across `arc` either side of the aim, against the rewound hitboxes. The
+ * nearest body in the fan takes it.
+ */
+export interface MeleeDef {
+  /** Reach from the eye (m). */
+  range: number;
+  /** Half-width of the sweep either side of the aim (deg), and half its height. */
+  arc: number;
+  /** Damage when it lands from behind (attacker behind the target and facing the way it faces). */
+  backstab: number;
+  heavy: { damage: number; intervalMs: number };
+}
 
 export interface WeaponDef {
   id: WeaponId;
   name: string;
-  slot: 0 | 1;
+  /** 0 primary, 1 sidearm, 2 blade. */
+  slot: 0 | 1 | 2;
   auto: boolean;
   /** Rounds per minute (fire interval = 60000 / rpm). */
   rpm: number;
@@ -39,6 +59,8 @@ export interface WeaponDef {
   moveMult: number;
   /** A sniper's optic: fully accurate from the moment the scope is up (see SCOPE_UP), for quick-scoping. */
   scope?: boolean;
+  /** A blade: no ammunition, no aiming; `rpm` is swings per minute, `moveMult` above 1 is the run you get for carrying it. */
+  melee?: MeleeDef;
 }
 
 /** How far into aiming (0..1) a magnified scope is up. */
@@ -77,7 +99,39 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     spreadHip: 0.18, spreadAds: 0.16, spreadMove: 0.2, spreadAir: 3, recoilUp: 1.5, recoilSide: 0.2, recoilClimb: 0.5,
     adsFov: 66, adsMs: 150, moveMult: 1.05,
   }),
+  // Blades: no magazine (mag 0 never reloads), no spread or recoil. Two hits kill through a full
+  // shield (120); from behind, one. Carrying one is the fastest way round the map.
+  knife: W({
+    id: "knife", name: "Butterfly Knife", slot: 2, auto: true, rpm: 150, damage: 60, headMult: 1, limbMult: 1, pellets: 1,
+    falloffStart: 0, falloffEnd: 1, minMult: 1, range: 2.2, mag: 0, reserve: 0, reloadMs: 0, equipMs: 300,
+    spreadHip: 0, spreadAds: 0, spreadMove: 0, spreadAir: 0, recoilUp: 0, recoilSide: 0, recoilClimb: 0,
+    adsFov: 78, adsMs: 150, moveMult: 1.15, melee: { range: 2.2, arc: 22, backstab: 150, heavy: { damage: 85, intervalMs: 750 } },
+  }),
+  katana: W({
+    id: "katana", name: "Katana", slot: 2, auto: true, rpm: 90, damage: 75, headMult: 1, limbMult: 1, pellets: 1,
+    falloffStart: 0, falloffEnd: 1, minMult: 1, range: 2.9, mag: 0, reserve: 0, reloadMs: 0, equipMs: 450,
+    spreadHip: 0, spreadAds: 0, spreadMove: 0, spreadAir: 0, recoilUp: 0, recoilSide: 0, recoilClimb: 0,
+    adsFov: 78, adsMs: 150, moveMult: 1.1, melee: { range: 2.9, arc: 34, backstab: 150, heavy: { damage: 100, intervalMs: 1000 } },
+  }),
 };
+
+export function isMelee(w: string): w is MeleeId {
+  return !!WEAPONS[w as WeaponId]?.melee;
+}
+
+/** The fastest any weapon lets its carrier run (the server's movement check allows for it). */
+export const FASTEST_MOVE = Math.max(...Object.values(WEAPONS).map((w) => w.moveMult));
+
+/** Whether a blow from `attacker` (its look yaw) lands on `target`'s back: behind it and facing roughly the way it faces. */
+export function isBackstab(attacker: { x: number; z: number; yaw: number }, target: { x: number; z: number; yaw: number }) {
+  // Yaw 0 faces -Z.
+  const tf = [-Math.sin(target.yaw), -Math.cos(target.yaw)];
+  const af = [-Math.sin(attacker.yaw), -Math.cos(attacker.yaw)];
+  const dx = attacker.x - target.x, dz = attacker.z - target.z;
+  const behind = dx * tf[0] + dz * tf[1] < 0;
+  const alike = af[0] * tf[0] + af[1] * tf[1] > Math.cos((65 * Math.PI) / 180);
+  return behind && alike;
+}
 
 export const GRENADE = {
   fuseMs: 4000,
@@ -114,7 +168,8 @@ export function fireIntervalMs(def: WeaponDef) {
 export function currentSpread(def: WeaponDef, ads: number, moving: number, airborne: boolean, crouched: boolean, sightUp = 1) {
   const aim = Math.min(1, ads / (def.scope ? SCOPE_UP : sightUp));
   let s = def.spreadHip + (def.spreadAds - def.spreadHip) * aim;
-  s += def.spreadMove * Math.min(1, Math.max(0, moving)) * (1 - aim * 0.8);
+  // A sniper's scope, once up, shoots where the crosshair is even on the move.
+  s += def.spreadMove * Math.min(1, Math.max(0, moving)) * (def.scope && aim >= 1 ? 0 : 1 - aim * 0.8);
   if (airborne) s += def.spreadAir;
   if (crouched) s *= 0.8;
   return s;

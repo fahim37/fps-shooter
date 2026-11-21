@@ -9,20 +9,26 @@ export interface WeaponMeta {
   muzzle: [number, number, number];
   min: [number, number, number];
   max: [number, number, number];
+  /** The balisong's handles: each turns about its pin from open in the hand (0) to `closed` rad, folded over the blade. */
+  hinges?: Record<"safe" | "bite", { pivot: [number, number, number]; axis: [number, number, number]; closed: number }>;
+  /** A sword's guard (weapon-space z). */
+  guard?: number;
 }
 
-export const WEAPON_META = meta as Record<WeaponId, WeaponMeta>;
+export const WEAPON_META = meta as unknown as Record<WeaponId, WeaponMeta>;
 
 type V3 = [number, number, number];
 
 /** Pieces that move while handling a gun: they become named children of each weapon. */
-export type PartId = "mag" | "pump" | "bolt" | "cylinder" | "hammer";
+export type PartId = "mag" | "pump" | "bolt" | "cylinder" | "hammer" | "safe" | "bite";
 
 export interface PartSpec {
   /** Seated origin of the part, weapon space (grip at origin, muzzle toward -Z). */
   pivot: V3;
-  /** Direction the part slides out (magazine), back (pump, bolt). */
+  /** Direction the part slides out (magazine), back (pump, bolt), or the pin it turns about (hammer, handles). */
   axis: V3;
+  /** A balisong handle: its turn (rad, about `axis`) from open in the hand to folded shut. */
+  closed?: number;
 }
 
 interface Extract {
@@ -57,6 +63,16 @@ const PARTS: Partial<Record<WeaponId, Partial<Record<PartId, PartSpec & { extrac
     cylinder: { pivot: [0, 0.0764, -0.0909], axis: [0, 0, 1], extract: { min: [-0.05, 0.025, -0.15], max: [0.05, 0.125, -0.0375], material: /Cyl_/ } },
     hammer: { pivot: [0, 0.0551, -0.0425], axis: [1, 0, 0], extract: { min: [-0.025, 0.0375, -0.075], max: [0.025, 0.125, 0.0125], material: /Hammer_/ } },
   },
+  // The balisong's two handles, each about its own pin (solved from the model by scripts/assets/melee.ts).
+  knife: (() => {
+    const h = WEAPON_META.knife?.hinges;
+    if (!h) return {};
+    const everywhere: Extract = { min: [-1, -1, -1], max: [1, 1, 1] };
+    return {
+      safe: { ...h.safe, extract: { ...everywhere, material: /Safe_/ } },
+      bite: { ...h.bite, extract: { ...everywhere, material: /Bite_/ } },
+    };
+  })(),
 };
 
 export const WEAPON_PARTS = PARTS as Partial<Record<WeaponId, Partial<Record<PartId, PartSpec>>>>;

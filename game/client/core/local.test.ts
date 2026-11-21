@@ -27,7 +27,7 @@ function player(): LocalPlayer {
 describe("local loadout", () => {
   it("reconciles authoritative swaps with unacknowledged shots and clears old recoil", () => {
     const local = player();
-    local.applyLoadout({ primary: "smg", weapon: "smg", mag: 9, reserve: 62, shot: 12 });
+    local.applyLoadout({ primary: "smg", melee: "knife", weapon: "smg", mag: 9, reserve: 62, shot: 12 });
     expect(local.weapon).toBe("smg");
     expect(local.primary).toBe("smg");
     expect(local.ammo.smg).toEqual({ mag: 8, reserve: 62 });

@@ -1,4 +1,4 @@
-import type { WeaponId } from "./weapons";
+import type { MeleeId, WeaponId } from "./weapons";
 import type { GameMode } from "./constants";
 import type { HitPart } from "./hitboxes";
 import type { MapId } from "./map/types";
@@ -121,6 +121,19 @@ export interface AmmoEvent {
   shot: number;
 }
 
+/** A blade swung (see MeleeDef): resolved on the server against what the swinger was looking at. */
+export interface MeleeMsg {
+  blow?: "light" | "heavy";
+  /** Cosmetic variant within the light combo. */
+  swing?: number;
+  weapon: MeleeId;
+  /** Server-clock time of what the swinger was looking at (render time). */
+  viewTime: number;
+  origin: [number, number, number];
+  /** Unit aim direction. */
+  dir: [number, number, number];
+}
+
 export interface GrenadeMsg {
   origin: [number, number, number];
   dir: [number, number, number];
@@ -128,12 +141,15 @@ export interface GrenadeMsg {
   power?: number;
 }
 
+/** Either or both: a new primary gun, a new blade. */
 export interface LoadoutMsg {
-  primary: WeaponId;
+  primary?: WeaponId;
+  melee?: MeleeId;
 }
 
 export interface LoadoutEvent extends AmmoEvent {
   primary: WeaponId;
+  melee: MeleeId;
 }
 
 // ----- server → client -----
@@ -160,11 +176,24 @@ export interface ShotEvent {
   hits?: (HitPart | null)[];
 }
 
+/** Someone else swung a blade: for the sound, and the swish or the hit. */
+export interface SwingEvent {
+  blow?: "light" | "heavy";
+  swing?: number;
+  id: string;
+  weapon: MeleeId;
+  /** Whom it struck, if anyone. */
+  hit?: string;
+  backstab?: boolean;
+}
+
 export interface HitConfirm {
   target: string;
   damage: number;
   part: HitPart;
   killed: boolean;
+  /** A blade's blow from behind. */
+  backstab?: boolean;
   /** Authoritative bullet impact; absent for explosion damage. */
   point?: [number, number, number];
   dir?: [number, number, number];
@@ -174,7 +203,7 @@ export interface DamagedEvent {
   from: [number, number, number];
   /** Session id of the player who dealt the damage; absent for falls and self-inflicted damage. */
   attacker?: string;
-  kind?: "bullet" | "explosion" | "fall";
+  kind?: "bullet" | "explosion" | "fall" | "melee";
   damage: number;
   hp: number;
 }
@@ -197,6 +226,7 @@ export interface SpawnEvent {
   x: number; y: number; z: number;
   yaw: number;
   primary: WeaponId;
+  melee: MeleeId;
 }
 
 /** A live grenade struck the map: `speed` (m/s) is how hard. */

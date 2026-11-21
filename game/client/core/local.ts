@@ -2,11 +2,12 @@ import * as THREE from "three";
 import { Mover, newMoveState, type MoveState } from "../../shared/movement";
 import { raycastWorld, type Rapier, type World } from "../../shared/physics";
 import { aimDir, spreadDir, zoomSensitivity } from "../../shared/aim";
-import { WEAPONS, GRENADE, SCOPE_UP, currentSpread, fireIntervalMs, reloadClipAt, reloadMs, reloadNeed, reloadSkip, reloadedRounds, type WeaponId } from "../../shared/weapons";
+import { WEAPONS, GRENADE, SCOPE_UP, currentSpread, fireIntervalMs, reloadClipAt, reloadMs, reloadNeed, reloadSkip, reloadedRounds, type MeleeId, type WeaponId } from "../../shared/weapons";
+import { bladeCues, cutContact, inspectSeconds, swingSeconds } from "../player/handling";
 import { quickScope } from "../player/quickScope";
 import { grenadeVelocity } from "../../shared/grenade";
 import { EYE_HEIGHT, CROUCH_EYE_HEIGHT, SLIDE_EYE_HEIGHT, GRENADES_PER_LIFE, JUMP_BUFFER_MS, SPRINT_SPEED } from "../../shared/constants";
-import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_RELOAD_SKIP_SHIFT, F_SLIDE, F_DASH, F_SPRINT, type AmmoEvent, type GrenadeMsg, type LoadoutEvent, type PoseMsg, type SpawnEvent } from "../../shared/messages";
+import { F_ADS, F_CROUCH, F_GROUNDED, F_RELOADING, F_RELOAD_SKIP_SHIFT, F_SLIDE, F_DASH, F_SPRINT, type AmmoEvent, type GrenadeMsg, type LoadoutEvent, type MeleeMsg, type PoseMsg, type SpawnEvent } from "../../shared/messages";
 import type { Input } from "./input";
 import type { Game } from "./game";
 import { TUNING_DEFAULTS, useSettings } from "../settings";
@@ -46,7 +47,7 @@ const SLIDE_ROLL = 0.05;
  * First-person view twist per shot (rad), either way at random, gone again in a fraction of a
  * second. Looks only: a roll about the line of sight leaves the aim point where it was.
  */
-const SHOT_ROLL: Record<WeaponId, number> = { ar: 0.006, smg: 0.005, shotgun: 0.018, sniper: 0.014, pistol: 0.01 };
+const SHOT_ROLL: Record<WeaponId, number> = { ar: 0.006, smg: 0.005, shotgun: 0.018, sniper: 0.014, pistol: 0.01, knife: 0.012, katana: 0.022 };
 /** Most the twist builds up to under automatic fire. */
 const MAX_SHOT_ROLL = 0.025;
 /** Aiming takes this share off the kick: steadier, but the gun still climbs. */
@@ -69,6 +70,17 @@ export class LocalPlayer {
   recoil = 0;
   weapon: WeaponId = "ar";
   primary: WeaponId = "ar";
+  /** The blade in slot 3. */
+  melee: MeleeId = "knife";
+  /** Index of the current light attack in this blade's combo. */
+  swings = -1;
+  heavy = false;
+  trick = -1;
+  private nextBladeAt = 0;
+  private cueIndex = 0;
+  private inspectQueued = false;
+  /** When the blade's inspect (Y) began, or -Infinity. */
+  private inspectAt = -Infinity;
   ammo = {} as Record<WeaponId, { mag: number; reserve: number }>;
   reloadStart = 0;
   reloadEnd = 0;
@@ -204,7 +216,13 @@ export class LocalPlayer {
     this.pitch = 0;
     this.kickPitch = this.kickYaw = this.shotRoll = 0;
     this.primary = ev.primary;
+    this.melee = ev.melee ?? "knife";
     this.weapon = ev.primary;
+    this.swings = this.trick = -1;
+    this.heavy = false;
+    this.nextBladeAt = this.cueIndex = 0;
+    this.inspectAt = -Infinity;
+    this.inspectQueued = false;
     this.resetAmmo();
     this.grenades = GRENADES_PER_LIFE;
     this.pendingShots = [];
@@ -281,6 +299,12 @@ export class LocalPlayer {
   }
 
   applyLoadout(ev: LoadoutEvent) {
+    // A new blade comes straight to hand if the old one was out.
+    if (ev.melee && ev.melee !== this.melee) {
+      const holding = this.weapon === this.melee;
+      this.melee = ev.melee;
+      if (holding && this.alive) this.switchTo(ev.melee, performance.now());
+    }
     const changed = this.primary !== ev.primary;
     this.primary = ev.primary;
     this.reconcileAmmo(ev);
@@ -309,8 +333,8 @@ export class LocalPlayer {
       return;
     }
 
-    // ---- emotes: T opens the menu and a number picks one; moving or any action ends it.
-    if (input.consume("KeyT") || input.consume("EmoteMenu")) this.emoteMenu = !this.emoteMenu;
+    // The touch action menu can open the emote picker.
+    if (input.consume("EmoteMenu")) this.emoteMenu = !this.emoteMenu;
     if (this.emoteMenu) {
       EMOTES.forEach((emote, i) => {
         if (input.consume(`Digit${i + 1}`) || input.consume(`Emote${i + 1}`)) this.startEmote(emote.id);
@@ -329,10 +353,26 @@ export class LocalPlayer {
     }
     if (input.consume("Digit1") && this.weapon !== this.primary) this.switchTo(this.primary, now);
     if (input.consume("Digit2") && this.weapon !== "pistol") this.switchTo("pistol", now);
-    if (input.consume("SwapWeapon") || input.consume("WheelUp") || input.consume("WheelDown")) {
-      this.switchTo(this.weapon === "pistol" ? this.primary : "pistol", now);
+    if (input.consume("Digit3") && this.weapon !== this.melee) this.switchTo(this.melee, now);
+    if (input.consume("SwapWeapon")) this.switchTo(this.weapon === "pistol" ? this.primary : "pistol", now);
+    // The wheel runs through all three slots, either way.
+    const wheel = (input.consume("WheelDown") ? 1 : 0) - (input.consume("WheelUp") ? 1 : 0);
+    if (wheel) {
+      const slots: WeaponId[] = [this.primary, "pistol", this.melee];
+      const at = Math.max(0, slots.indexOf(this.weapon));
+      this.switchTo(slots[(at + wheel + slots.length) % slots.length], now);
     }
     const def = this.def;
+    const inspectPressed = input.consume("KeyT") || input.consume("KeyY");
+    if (inspectPressed && def.melee && !this.grenadeAt && !this.releasing && !this.emote) this.inspectQueued = true;
+    // A tap during the draw or a trick plays after the catch. Attacking cancels it.
+    if (this.inspectQueued && now >= this.switchEnd && now >= this.nextBladeAt &&
+        now - this.lastShotAt >= fireIntervalMs(def) && this.sinceInspect(now) < 0) {
+      this.inspectQueued = false;
+      this.inspectAt = now;
+      this.trick++;
+      this.cueIndex = 0;
+    }
     if (input.consume("KeyR") && !this.grenadeAt) this.startReload(now);
 
     // Grenade: pressing C (or G) pulls the pin and the fuse starts burning; hold to aim along the
@@ -340,6 +380,8 @@ export class LocalPlayer {
     const draw = input.consume("KeyC") || input.consume("KeyG");
     if (draw && this.grenades > 0 && !this.grenadeAt && !this.releasing) {
       this.endEmote(now);
+      this.inspectAt = -Infinity;
+      this.inspectQueued = false;
       this.grenadeAt = this.fuseAt = now;
       this.tickAt = now + 500;
       this.game.send("grenade:cook", true);
@@ -374,7 +416,8 @@ export class LocalPlayer {
 
     // ---- movement (fixed substeps for stable collision)
     const wasSprinting = this.ms.sprinting;
-    const wantsSprint = input.sprint && now > this.sprintBlockUntil && !firing && !input.ads;
+    // A blade is swung on the run: attacking with one never drops the sprint.
+    const wantsSprint = input.sprint && now > this.sprintBlockUntil && (!firing || !!def.melee) && (!input.ads || !!def.melee);
     const adsHeld = input.ads;
     this.acc += Math.min(dt, 0.1);
     const wasGrounded = this.ms.grounded, wasSliding = this.ms.sliding;
@@ -404,7 +447,7 @@ export class LocalPlayer {
     // Eased out in about a tenth of a second.
     this.stepEase *= Math.exp(-dt * 22);
     this.motion.sample(this.ms, this.acc / STEP);
-    if (wasSprinting && firing) this.switchEnd = Math.max(this.switchEnd, now + 150);
+    if (wasSprinting && firing && !def.melee) this.switchEnd = Math.max(this.switchEnd, now + 150);
     if (jumped) audio.jump();
     if (this.ms.sliding !== wasSliding) audio.slide(this.ms.sliding);
     if (this.ms.landSpeed > 0) {
@@ -425,7 +468,8 @@ export class LocalPlayer {
     this.updateLean(dt, input, s.leanToggle, this.ms.sliding || wantsSprint && fwd >= 0 && Math.hypot(fwd, right) > 0.12);
 
     // ---- ADS (peeking raises the sights too)
-    const adsTarget = (adsHeld || this.peeking) && !this.reloading && !this.grenadeAt && now > this.switchEnd ? 1 : 0;
+    // A blade has nothing to aim down.
+    const adsTarget = (adsHeld || this.peeking) && !def.melee && !this.reloading && !this.grenadeAt && now > this.switchEnd ? 1 : 0;
     const adsRate = 1000 / def.adsMs;
     if (adsTarget !== this.adsProgress) this.adsRaising = adsTarget > this.adsProgress;
     this.adsProgress = THREE.MathUtils.clamp(this.adsProgress + Math.sign(adsTarget - this.adsProgress) * adsRate * dt, 0, 1);
@@ -438,7 +482,10 @@ export class LocalPlayer {
       this.burst = Math.max(0, this.burst - dt * 8);
     }
     this.updateView();
-    if (firing) this.tryFire(now);
+    const heavyPressed = input.consume("HeavyAttack");
+    if (def.melee && (heavyPressed || (!input.touch && input.ads))) this.tryMelee(now, true);
+    else if (firing) this.tryFire(now);
+    if (this.weapon === "knife") this.playBladeCues(now);
     // An empty magazine always reloads by itself (startReload waits out weapon switches).
     if (this.ammo[this.weapon].mag === 0 && !this.reloading && !this.grenadeAt && !this.emote) this.startReload(now);
 
@@ -446,7 +493,12 @@ export class LocalPlayer {
     const rec = Math.exp(-dt * 11);
     this.kickPitch *= rec;
     this.kickYaw *= rec;
-    this.shotRoll *= Math.exp(-dt * 14);
+    if (def.melee) {
+      const phase = this.sinceShot(now) / swingSeconds(this.weapon, this.heavy) - cutContact(this.weapon, this.swings, this.heavy);
+      const direction = this.heavy ? 0.4 : this.swings === 1 ? -1 : this.swings === 2 && this.weapon === "knife" ? 0.2 : 1;
+      const pulse = THREE.MathUtils.smoothstep(phase, -0.17, 0) * (1 - THREE.MathUtils.smoothstep(phase, 0, 0.35));
+      this.shotRoll = SHOT_ROLL[this.weapon] * direction * pulse;
+    } else this.shotRoll *= Math.exp(-dt * 14);
     this.recoil = Math.max(0, this.recoil - dt * 9);
 
     // ---- bob / footsteps
@@ -591,9 +643,14 @@ export class LocalPlayer {
   }
 
   switchTo(w: WeaponId, now: number) {
-    if (!this.alive || (w !== this.primary && w !== "pistol") || w === this.weapon) return;
+    if (!this.alive || (w !== this.primary && w !== "pistol" && w !== this.melee) || w === this.weapon) return;
     this.endEmote(now);
     this.weapon = w;
+    this.swings = -1;
+    this.cueIndex = 0;
+    this.heavy = false;
+    this.inspectAt = -Infinity;
+    this.inspectQueued = false;
     this.reloadEnd = 0;
     this.switchEnd = now + WEAPONS[w].equipMs;
     this.drawAt = now;
@@ -603,7 +660,8 @@ export class LocalPlayer {
     this.cadence.reset();
     this.sendPose();
     audio.stopWorking();
-    audio.switchWeapon();
+    if (WEAPONS[w].melee) audio.bladeDraw(w);
+    else audio.switchWeapon();
   }
 
   startReload(now: number) {
@@ -623,6 +681,7 @@ export class LocalPlayer {
 
   private tryFire(now: number) {
     const def = this.def;
+    if (def.melee) return this.tryMelee(now);
     // A fresh trigger pull stops the revolver's reload, keeping the rounds already loaded.
     const interrupt = this.reloading && this.weapon === "pistol" && this.triggerReleased && this.ammo.pistol.mag > 0;
     if (now < this.switchEnd || (this.reloading && !interrupt) || this.grenadeAt || this.releasing) return;
@@ -648,17 +707,7 @@ export class LocalPlayer {
     a.mag--;
 
     const eye: V3 = [this.eye.x, this.eye.y, this.eye.z];
-    let aim = aimDir(this.yaw + this.kickYaw, this.pitch + this.kickPitch);
-    if (this.thirdPerson && !this.throughSight) {
-      this.camera(this.game.camera, 0, this.eye);
-      // Aim where the crosshair points from the camera, but fire from the character's eye.
-      const cam = this.game.camera.position;
-      const camDir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.game.camera.quaternion);
-      const target = this.game.traceFrom([cam.x, cam.y, cam.z], [camDir.x, camDir.y, camDir.z], def.range, true).point;
-      const d = [target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]];
-      const l = Math.hypot(d[0], d[1], d[2]) || 1;
-      aim = [d[0] / l, d[1] / l, d[2] / l];
-    }
+    const aim = this.aimFrom(eye, def.range);
     const cone = this.spread;
     const dirs = Array.from({ length: def.pellets }, () => spreadDir(aim, cone));
     // What each pellet meets on screen: the server checks these claims against its own rewind.
@@ -677,6 +726,50 @@ export class LocalPlayer {
     this.shotRoll = THREE.MathUtils.clamp(this.shotRoll + twist, -MAX_SHOT_ROLL, MAX_SHOT_ROLL);
     this.recoil = 0.65;
     this.burst++;
+  }
+
+  /**
+   * Where the crosshair points, from the character's eye: along the view in first person; in third
+   * person, at what the camera's crosshair sees (out to `range`).
+   */
+  private aimFrom(eye: V3, range: number): V3 {
+    const aim = aimDir(this.yaw + this.kickYaw, this.pitch + this.kickPitch);
+    if (!this.thirdPerson || this.throughSight) return aim;
+    this.camera(this.game.camera, 0, this.eye);
+    const cam = this.game.camera.position;
+    const camDir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.game.camera.quaternion);
+    const target = this.game.traceFrom([cam.x, cam.y, cam.z], [camDir.x, camDir.y, camDir.z], range, true).point;
+    const d = [target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]];
+    const l = Math.hypot(d[0], d[1], d[2]) || 1;
+    return [d[0] / l, d[1] / l, d[2] / l];
+  }
+
+  /**
+   * A blade swing: held, it keeps swinging at its rate. The server decides what it strikes (see
+   * MatchRoom.melee); the swing itself plays at once, forehand and backhand by turns.
+   */
+  private tryMelee(now: number, heavy = false) {
+    const def = this.def;
+    if (now < this.switchEnd || this.grenadeAt || this.releasing || this.game.matchEnded) return;
+    const lightInterval = fireIntervalMs(def);
+    if (now < this.nextBladeAt || !this.cadence.ready(now, lightInterval)) return;
+    if (heavy) {
+      this.nextBladeAt = now + def.melee!.heavy.intervalMs;
+      this.cadence.reset();
+    } else {
+      this.nextBladeAt = now + lightInterval * 0.75;
+      this.cadence.record(now, lightInterval, true);
+    }
+    this.heavy = heavy;
+    this.lastShotAt = now;
+    this.inspectAt = -Infinity;
+    this.inspectQueued = false;
+    if (!heavy) this.swings = (this.swings + 1) % (this.weapon === "knife" ? 3 : 4);
+    const eye: V3 = [this.eye.x, this.eye.y, this.eye.z];
+    const dir = this.aimFrom(eye, def.melee!.range * 4);
+    this.sendPose();
+    this.game.send("melee", { weapon: this.weapon as MeleeId, blow: heavy ? "heavy" : "light", swing: Math.max(0, this.swings), viewTime: this.game.viewTime(), origin: eye, dir } satisfies MeleeMsg);
+    audio.swing(this.weapon, undefined, this.swings, heavy);
   }
 
   /**
@@ -746,6 +839,8 @@ export class LocalPlayer {
     this.emoteMenu = false;
     if (!this.alive || !this.ms.grounded || this.reloading || this.grenadeAt || id === this.emote) return;
     if (!this.emote) this.emoteYaw = this.yaw + Math.PI;
+    this.inspectAt = -Infinity;
+    this.inspectQueued = false;
     this.emote = id;
     this.adsProgress = this.ads = 0;
     this.game.send("emote", id);
@@ -763,6 +858,24 @@ export class LocalPlayer {
   /** Seconds since the last shot / since the current gun was drawn. */
   sinceShot(now: number) { return (now - this.lastShotAt) / 1000; }
   sinceDraw(now: number) { return (now - this.drawAt) / 1000; }
+  private playBladeCues(now: number) {
+    const drawing = now < this.switchEnd && this.drawAt > this.inspectAt;
+    if (!drawing && !Number.isFinite(this.inspectAt)) return;
+    const cues = bladeCues(this.weapon, this.trick, drawing);
+    if (!cues) return;
+    const phase = drawing ? (now - this.drawAt) / this.def.equipMs
+      : (now - this.inspectAt) / (1000 * inspectSeconds(this.weapon, this.trick));
+    while (this.cueIndex < cues.length && cues[this.cueIndex][0] <= phase) {
+      const [at, cue] = cues[this.cueIndex++];
+      if (phase - at < 0.18) audio.bladeCue(cue);
+    }
+  }
+
+  /** Seconds into the blade's inspect, or -1 when none plays. */
+  sinceInspect(now: number) {
+    const t = (now - this.inspectAt) / 1000;
+    return t >= 0 && t < inspectSeconds(this.weapon, this.trick) ? t : -1;
+  }
 
   /** How far into aiming the chosen sight is up and fully accurate: early for a red dot, once the view is through a scope. */
   private get sightUp() {

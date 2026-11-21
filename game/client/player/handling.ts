@@ -42,10 +42,16 @@ export interface Handling {
   hammer: number; cylinder: number;
   /** Shell distance below the loading port (m); held = shown in the left hand. */
   shell: number; shellHeld: boolean;
+  /** The balisong's handles: 0 open in the hand .. 1 folded shut over the blade. */
+  safe: number; bite: number;
+  /** Knife rotation about its contact in the pinch, and flight progress (0..1). */
+  spin: GunOffset; flight: number; release: number;
 }
 
 type Keys<T> = [number, T][];
 interface Clip {
+  /** Normalized time at the end of the fast cut, also used by sound, camera roll and the trail. */
+  contact?: number;
   gun?: Keys<GunOffset>;
   left?: Keys<HandKey<LeftPose>>;
   right?: Keys<HandKey<RightPose>>;
@@ -55,6 +61,9 @@ interface Clip {
   charge?: Keys<number>;
   hammer?: Keys<number>; cylinder?: Keys<number>;
   shell?: Keys<number>; shellHeld?: Keys<boolean>;
+  safe?: Keys<number>; bite?: Keys<number>;
+  spin?: Keys<GunOffset>; flight?: [number, number]; release?: Keys<number>;
+  cues?: [number, BladeCue][];
 }
 
 const REST: GunOffset = [0, 0, 0, 0, 0, 0];
@@ -223,13 +232,134 @@ const DRAW: Keys<GunOffset> = [[0, [0.03, -0.16, 0.06, -0.8, 0.25, 0.45]], [1, R
 /** A pump or bolt cycle: `strokes` are where the action hits the back and front of its travel (0..1). */
 interface Cycle { clip: Clip; seconds: number; strokes: readonly [number, number] }
 
-const CLIPS: Record<WeaponId, { reload: Clip; cycle?: Cycle; rest?: HandKey<LeftPose> }> = {
+// The wrist follows the gun track. During an inspect the knife has a second
+// transform about its contact in the fingers, independent of the camera and arm.
+const KNIFE_POSE: GunOffset = [0.012, 0.018, 0.018, 0.52, 0.32, -0.32];
+const KATANA_POSE: GunOffset = [0.032, -0.052, -0.065, 0.84, 0.04, -0.5];
+const PINCH: HandKey<RightPose> = { pose: "pinch" };
+const TURN = 2 * Math.PI;
+export type BladeCue = "clack" | "latch" | "air";
+const show = nudge(KNIFE_POSE, -0.064, 0.088, 0.024, -0.21, 0.73, -0.2);
+const pinch: Keys<HandKey<RightPose>> = [[0, GRIP], [0.13, PINCH], [0.84, PINCH], [1, GRIP]];
+
+const KNIFE_DRAW: Clip = {
+  gun: [[0, nudge(KNIFE_POSE, 0.05, -0.13, 0.04, -0.6, -0.22, 0.86)],
+    [0.36, nudge(KNIFE_POSE, 0.013, 0.028, -0.03, 0.34, 0.05, 0.32)],
+    [0.74, nudge(KNIFE_POSE, -0.012, 0, 0, -0.15, 0.14, -0.15)], [1, KNIFE_POSE]],
+  right: [[0, PINCH], [0.76, PINCH], [1, GRIP]],
+  safe: [[0, 1], [0.12, 1], [0.57, 0]], bite: [[0, 1], [0.32, 1], [0.8, 0]],
+  cues: [[0.57, "clack"], [0.8, "latch"]],
+};
+
+const FLIP: Clip = {
+  gun: [[0, KNIFE_POSE], [0.18, show], [0.48, nudge(show, 0.023, -0.025, 0, -0.54, 0.08, 0.54)],
+    [0.77, nudge(show, -0.025, 0.018, 0, 0.28, -0.1, -0.32)], [1, KNIFE_POSE]],
+  right: pinch, safe: [[0.19, 0], [0.47, 1], [0.54, 1], [0.76, 0]],
+  bite: [[0.14, 0], [0.36, 1], [0.56, 1], [0.85, 0]],
+  cues: [[0.36, "clack"], [0.47, "latch"], [0.76, "clack"], [0.85, "latch"]],
+};
+const TWIRL: Clip = {
+  gun: [[0, KNIFE_POSE], [0.18, show], [0.48, nudge(show, -0.028, 0.02, 0, 0.15, 0.32, -0.48)], [0.83, show], [1, KNIFE_POSE]],
+  right: pinch, spin: [[0.16, REST], [0.83, [0, 0, 0, -TURN, 0, 0]]],
+  bite: [[0.12, 0], [0.27, 0.91], [0.67, 0.86], [0.85, 0]], cues: [[0.85, "latch"]],
+};
+const HELIX: Clip = {
+  gun: [[0, KNIFE_POSE], [0.15, show], [0.45, nudge(show, 0.045, 0.035, -0.014, 0.22, -0.34, 0.62)],
+    [0.78, nudge(show, -0.03, -0.005, 0, -0.18, 0.3, -0.32)], [1, KNIFE_POSE]],
+  right: pinch, spin: [[0.12, REST], [0.49, [0, 0, 0, Math.PI, -1, 1]], [0.85, [0, 0, 0, TURN, 0, -TURN]]],
+  safe: [[0.15, 0], [0.43, 0.8], [0.66, 0]], bite: [[0.23, 0], [0.52, 1], [0.82, 0]],
+  cues: [[0.52, "clack"], [0.66, "clack"], [0.82, "latch"]],
+};
+const AERIAL: Clip = {
+  gun: [[0, KNIFE_POSE], [0.18, nudge(show, 0, -0.045, -0.012, -0.26)], [0.32, show],
+    [0.56, nudge(show, 0.015, -0.045, 0, -0.15)], [0.77, show], [0.86, nudge(show, 0, -0.034, 0, -0.18)], [1, KNIFE_POSE]],
+  right: pinch, release: [[0.25, 0], [0.36, 1], [0.73, 1], [0.82, 0]],
+  flight: [0.29, 0.79], bite: [[0.14, 0], [0.29, 0.65], [0.63, 0.85], [0.79, 0]],
+  cues: [[0.31, "air"], [0.8, "latch"]],
+};
+const FAN: Clip = {
+  gun: [[0, KNIFE_POSE], [0.21, nudge(show, 0, 0.012, 0, 0.1, 0, 0.68)],
+    [0.73, nudge(show, -0.03, 0.025, -0.016, 0.18, 0.25, 0.42)], [1, KNIFE_POSE]],
+  right: pinch, spin: [[0.16, REST], [0.82, [0, 0, 0, 0, 0, TURN * 2]]],
+  safe: [[0.12, 0], [0.27, 0.49], [0.73, 0.46], [0.85, 0]],
+  bite: [[0.18, 0], [0.32, 0.54], [0.69, 0.58], [0.88, 0]], cues: [[0.85, "clack"], [0.88, "latch"]],
+};
+
+/** Wrist poses at anticipation, contact and follow-through. Each cut settles before the next input. */
+function cut(rest: GunOffset, wind: GunOffset, strike: GunOffset, through: GunOffset, contact = 0.32): Clip {
+  return { contact, gun: [[0, rest], [contact - 0.17, nudge(rest, ...wind)], [contact, nudge(rest, ...strike)],
+    [contact + 0.18, nudge(rest, ...through)], [1, rest]] };
+}
+const KNIFE_SLASH = cut(KNIFE_POSE, [0.045, 0.025, 0.035, 0.24, -0.48, -0.35], [-0.16, 0.006, -0.095, -0.36, 0.86, 0.94], [-0.19, -0.045, -0.04, -0.49, 1.15, 1.14]);
+const KNIFE_BACKHAND = cut(KNIFE_POSE, [-0.09, -0.028, 0.025, -0.3, 0.52, 0.59], [0.045, 0.018, -0.09, 0.2, -0.78, -0.5], [0.09, 0.035, -0.04, 0.34, -1, -0.76]);
+const KNIFE_STAB = cut(KNIFE_POSE, [0.025, -0.025, 0.05, -0.32, 0.03, -0.4], [-0.07, 0.045, -0.15, -0.51, -0.24, -0.58], [-0.064, 0.038, -0.13, -0.48, -0.18, -0.5]);
+const KNIFE_HEAVY = cut(KNIFE_POSE, [0.05, -0.065, 0.08, -0.25, -0.26, -0.75], [-0.105, 0.065, -0.18, -0.46, -0.22, -0.93], [-0.087, 0.025, -0.145, -0.57, -0.11, -1.12], 0.41);
+const KATANA_SLASH = cut(KATANA_POSE, [0.025, 0.065, 0.04, 0.4, -0.32, -0.3], [-0.19, 0.012, -0.08, -0.76, 0.92, 0.82], [-0.23, -0.052, -0.055, -1.15, 1.24, 1.13]);
+const KATANA_RISING = cut(KATANA_POSE, [-0.15, -0.042, 0.045, -0.92, 0.72, 0.66], [0.028, 0.065, -0.085, 0.09, -0.48, -0.52], [0.065, 0.09, -0.045, 0.42, -0.72, -0.7]);
+const KATANA_SWEEP = cut(KATANA_POSE, [0.035, 0.038, 0.045, -0.64, -0.68, -0.94], [-0.19, 0.05, -0.075, -0.76, 0.93, -1], [-0.24, 0.043, -0.02, -0.73, 1.32, -1.09], 0.36);
+const KATANA_OVERHEAD = cut(KATANA_POSE, [-0.065, 0.135, 0.05, 1.06, 0.22, 0.46], [-0.105, 0.04, -0.1, -0.84, 0.1, 0.55], [-0.11, -0.065, -0.07, -1.24, 0.04, 0.52], 0.39);
+const KATANA_HEAVY = cut(KATANA_POSE, [-0.1, 0.175, 0.055, 1.51, 0.3, 0.57], [-0.12, 0.04, -0.14, -0.95, 0.13, 0.44], [-0.13, -0.082, -0.09, -1.43, 0.12, 0.46], 0.47);
+/** The blade brought level across the view and turned to show its flat, then back up. */
+const KATANA_INSPECT: Clip = (() => {
+  const level = nudge(KATANA_POSE, -0.08, 0.04, 0.05, -1.0, 1.15, 0.2);
+  return { gun: [[0, KATANA_POSE], [0.18, level], [0.55, nudge(level, 0, 0.01, 0, 0.05, -0.1, 1.35)], [0.82, level], [1, KATANA_POSE]] };
+})();
+
+interface Moves {
+  reload: Clip;
+  cycle?: Cycle;
+  rest?: HandKey<LeftPose>;
+  /** A blade's held pose (absent: REST), its attacks in turn and how long each lasts (s). */
+  pose?: GunOffset;
+  swings?: { clips: Clip[]; seconds: number };
+  /** Played over the equip time instead of only raising it into view. */
+  draw?: Clip;
+  inspect?: { clip: Clip; seconds: number }[];
+  heavy?: Clip;
+}
+
+const NO_RELOAD: Clip = {};
+
+const CLIPS: Record<WeaponId, Moves> = {
   ar: { reload: MAG_RELOAD },
   smg: { reload: MAG_RELOAD },
   shotgun: { reload: SHOTGUN_RELOAD, cycle: { clip: SHOTGUN_PUMP, seconds: 0.36, strokes: [0.5, 0.75] } },
   sniper: { reload: SNIPER_RELOAD, cycle: { clip: SNIPER_BOLT, seconds: 0.64, strokes: [0.5, 0.64] } },
   pistol: { reload: REVOLVER_RELOAD, cycle: { clip: REVOLVER_COCK, seconds: 0.3, strokes: [0.3, 0.62] }, rest: BELT },
+  knife: { reload: NO_RELOAD, rest: BELT, pose: KNIFE_POSE, swings: { clips: [KNIFE_SLASH, KNIFE_BACKHAND, KNIFE_STAB], seconds: 0.38 },
+    heavy: KNIFE_HEAVY, draw: KNIFE_DRAW, inspect: [
+      { clip: FLIP, seconds: 1.1 }, { clip: TWIRL, seconds: 1.26 }, { clip: HELIX, seconds: 1.55 },
+      { clip: AERIAL, seconds: 1.38 }, { clip: FAN, seconds: 1.42 },
+    ] },
+  katana: { reload: NO_RELOAD, pose: KATANA_POSE, swings: { clips: [KATANA_SLASH, KATANA_RISING, KATANA_SWEEP, KATANA_OVERHEAD], seconds: 0.62 },
+    heavy: KATANA_HEAVY, inspect: [{ clip: KATANA_INSPECT, seconds: 2.4 }] },
 };
+
+function swingClip(weapon: WeaponId, swing: number, heavy: boolean) {
+  const moves = CLIPS[weapon];
+  return heavy ? moves.heavy : moves.swings?.clips[Math.max(0, swing) % moves.swings.clips.length];
+}
+
+export function swingSeconds(weapon: WeaponId, heavy: boolean) {
+  return heavy ? (WEAPONS[weapon].melee?.heavy.intervalMs ?? 0) / 1000 : CLIPS[weapon].swings?.seconds ?? 0;
+}
+
+export function cutContact(weapon: WeaponId, swing: number, heavy: boolean) {
+  return swingClip(weapon, swing, heavy)?.contact ?? 0;
+}
+
+function inspectMove(weapon: WeaponId, trick: number) {
+  const moves = CLIPS[weapon].inspect;
+  return moves?.[trick % moves.length];
+}
+
+export function inspectSeconds(weapon: WeaponId, trick = 0) {
+  return inspectMove(weapon, trick)?.seconds ?? 0;
+}
+
+export function bladeCues(weapon: WeaponId, trick: number, draw = false) {
+  return (draw ? CLIPS[weapon].draw : inspectMove(weapon, trick)?.clip)?.cues;
+}
 
 /** How long a pump or bolt gun takes to work its action after a shot (s), or null for other guns. */
 export function cycleSeconds(weapon: WeaponId) {
@@ -246,27 +376,42 @@ export function createHandling(): Handling {
   return {
     gun: [...REST], left: { a: SUPPORT, b: SUPPORT, k: 0 }, right: { a: GRIP, b: GRIP, k: 0 },
     mag: 0, magHeld: false, magVisible: true, pump: 0, boltPull: 0, charge: 0, hammer: 0, cylinder: 0, shell: 0, shellHeld: false,
+    safe: 0, bite: 0, spin: [...REST], flight: 0, release: 0,
   };
 }
+
+/** Blade timing for `sampleHandling`: how many swings so far (which one plays) and seconds since an inspect began. */
+export interface MeleeTiming { swing?: number; sinceInspect?: number; trick?: number; heavy?: boolean }
 
 /**
  * Samples the handling pose. `reload` is the reload progress (or -1); `sinceShot` and
  * `sinceDraw` are seconds since the last shot and since the gun was drawn.
  */
-export function sampleHandling(weapon: WeaponId, reload: number, sinceShot: number, sinceDraw: number, out = createHandling()) {
-  out.gun.fill(0);
+export function sampleHandling(weapon: WeaponId, reload: number, sinceShot: number, sinceDraw: number, out = createHandling(), melee: MeleeTiming = {}) {
   const clips = CLIPS[weapon];
+  for (let i = 0; i < 6; i++) out.gun[i] = clips.pose?.[i] ?? 0;
   out.left.a = out.left.b = clips.rest ?? SUPPORT; out.left.k = 0;
   out.right.a = out.right.b = GRIP; out.right.k = 0;
-  out.mag = out.pump = out.boltPull = out.charge = out.hammer = out.cylinder = out.shell = 0;
+  out.mag = out.pump = out.boltPull = out.charge = out.hammer = out.cylinder = out.shell = out.safe = out.bite = out.flight = out.release = 0;
+  out.spin.fill(0);
   out.magHeld = out.shellHeld = false;
   out.magVisible = true;
+  const inspect = inspectMove(weapon, melee.trick ?? 0);
+  const heavy = melee.heavy ?? false;
+  const duration = swingSeconds(weapon, heavy);
+  const sinceInspect = melee.sinceInspect ?? -1;
   if (reload >= 0) apply(clips.reload, Math.min(1, reload), out);
   else if (clips.cycle && sinceShot >= 0 && sinceShot < clips.cycle.seconds) apply(clips.cycle.clip, sinceShot / clips.cycle.seconds, out);
+  else if (clips.swings && sinceShot >= 0 && sinceShot < duration) {
+    apply(swingClip(weapon, melee.swing ?? 0, heavy)!, sinceShot / duration, out);
+  } else if (inspect && sinceInspect >= 0 && sinceInspect < inspect.seconds) apply(inspect.clip, sinceInspect / inspect.seconds, out);
   const equip = WEAPONS[weapon].equipMs / 1000;
   if (sinceDraw >= 0 && sinceDraw < equip) {
-    const d = sampleVec(DRAW, sinceDraw / equip);
-    for (let i = 0; i < 6; i++) out.gun[i] += d[i];
+    if (clips.draw) apply(clips.draw, sinceDraw / equip, out);
+    if (!clips.draw?.gun) {
+      const d = sampleVec(DRAW, sinceDraw / equip);
+      for (let i = 0; i < 6; i++) out.gun[i] += d[i];
+    }
   }
   return out;
 }
@@ -285,6 +430,17 @@ function apply(c: Clip, t: number, out: Handling) {
   if (c.cylinder) out.cylinder = sampleNum(c.cylinder, t);
   if (c.shell) out.shell = sampleNum(c.shell, t);
   if (c.shellHeld) out.shellHeld = sampleStep(c.shellHeld, t);
+  if (c.spin) {
+    const spin = sampleVec(c.spin, t);
+    for (let i = 0; i < 6; i++) out.spin[i] = spin[i];
+  }
+  if (c.flight) {
+    const [start, end] = c.flight;
+    out.flight = Math.max(0, Math.min(1, (t - start) / (end - start)));
+  }
+  if (c.release) out.release = sampleNum(c.release, t);
+  if (c.safe) out.safe = sampleNum(c.safe, t);
+  if (c.bite) out.bite = sampleNum(c.bite, t);
 }
 
 /** Index of the key segment containing t and the eased fraction across it. */

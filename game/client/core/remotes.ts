@@ -53,6 +53,9 @@ export class RemotePlayer {
   /** Seconds since this player last fired / drew the current gun, for the rig's handling. */
   private sinceShot = Infinity;
   private sinceDraw = Infinity;
+  /** Shots and blade swings seen: a blade alternates its swings by this. */
+  private swings = 0;
+  private heavy = false;
   readonly head = new THREE.Vector3();
   /** Whether the character was posed this frame; off-screen ones skip animation and drawing. */
   posed = false;
@@ -107,8 +110,11 @@ export class RemotePlayer {
     this.readable = enabled;
   }
 
-  onShot() {
+  onShot(swing = 0, heavy = false) {
+    if (WEAPONS[this.weapon].melee) this.sinceDraw = Infinity;
     this.sinceShot = 0;
+    this.swings = swing;
+    this.heavy = heavy;
   }
 
   /** Running flat out: the sprint flag, or moving faster than a walk. */
@@ -247,7 +253,7 @@ export class RemotePlayer {
    * Poses and shows the character. `inView` false (off-screen, casting no visible shadow) skips
    * animating and drawing it; a dying body keeps animating so its fall is never caught mid-way.
    */
-  animate(dt: number, inView: boolean) {
+  animate(dt: number, inView: boolean, bladeTrail = false) {
     if (!this.rig || this.snaps.length === 0) return;
     const speed = this.speed;
     this.posed = inView || !this.alive;
@@ -263,7 +269,7 @@ export class RemotePlayer {
       sprint: (this.flags & F_SPRINT) ? 1 : 0,
       ads: (this.flags & F_ADS) ? 1 : 0,
       reload: this.reloadT >= 0 ? reloadClipAt(this.reloadSkip, Math.min(this.reloadT, 1)) : -1,
-      sinceShot: this.sinceShot, sinceDraw: this.sinceDraw,
+      sinceShot: this.sinceShot, sinceDraw: this.sinceDraw, swing: this.swings, heavy: this.heavy, bladeTrail,
       emote: this.alive && isEmote(this.emote) ? this.emote : null,
     });
     if (this.posed) this.meshHit?.invalidate();

@@ -78,7 +78,7 @@ export class Input {
     const md = (e: MouseEvent) => {
       if (!this.locked) return;
       if (e.button === 0) this.fire = true;
-      if (e.button === 2) this.ads = true;
+      if (e.button === 2) { this.ads = true; this.pressed.add("HeavyAttack"); }
       if (e.button === 1) this.pressed.add("Mouse3");
     };
     const mu = (e: MouseEvent) => {

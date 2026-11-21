@@ -35,6 +35,8 @@ export const PlayerState = schema({
   ready: t.boolean().default(false),
   /** Cosmetic lobby animation, replicated to peers and late joiners. */
   emote: t.string().default("idle"),
+  /** The blade carried in slot 3 (a MeleeId). */
+  melee: t.string().default("knife"),
 }, "PlayerState");
 export type PlayerState = SchemaType<typeof PlayerState>;
 

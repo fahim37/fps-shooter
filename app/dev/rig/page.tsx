@@ -23,6 +23,10 @@ export default async function RigPage(props: PageProps<"/dev/rig">) {
       speed={Number(str(q.speed, "0"))}
       reload={Number(str(q.reload, "-1"))}
       ads={Number(str(q.ads, "0"))}
+      swing={Math.max(0, Math.floor(Number(str(q.swing, "0")) || 0))}
+      inspect={Number(str(q.inspect, "-1"))}
+      trick={Math.max(0, Math.floor(Number(str(q.trick, "0")) || 0))}
+      heavy={q.heavy === "1"}
       shot={Number(str(q.shot, "-1"))}
       draw={Number(str(q.draw, "-1"))}
       fire={Number(str(q.fire, "0"))}

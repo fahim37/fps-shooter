@@ -14,6 +14,8 @@ export const COMPATIBLE_OPTICS: Record<WeaponId, readonly OpticId[]> = {
   shotgun: ["iron", "red-dot"],
   sniper: ["2x", "4x", "6x"],
   pistol: ["iron", "red-dot"],
+  knife: ["iron"],
+  katana: ["iron"],
 };
 /**
  * Share of the ADS raise a red dot takes to reach the eye. It looks quick, and aiming accuracy is
@@ -24,7 +26,7 @@ export const RED_DOT_ARRIVE = 0.6;
 export const RED_DOT_UP = RED_DOT_ARRIVE * RED_DOT_ARRIVE * (3 - 2 * RED_DOT_ARRIVE);
 
 export const DEFAULT_OPTICS: Record<WeaponId, OpticId> = {
-  ar: "red-dot", smg: "red-dot", shotgun: "iron", sniper: "6x", pistol: "iron",
+  ar: "red-dot", smg: "red-dot", shotgun: "iron", sniper: "6x", pistol: "iron", knife: "iron", katana: "iron",
 };
 
 export function opticFov(weapon: WeaponId, optic: OpticId, baseFov: number) {

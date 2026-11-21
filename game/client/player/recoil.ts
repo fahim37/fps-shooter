@@ -27,6 +27,9 @@ export const RECOIL: Record<WeaponId, RecoilProfile> = {
   sniper: { back: 0.065, up: 0.01, rise: 0.11, yaw: 0.012, roll: 0.025, stiffness: 15, damping: 0.7, aimed: 0.5 },
   // A plow-handled revolver rolls up in the hand; the thumb cocks it on the way back down.
   pistol: { back: 0.03, up: 0.014, rise: 0.34, yaw: 0.025, roll: 0.05, stiffness: 15, damping: 0.6, aimed: 0.75 },
+  // Blades never kick: their swing is all in handling.ts.
+  knife: { back: 0, up: 0, rise: 0, yaw: 0, roll: 0, stiffness: 20, damping: 1, aimed: 1 },
+  katana: { back: 0, up: 0, rise: 0, yaw: 0, roll: 0, stiffness: 20, damping: 1, aimed: 1 },
 };
 
 /** Share of a kick that is there at once; the rest arrives as speed, peaking a few frames later. */

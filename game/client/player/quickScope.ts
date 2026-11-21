@@ -23,7 +23,7 @@ export interface QuickScope {
 }
 
 /** Peak cant (rad) mid-raise: long guns roll further than the revolver. */
-const CANT: Record<WeaponId, number> = { ar: 0.34, smg: 0.38, shotgun: 0.3, sniper: 0.28, pistol: 0.26 };
+const CANT: Record<WeaponId, number> = { ar: 0.34, smg: 0.38, shotgun: 0.3, sniper: 0.28, pistol: 0.26, knife: 0, katana: 0 };
 /** How far past the sights the snap carries (back-ease constant; 1.4 peaks ~6% over). */
 const SNAP = 1.4;
 /** Share of the cant, yaw and dip kept behind a red dot. */

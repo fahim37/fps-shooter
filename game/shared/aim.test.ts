@@ -11,6 +11,13 @@ describe("aim presentation and handling", () => {
     expect(currentSpread(WEAPONS.ar, SCOPE_UP, 0, false, false)).toBeGreaterThan(WEAPONS.ar.spreadAds);
   });
 
+  it("keeps a scoped sniper dead on while moving, but not before the scope is up", () => {
+    const { sniper } = WEAPONS;
+    expect(currentSpread(sniper, SCOPE_UP, 1, false, false)).toBeCloseTo(sniper.spreadAds);
+    expect(currentSpread(sniper, 1, 1, false, false)).toBeCloseTo(sniper.spreadAds);
+    expect(currentSpread(sniper, SCOPE_UP / 2, 1, false, false)).toBeGreaterThan(currentSpread(sniper, SCOPE_UP / 2, 0, false, false));
+  });
+
   it("is fully accurate through a magnified scope on any gun once the scope view is up", () => {
     for (const def of [WEAPONS.ar, WEAPONS.smg]) {
       expect(currentSpread(def, SCOPE_UP, 1, false, false, SCOPE_UP)).toBeCloseTo(currentSpread(def, 1, 1, false, false));
@@ -42,10 +49,10 @@ describe("aim presentation and handling", () => {
   });
 
   it("keeps ADS tighter while retaining jumping and movement penalties", () => {
-    for (const def of Object.values(WEAPONS)) {
+    for (const def of Object.values(WEAPONS).filter((w) => !w.melee)) {
       const aimed = currentSpread(def, 1, 0, false, false);
       expect(aimed).toBeLessThan(currentSpread(def, 0, 0, false, false));
-      expect(currentSpread(def, 1, 1, false, false)).toBeGreaterThan(aimed);
+      if (!def.scope) expect(currentSpread(def, 1, 1, false, false)).toBeGreaterThan(aimed);
       expect(currentSpread(def, 1, 0, true, false)).toBeGreaterThan(aimed);
       expect(currentSpread(def, 1, 0, false, true)).toBeCloseTo(aimed * 0.8);
     }

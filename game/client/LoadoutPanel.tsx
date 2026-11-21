@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { PRIMARIES, WEAPONS, type WeaponId } from "../shared/weapons";
+import { MELEES, PRIMARIES, WEAPONS, type WeaponId } from "../shared/weapons";
 import { COMPATIBLE_OPTICS, OPTICS, type OpticId } from "../shared/optics";
 import { useLoadout } from "./loadout";
 import { useHud } from "./core/hud";
@@ -12,11 +12,14 @@ import styles from "./LoadoutPanel.module.css";
 const ROLES: Record<WeaponId, string> = {
   ar: "Balanced · Automatic", smg: "Close range · Automatic", shotgun: "Close range · Pump action",
   sniper: "Long range · Straight pull", pistol: "Backup · Single action",
+  knife: "Quick stab · Fastest run", katana: "Wide slash · Long reach",
 };
 
 function GunIcon({ weapon }: { weapon: WeaponId }) {
   return <svg viewBox="0 0 120 40" aria-hidden="true" fill="currentColor">
-    {weapon === "pistol" ? <path d="M30 10h55v10H57l-5 18H39l4-20H30z M77 7h5v5h-5z" />
+    {weapon === "knife" ? <path d="M14 22l38-6 6 2-6 5H14z M58 17h40l3 2-3 2H58z M58 21h40l3 2-3 2H58z M54 18a2 2 0 1 0 .1 0z" />
+      : weapon === "katana" ? <path d="M4 22C30 21 56 19 80 16l2 2C58 22 30 24 6 24z M82 12h3v14h-3z M86 17h30l2 2-2 2H86z" />
+      : weapon === "pistol" ? <path d="M30 10h55v10H57l-5 18H39l4-20H30z M77 7h5v5h-5z" />
       : <><path d="M8 14h24l8-5h39v4h29v5H79l-5 7H50l-6 12H33l5-15H22L8 29z" /><path d={weapon === "sniper" ? "M47 3h24v5H47z M97 18l8 19h-3l-8-19z" : weapon === "smg" ? "M56 23h9v15h-9z" : weapon === "shotgun" ? "M69 18h28v6H69z" : "M57 23h10l4 13-10 3z"} /></>}
   </svg>;
 }
@@ -36,16 +39,16 @@ function OpticIcon({ optic }: { optic: OpticId }) {
 }
 
 function TouchAmmo() {
-  const ammo = useHud((s) => s.reloading >= 0 ? `Reload ${Math.round(s.reloading * 100)}%` : `${s.mag} / ${s.reserve}`);
+  const ammo = useHud((s) => WEAPONS[s.weapon].melee ? WEAPONS[s.weapon].name : s.reloading >= 0 ? `Reload ${Math.round(s.reloading * 100)}%` : `${s.mag} / ${s.reserve}`);
   return <strong className={styles.touchAmmo}>{ammo}</strong>;
 }
 
 export const WeaponBar = memo(function WeaponBar({ game }: { game: Game }) {
-  const h = useHud(useShallow((s) => ({ primary: s.primary, weapon: s.weapon, touch: s.touch })));
+  const h = useHud(useShallow((s) => ({ primary: s.primary, melee: s.melee, weapon: s.weapon, touch: s.touch })));
   const optic = useLoadout((s) => s.optics[h.weapon]);
   return <nav className={styles.bar} aria-label="Quick weapons">
-    {[h.primary, "pistol" as const].map((weapon, i) => <button key={weapon} type="button" aria-label={`Equip ${WEAPONS[weapon].name}`} aria-pressed={h.weapon === weapon}
-      onClick={() => game.input.press(i === 0 ? "Digit1" : "Digit2")}>
+    {[h.primary, "pistol" as const, h.melee].map((weapon, i) => <button key={weapon} type="button" aria-label={`Equip ${WEAPONS[weapon].name}`} aria-pressed={h.weapon === weapon}
+      onClick={() => game.input.press(`Digit${i + 1}`)}>
       <span className={styles.shortcut}>{i + 1}</span><GunIcon weapon={weapon} />{h.touch && h.weapon === weapon ? <TouchAmmo /> : <span>{WEAPONS[weapon].name}</span>}
     </button>)}
     {!h.touch && <button type="button" aria-label="Open loadout and scopes" onClick={() => game.openLoadout()}>
@@ -55,9 +58,9 @@ export const WeaponBar = memo(function WeaponBar({ game }: { game: Game }) {
 });
 
 export const LoadoutPicker = memo(function LoadoutPicker({ game }: { game: Game }) {
-  const h = useHud(useShallow((s) => ({ primary: s.primary, conn: s.conn, phase: s.phase, alive: s.alive, touch: s.touch })));
+  const h = useHud(useShallow((s) => ({ primary: s.primary, melee: s.melee, conn: s.conn, phase: s.phase, alive: s.alive, touch: s.touch })));
   const [inspecting, setInspecting] = useState<WeaponId>(h.primary);
-  const { optics, equipOptic } = useLoadout();
+  const { optics, equipOptic, chooseMelee } = useLoadout();
   const disabled = h.conn !== "connected" || h.phase === "ended";
   return <div className={styles.picker}>
     <div className={styles.sectionLabel}>PRIMARY WEAPON <span>Tap to equip</span></div>
@@ -72,13 +75,25 @@ export const LoadoutPicker = memo(function LoadoutPicker({ game }: { game: Game 
         <span className={styles.attachment}>{OPTICS[optics[weapon]].name}</span>
       </button>)}
     </div>
+    <div className={styles.sectionLabel}>BLADE <span>Slot 3 · always carried</span></div>
+    <div className={styles.guns}>
+      {MELEES.map((weapon) => <button type="button" key={weapon} disabled={disabled} aria-label={`Choose ${WEAPONS[weapon].name}`} aria-pressed={h.melee === weapon}
+        onClick={() => {
+          chooseMelee(weapon);
+          if (h.melee !== weapon) game.send("loadout", { melee: weapon });
+        }}>
+        <span className={styles.equipped}>{h.melee === weapon ? "EQUIPPED" : "EQUIP"}</span>
+        <GunIcon weapon={weapon} /><strong>{WEAPONS[weapon].name}</strong><small>{ROLES[weapon]}</small>
+      </button>)}
+    </div>
+    <p className={styles.note}>Balisong model by Jawa (HELLBRAD), CC BY 4.0, recoloured · Katana model by Snabisch, CC0.</p>
     <div className={styles.sectionLabel}>OPTIC FOR {WEAPONS[inspecting].name.toUpperCase()}<button type="button" aria-pressed={inspecting === "pistol"} onClick={() => setInspecting(inspecting === "pistol" ? h.primary : "pistol")}>{inspecting === "pistol" ? "Primary optics" : "Sidearm optics"}</button></div>
     <div className={styles.optics}>
       {COMPATIBLE_OPTICS[inspecting].map((optic) => <button type="button" key={optic} disabled={disabled} aria-label={`Attach ${OPTICS[optic].name} to ${WEAPONS[inspecting].name}`} aria-pressed={optics[inspecting] === optic} onClick={() => equipOptic(inspecting, optic)}>
         <OpticIcon optic={optic} /><strong>{OPTICS[optic].name}</strong><small>{OPTICS[optic].description}</small>
       </button>)}
     </div>
-    <p className={styles.note} role="status">{h.alive ? "Guns equip immediately and keep their ammo." : "Your gun will be ready on respawn."} Optics save per gun.{!h.touch && " B for loadout · 1 / 2 or Q to switch."}</p>
+    <p className={styles.note} role="status">{h.alive ? "Guns equip immediately and keep their ammo." : "Your gun will be ready on respawn."} Optics save per gun.{!h.touch && " B for loadout · 1 / 2 / 3 or Q to switch · T to inspect a blade."}</p>
   </div>;
 });
 

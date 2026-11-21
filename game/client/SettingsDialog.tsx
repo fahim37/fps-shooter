@@ -31,7 +31,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         <button ref={close} type="button" className={styles.close} onClick={onClose} aria-label="Close settings">✕</button>
       </header>
       <SettingsPanel />
-      <p className="controls-help">WASD move · Mouse aim · Click fire · Right-click ADS · Shift sprint · Space jump · Ctrl crouch · Q / E peek · R reload · 1 / 2 or wheel switch · Hold C grenade · V camera · T emote · Tab scores · Esc pause</p>
+      <p className="controls-help">WASD move · Mouse aim · Click fire · Right-click ADS · Shift sprint · Space jump · Ctrl crouch · Q / E peek · R reload · 1 / 2 or wheel switch · Hold C grenade · V camera · T inspect blade · Tab scores · Esc pause</p>
     </section>
   </div>;
 }

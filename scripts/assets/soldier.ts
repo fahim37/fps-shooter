@@ -102,6 +102,11 @@ interface GameJoint { name: string; parent: string | null; t: number[]; r: numbe
 const ARM_JOINT = /^(upperarm|lowerarm|hand|thumb|index|middle|ring|pinky)_/;
 /** The four bags hanging off the belt (dangle bones Pouch1-4: both hips, beside the hands, and two behind): left out. */
 const DROPPED_BONE = /^Pouch\d+$/;
+/**
+ * The bags on the vest at chest height (four magazine pouches in front, one on each side, a small
+ * one at the back) are the pouch pieces skinned to this bone alone: left out too.
+ */
+const CHEST_BONE = "Spine01";
 
 /** The match model, and the lobby's full-detail one (no simplifying, a 4K body atlas). */
 export async function importSoldier() {
@@ -111,9 +116,10 @@ export async function importSoldier() {
 
 /**
  * Triangles of every welded piece of `mesh` that any vertex ties to a DROPPED_BONE, so a bag goes
- * whole, with the loop that holds it to the belt.
+ * whole, with the loop that holds it to the belt; and, among the pouches, every piece that rides
+ * CHEST_BONE alone.
  */
-function droppedTriangles(mesh: THREE.SkinnedMesh, index: number[]) {
+function droppedTriangles(mesh: THREE.SkinnedMesh, index: number[], part: string) {
   const pos = mesh.geometry.attributes.position, si = mesh.geometry.attributes.skinIndex, sw = mesh.geometry.attributes.skinWeight;
   const weld = new Map<string, number>();
   const vert = Array.from({ length: pos.count }, (_, i) => {
@@ -128,12 +134,16 @@ function droppedTriangles(mesh: THREE.SkinnedMesh, index: number[]) {
     parent[find(vert[index[t + 1]])] = a;
     parent[find(vert[index[t + 2]])] = a;
   }
-  const doomed = new Set<number>();
+  const doomed = new Set<number>(), offChest = new Set<number>();
   for (let i = 0; i < pos.count; i++) {
     for (let k = 0; k < 4; k++) {
-      if (sw.getComponent(i, k) > 0 && DROPPED_BONE.test(mesh.skeleton.bones[si.getComponent(i, k)].name.replace(/^CC_Base_/, ""))) doomed.add(find(vert[i]));
+      if (sw.getComponent(i, k) <= 0) continue;
+      const bone = mesh.skeleton.bones[si.getComponent(i, k)].name.replace(/^CC_Base_/, "");
+      if (DROPPED_BONE.test(bone)) doomed.add(find(vert[i]));
+      if (bone !== CHEST_BONE) offChest.add(find(vert[i]));
     }
   }
+  if (part === "Pouches") for (let i = 0; i < pos.count; i++) if (!offChest.has(find(vert[i]))) doomed.add(find(vert[i]));
   return Array.from({ length: index.length / 3 }, (_, t) => doomed.has(find(vert[index[t * 3]])));
 }
 
@@ -270,7 +280,7 @@ async function buildSoldier(file: string, simplify: boolean, BODY: Atlas) {
       if (!top.length) { J[i * 4] = jointIndex.get("root")!; W[i * 4] = 1; }
     }
     const index = geo.index ? Array.from(geo.index.array) : Array.from({ length: count }, (_, i) => i);
-    const dropped = droppedTriangles(mesh, index);
+    const dropped = droppedTriangles(mesh, index, part);
     // Sleeves (and gloves) go to the first-person arms; the rest of the jacket stays on the body.
     const groups: { arms: boolean; tris: number[] }[] = [{ arms: false, tris: [] }, { arms: true, tris: [] }];
     for (let t = 0; t < index.length; t += 3) {

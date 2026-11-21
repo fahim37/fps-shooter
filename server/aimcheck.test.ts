@@ -32,7 +32,7 @@ function fixture() {
   const room = Object.assign(Object.create(MatchRoom.prototype), {
     state: Object.assign(new MatchState(), { phase: "live", mode: "tdm" }), world, map: FIELD,
     players: new Map([["a", shooter], ["b", target]]), broadcast: vi.fn(),
-    claimStats: { taken: 0, refused: 0, headTaken: 0, headRefused: 0 }, moveStats: { speed: 0, wall: 0, height: 0, hover: 0, aim: 0 },
+    claimStats: { taken: 0, refused: 0, headTaken: 0, headRefused: 0 }, claimsByGun: {}, moveStats: { speed: 0, wall: 0, height: 0, hover: 0, aim: 0 },
   }) as MatchRoom;
   const hits = vi.spyOn(room, "damage").mockReturnValue(false);
   return { room, shooter, target, hits };

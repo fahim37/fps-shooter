@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { WeaponId } from "../../shared/weapons";
+import type { MeleeId, WeaponId } from "../../shared/weapons";
 import { MAX_SHIELD, type GameMode } from "../../shared/constants";
 import type { MapPlayer, Threat } from "./minimap";
 import type { SquadMember } from "./squad";
@@ -52,6 +52,7 @@ export interface HudState {
   regenerating: boolean;
   weapon: WeaponId;
   primary: WeaponId;
+  melee: MeleeId;
   mag: number;
   reserve: number;
   grenades: number;
@@ -73,7 +74,7 @@ export interface HudState {
   killerMarker: { x: number; y: number } | null;
   protectedUntil: number;
 
-  hitmarker: { at: number; head: boolean; kill: boolean; confirmed: boolean; damage: number };
+  hitmarker: { blade?: boolean; at: number; head: boolean; kill: boolean; confirmed: boolean; damage: number };
   /** Directions you were recently hit from (no attacker positions). */
   threats: Threat[];
   hurtAt: number;
@@ -105,7 +106,7 @@ export interface HudState {
   squad: SquadMember[];
   /** Latched peek side for the touch buttons: -1, 0 or 1. */
   peek: number;
-  /** Emote picker open (T), and the emote playing. */
+  /** Emote picker open, and the emote playing. */
   emoteMenu: boolean;
   emote: string | null;
 
@@ -139,6 +140,7 @@ export const useHud = create<HudState>((set, get) => ({
   regenerating: false,
   weapon: "ar",
   primary: "ar",
+  melee: "knife",
   mag: 0,
   reserve: 0,
   grenades: 0,

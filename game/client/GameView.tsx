@@ -128,7 +128,7 @@ function MatchHud({ game, map, onLeave, setScreenMessage }: { setScreenMessage: 
         {!h.loadoutOpen && !h.customizingControls && <DashHud h={h} now={now} game={game} />}
         {!clearView && h.ads > 0.1 && !h.scoped && <div className="ads-vignette" style={{ opacity: h.ads * 0.45 }} />}
         {h.emote ? <EmoteHint emote={h.emote} /> : h.scoped ? <ScopeSight optic={optic} enemy={h.enemyInSight} ads={h.ads} zoom={Math.tan(baseFov * Math.PI / 360) / Math.tan(h.cameraFov * Math.PI / 360)} /> : h.ads > 0.3 && optic === "red-dot" ? <RedDotSight enemy={h.enemyInSight} ads={h.ads} /> : <div aria-label={h.enemyInSight ? "Enemy in sights" : "Crosshair"} className={`crosshair ${h.enemyInSight ? "enemy-sighted" : ""} ${h.ads > 0.5 ? "aiming" : ""}`} style={{ width: h.crosshairRadius * 2, height: h.crosshairRadius * 2 }}><i /><b /><em /><span /></div>}
-        {h.hitmarker.at > 0 && now - h.hitmarker.at < 200 && <div className={`hitmarker ${h.hitmarker.kill ? "kill" : h.hitmarker.head ? "head" : ""} ${h.hitmarker.confirmed ? "confirmed" : "predicted"}`}>×</div>}
+        {h.hitmarker.at > 0 && now - h.hitmarker.at < 200 && <div className={`hitmarker ${h.hitmarker.blade ? "blade" : ""} ${h.hitmarker.kill ? "kill" : h.hitmarker.head ? "head" : ""} ${h.hitmarker.confirmed ? "confirmed" : "predicted"}`}>×</div>}
         {h.hitmarker.confirmed && !h.hitmarker.kill && now - h.hitmarker.at < 650 && <div className={`hit-confirm ${h.hitmarker.head ? "head" : ""}`}>{h.hitmarker.damage} DAMAGE{h.hitmarker.head && " · HEADSHOT"}</div>}
         {h.hurtAt > 0 && now - h.hurtAt < 550 && <div className="hurt-vignette" />}
         <DamageIndicator now={now} />
@@ -146,7 +146,7 @@ function MatchHud({ game, map, onLeave, setScreenMessage }: { setScreenMessage: 
         </div>}
       </>}
       {h.announce && now - h.announce.at < 3000 && <div className="announcement"><h2>{h.announce.text}</h2><p>{h.announce.sub}</p></div>}
-      {h.alive && !h.touch && <div className="hud-bottom"><div className="hud-hints">WASD MOVE · Q / E PEEK · R RELOAD · HOLD X GRENADE<br />V CAMERA · T EMOTE · N / M VOICE · TAB SCORES · H HELP · ESC PAUSE</div><div className="ammo"><small>{WEAPONS[h.weapon].name} · {h.thirdPerson ? "TPP" : "FPP"}</small><strong>{h.mag}<span> / {h.reserve}</span></strong><small>{h.reloading >= 0 ? `RELOADING ${Math.round(h.reloading * 100)}%` : `${h.grenades} GRENADES`}</small></div></div>}
+      {h.alive && !h.touch && <div className="hud-bottom"><div className="hud-hints">WASD MOVE · Q / E PEEK · R RELOAD · HOLD X GRENADE · 3 BLADE<br />V CAMERA · T INSPECT BLADE · N / M VOICE · TAB SCORES · H HELP · ESC PAUSE</div><div className="ammo"><small>{WEAPONS[h.weapon].name} · {h.thirdPerson ? "TPP" : "FPP"}</small><strong>{WEAPONS[h.weapon].melee ? <span>RMB HEAVY · T INSPECT</span> : <>{h.mag}<span> / {h.reserve}</span></>}</strong><small>{h.reloading >= 0 ? `RELOADING ${Math.round(h.reloading * 100)}%` : `${h.grenades} GRENADES`}</small></div></div>}
       {h.ready && h.alive && !paused && !scoreboard && !h.loadoutOpen && !h.customizingControls && <HealthBar h={h} now={now} />}
       {!h.alive && h.ready && !scoreboard && !paused && !h.loadoutOpen && <DeathRecap h={h} now={now} />}
     </div>

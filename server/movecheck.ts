@@ -1,4 +1,5 @@
 import { GRAVITY, JUMP_VELOCITY, SPRINT_SPEED } from "../game/shared/constants";
+import { FASTEST_MOVE } from "../game/shared/weapons";
 
 type V3 = [number, number, number];
 
@@ -6,10 +7,11 @@ type V3 = [number, number, number];
 export type MoveCast = (origin: V3, dir: V3, maxDist: number) => number | null;
 
 /**
- * Sustained ground speed a client may report (m/s): a sprint with the lightest gun (x1.05), and
- * slack for air control and frame-paced poses. A dash spends its own allowance on top.
+ * Sustained ground speed a client may report (m/s): a sprint with the fastest weapon in hand (a
+ * blade, FASTEST_MOVE), with the slack over it the lightest gun (x1.05) always had (x1.25 over a
+ * bare sprint), for air control and frame-paced poses. A dash spends its own allowance on top.
  */
-export const MOVE_RATE = SPRINT_SPEED * 1.25;
+export const MOVE_RATE = SPRINT_SPEED * FASTEST_MOVE * (1.25 / 1.05);
 /**
  * The most unspent allowance kept (s of MOVE_RATE). Poses delayed by a network stall arrive
  * together; they still covered the time they were sent in, so a second of travel is honoured.

@@ -25,7 +25,7 @@ const SKILL = [
   { reactionMs: 230, aimErrorDeg: 1.2, turnRate: 9, fireAngleDeg: 3, burstMs: 1200, viewDist: 80, dashGapMs: 8000 },
 ];
 
-const PREFERRED_RANGE: Record<WeaponId, number> = { shotgun: 5, smg: 11, ar: 18, sniper: 32, pistol: 12 };
+const PREFERRED_RANGE: Record<WeaponId, number> = { shotgun: 5, smg: 11, ar: 18, sniper: 32, pistol: 12, knife: 1.5, katana: 2 };
 
 /**
  * Server-side bot: perceives enemies with line-of-sight checks, navigates the navmesh, and

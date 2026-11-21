@@ -1,7 +1,7 @@
 import { WEAPONS, roundSeats, type WeaponId } from "../../shared/weapons";
 import type { MapId } from "../../shared/map/types";
 import { assetUrl } from "../assets/url";
-import { SHOTGUN_RELOAD_CUES, cycleStrokes } from "../player/handling";
+import { SHOTGUN_RELOAD_CUES, cycleStrokes, cutContact, swingSeconds, type BladeCue } from "../player/handling";
 
 type V3 = { x: number; y: number; z: number };
 
@@ -82,6 +82,9 @@ const SHOTS: Record<WeaponId, ShotVoice> = {
   // An anti-materiel round: the heaviest crack, and a blast rolling off long after it.
   sniper: { crack: 1.3, body: 1.3, thump: 1.6, pitch: 0.75, length: 0.38, tail: 1.2, boom: 1 },
   pistol: { crack: 1, body: 1.15, thump: 1.2, pitch: 0.8, length: 0.2, tail: 0.85, boom: 0.45 },
+  // Blades are never shot: they swing (see `swing`). Kept only so every weapon has a voice.
+  knife: { crack: 0, body: 0, thump: 0, pitch: 1, length: 0.05, tail: 0 },
+  katana: { crack: 0, body: 0, thump: 0, pitch: 1, length: 0.05, tail: 0 },
 };
 
 /**
@@ -518,6 +521,54 @@ export class AudioEngine {
     this.clack(out, t + durationS * 0.635, [950, 0.17, 150]);
     this.clack(out, t + durationS * 0.83, [2600, 0.12, 300]);
     this.clack(out, t + durationS * 0.862, [1800, 0.17, 240]);
+  }
+
+  /**
+   * A blade cutting the air: a quick swish rising through the band, longer and deeper for the
+   * katana, with the faint ring of its edge. Without `pos` it is your own.
+   */
+  swing(weapon: WeaponId, pos?: V3, swing = 0, heavy = false) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const route = this.spatial(pos, 0.45);
+    if (!route) return;
+    const [out] = route;
+    const katana = weapon === "katana", vary = (heavy ? 0.76 : 0.9) + Math.random() * 0.2;
+    const t = ctx.currentTime + Math.max(0, cutContact(weapon, swing, heavy) - 0.17) * swingSeconds(weapon, heavy);
+    this.whoosh(out, t, katana ? 0.3 : 0.17, (katana ? 650 : 1300) * vary, (katana ? 2600 : 4400) * vary, katana ? 1.5 : 2.2, katana ? 0.55 : 0.4);
+    if (katana) this.blip(out, "sine", 2300 * vary, t + 0.05, 0.018, 0.05, 0.25, 3000 * vary);
+  }
+
+  /** A blade landing: a chop through cloth, and under a backstab a heavier, deeper blow. */
+  slash(backstab: boolean, pos?: V3) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const route = this.spatial(pos, 0.3);
+    if (!route) return;
+    const [out] = route;
+    const t = ctx.currentTime + 0.02, vary = 0.9 + Math.random() * 0.2;
+    this.burst(out, "bandpass", 1500 * vary, 0.9, t, 0.55, 0.002, 0.07);
+    this.burst(out, "lowpass", 360 * vary, 0.7, t, backstab ? 1.5 : 0.8, 0.003, backstab ? 0.2 : 0.11);
+    this.blip(out, "sine", backstab ? 105 : 145, t, 0.003, 0.085, 0.23, 62);
+    this.burst(out, "highpass", 5200, 0.6, t, 0.22, 0.001, 0.03);
+  }
+
+  bladeCue(cue: BladeCue) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const out = this.spatial(undefined, 0.4)![0], t = ctx.currentTime;
+    if (cue === "air") this.whoosh(out, t, 0.18, 1700, 4900, 1.4, 0.18);
+    else this.clack(out, t, cue === "latch" ? [4200, 0.16, 700] : [3200, 0.11, 550]);
+  }
+
+  /** A blade comes to hand: the balisong's latch clicks as it flicks open; the katana leaves its scabbard. */
+  bladeDraw(weapon: WeaponId) {
+    const ctx = this.ctx;
+    if (!ctx || weapon !== "katana") return;
+    const t = ctx.currentTime;
+    const out = this.spatial(undefined, 0.5)![0];
+    this.whoosh(out, t, 0.32, 2500, 5200, 3, 0.16);
+    this.clack(out, t + 0.33, [3400, 0.08, 500]);
   }
 
   /** One gun put away and the other brought up: cloth and sling, then the hands closing on it. */

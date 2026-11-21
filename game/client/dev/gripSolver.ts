@@ -56,6 +56,8 @@ interface HandGrip {
   search?: Partial<Fit>;
   /** What the hand closes on: the gun's mesh, only `part` (a hand that is off the gun), or both (a round held at the gun). */
   against?: "gun" | "part" | "both";
+  /** A pinch leaves the last three fingers loose. */
+  pinch?: boolean;
   frame?: HandFrame;
 }
 
@@ -273,6 +275,63 @@ const GRIPS: Record<WeaponId, { right: Partial<Record<RightPose, HandGrip>> & { 
       },
     },
   },
+  // Blades are held in a fist round a handle running along the weapon (blade toward -Z, edge
+  // down), as the shotgun's stock wrist is: palm on the right flat, fingers wrapped under the
+  // edge side and up the far flat, thumb over the spine side. No trigger: every finger wraps.
+  knife: {
+    right: {
+      pinch: {
+        part: { center: [0, 0.009, -0.018], half: [0.006, 0.009, 0.045], round: 0.004 },
+        palm: [0.019, 0.012, -0.015], facing: [-1, 0, 0],
+        thumbSide: [0, 0.25, -1], thumb: [-0.65, 0.25, -1],
+        press: 0.003, pinch: true,
+      },
+      // The balisong's two handles together: 12 mm across, 38 mm deep, 150 mm long.
+      grip: {
+        part: { center: [0, 0, 0.005], half: [0.0062, 0.019, 0.075], round: 0.004 },
+        palm: [0.022, 0, 0.012],
+        facing: [-1, 0, 0],
+        thumbSide: [0, 0.2, -1],
+        thumb: [-0.5, 0.45, -1],
+        press: 0.006,
+      },
+    },
+    left: {
+      // One-handed: as the revolver's, only where the free arm hangs from (see BELT in handling.ts).
+      support: {
+        part: { center: [0.004, -0.012, -0.004], half: [0.032, 0.036, 0.03], round: 0.015, pitch: -0.42 },
+        palm: [-0.046, -0.018, 0.006],
+        facing: [1, 0.15, 0],
+        thumbSide: [0, 0.55, -1],
+        thumb: [-0.1, 0.3, -1],
+        against: "part",
+      },
+    },
+  },
+  katana: {
+    right: {
+      // Just behind the guard; the wrapped handle is about 41 x 46 mm and rises a little toward the pommel.
+      grip: {
+        part: { center: [-0.001, 0.002, 0.005], half: [0.0205, 0.023, 0.05], round: 0.012 },
+        palm: [0.034, 0.003, 0.012],
+        facing: [-1, 0, 0],
+        thumbSide: [0, 0.2, -1],
+        thumb: [-0.5, 0.45, -1],
+        press: 0.004,
+      },
+    },
+    left: {
+      // The other fist, a hand's width back toward the pommel, from the left: thumb over to the right.
+      support: {
+        part: { center: [-0.003, 0.01, 0.16], half: [0.019, 0.023, 0.05], round: 0.012 },
+        palm: [-0.036, 0.011, 0.166],
+        facing: [1, 0, 0],
+        thumbSide: [0, 0.2, -1],
+        thumb: [0.5, 0.45, -1],
+        press: 0.004,
+      },
+    },
+  },
 };
 
 const FINGERS = ["index", "middle", "ring", "pinky"] as const;
@@ -322,12 +381,12 @@ const DIRECTIONS = (() => {
 })();
 
 /** The gun as the player sees it up close, everything seated, as one triangle soup in weapon space. */
-function gunSurface(templates: WeaponTemplates, weapon: WeaponId) {
+function gunSurface(templates: WeaponTemplates, weapon: WeaponId, part?: string) {
   const gun = cloneWeapon(templates, weapon, true);
   gun.updateMatrixWorld(true);
   const positions: number[] = [];
   const v = new THREE.Vector3();
-  gun.traverse((o) => {
+  (part ? gun.getObjectByName(part)! : gun).traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
     // The rifle's rail scope is only there with a magnified optic; hands are fitted to the bare gun.
@@ -544,6 +603,7 @@ export function solveGrips(template: CharacterTemplate, templates: WeaponTemplat
   inst.root.updateMatrixWorld(true);
   const spec = GRIPS[weapon];
   const gun = cached(gunField(gunSurface(templates, weapon)));
+  const handle = weapon === "knife" ? cached(gunField(gunSurface(templates, weapon, "safe"))) : gun;
   const fingers = { r: [] as string[], l: [] as string[] };
   const report: Record<string, HandReport> = {};
 
@@ -577,7 +637,7 @@ export function solveGrips(template: CharacterTemplate, templates: WeaponTemplat
     for (const name of Object.keys(grips) as K[]) {
       const g = grips[name];
       const part = partField(g.part);
-      const field: Field = g.against === "part" ? part : g.against === "both" ? (p) => Math.min(gun(p), part(p)) : gun;
+      const field: Field = g.against === "part" ? part : g.against === "both" ? (p) => Math.min(gun(p), part(p)) : g.pinch ? handle : gun;
       // Hand frame: +Y along the fingers, +Z toward the thumb, palm facing -X (right) / +X (left).
       const facing = new THREE.Vector3(...g.facing).normalize();
       _x.copy(facing).multiplyScalar(side === "r" ? -1 : 1);
@@ -621,6 +681,7 @@ export function solveGrips(template: CharacterTemplate, templates: WeaponTemplat
           else if (chain.thumb) { aimThumb(chain.bones, thumbDir, g.part); pressThumb(chain, thumbDir, g.part, field, thorough, g.press, g.thumbAside); }
           else if (chain.trigger && g.triggerAt) triggerMiss = reachTrigger(chain, new THREE.Vector3(...g.triggerAt));
           else if (chain.trigger && g.trigger) g.trigger.forEach((angle, j) => curl(chain.bones[j], angle));
+          else if (g.pinch && !chain.trigger) closeFinger(chain, field, [0.42, 0.55, 0.36]);
           else closeFinger(chain, field);
         }
       };

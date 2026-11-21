@@ -14,7 +14,7 @@ export function EmoteMenu({ game, touch }: { game: Game; touch: boolean }) {
     game.input.press(code);
   };
   return <div className={styles.menu} role="menu" aria-label="Emotes">
-    <span className={styles.title}>EMOTE<small>{touch ? "TAP ONE" : "PRESS 1–4 · T CLOSES"}</small></span>
+    <span className={styles.title}>EMOTE<small>{touch ? "TAP ONE" : "PRESS 1–4"}</small></span>
     {EMOTES.map((emote, i) => <button type="button" role="menuitem" key={emote.id} onPointerDown={tap(`Emote${i + 1}`)}>
       <kbd>{i + 1}</kbd>{emote.label}
     </button>)}

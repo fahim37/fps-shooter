@@ -1,15 +1,16 @@
 import * as THREE from "three";
 import { instantiateCharacter, type CharacterTemplate, type CharacterInstance, type ClipName } from "../assets/characters";
 import { cloneWeapon, createShell, SHELL_SEATS, WEAPON_META, WEAPON_PARTS, type WeaponTemplates } from "../assets/weapons";
-import type { WeaponId } from "../../shared/weapons";
+import { WEAPONS, type WeaponId } from "../../shared/weapons";
 import { solveTwoBone, setBoneWorldQuaternion, rotateBoneWorld } from "./ik";
 import { LEAN_ANGLE } from "../../shared/lean";
 import { SLIDE_LEG_YAW } from "../../shared/hitboxes";
 import { DEFAULT_OPTICS, OPTICS, type OpticId } from "../../shared/optics";
 import { createIronSights, createReflexSight } from "./ReflexSight";
 import { gripPose, type GripPose, type HandPose } from "./grip";
-import { createHandling, cycleStrokes, sampleHandling, type HandBlend, type HandKey } from "./handling";
+import { createHandling, cutContact, swingSeconds, cycleStrokes, sampleHandling, type HandBlend, type HandKey } from "./handling";
 import type { QuickScope } from "./quickScope";
+import { BladeTrail } from "./BladeTrail";
 import { Recoil } from "./recoil";
 
 export type RigMode = "fpp" | "tpp";
@@ -55,6 +56,12 @@ export interface RigState {
   /** Seconds since the last shot (the gun's kick, pump / bolt cycling) and since the gun was drawn. */
   sinceShot?: number;
   sinceDraw?: number;
+  /** Blades: attacks so far (which swing plays: they alternate) and seconds since an inspect began (-1: none). */
+  swing?: number;
+  trick?: number;
+  heavy?: boolean;
+  bladeTrail?: boolean;
+  sinceInspect?: number;
   /** Full-body emote to play instead of holding the gun. */
   emote?: ClipName | null;
 }
@@ -204,6 +211,9 @@ interface WeaponParts {
   scope?: THREE.Object3D;
   cylinder?: THREE.Object3D;
   hammer?: THREE.Object3D;
+  /** The balisong's two handles. */
+  safe?: THREE.Object3D;
+  bite?: THREE.Object3D;
 }
 
 export class CharacterRig {
@@ -229,6 +239,7 @@ export class CharacterRig {
   private lastSinceShot = Infinity;
   /** A spent case left the gun this update: on the shot, or as a pump or bolt gun's action opens. */
   ejected = false;
+  private trail?: BladeTrail;
   private gunPivot = new THREE.Object3D();
   private guns = new Map<WeaponId, THREE.Object3D>();
   private parts = new Map<WeaponId, WeaponParts>();
@@ -307,18 +318,22 @@ export class CharacterRig {
   setWeapon(id: WeaponId) {
     if (this.weapon === id) return;
     this.weapon = id;
+    this.trail?.reset();
     for (const g of this.guns.values()) g.visible = false;
     let g = this.guns.get(id);
     if (!g) {
       g = cloneWeapon(this.weaponTemplates, id, this.near);
-      const sight = createReflexSight(id);
-      g.add(sight.object);
-      this.sights.set(id, sight);
+      if (!WEAPONS[id].melee) {
+        const sight = createReflexSight(id);
+        g.add(sight.object);
+        this.sights.set(id, sight);
+      }
       if (id === "ar") {
         this.irons = createIronSights();
         g.add(this.irons.object);
       }
-      const parts: WeaponParts = { mag: g.getObjectByName("mag"), pump: g.getObjectByName("pump"), bolt: g.getObjectByName("bolt"), cylinder: g.getObjectByName("cylinder"), hammer: g.getObjectByName("hammer"), scope: g.getObjectByName("scope") };
+      const parts: WeaponParts = { mag: g.getObjectByName("mag"), pump: g.getObjectByName("pump"), bolt: g.getObjectByName("bolt"), cylinder: g.getObjectByName("cylinder"), hammer: g.getObjectByName("hammer"), scope: g.getObjectByName("scope"),
+        safe: g.getObjectByName("safe"), bite: g.getObjectByName("bite") };
       const seat = SHELL_SEATS[id];
       if (seat) {
         parts.shell = createShell(id === "pistol");
@@ -340,10 +355,13 @@ export class CharacterRig {
 
   setVisible(v: boolean) {
     this.object.visible = v;
+    if (!v) this.trail?.reset();
   }
 
   /** Detaches from the scene. Animation state is kept, so a rig can be re-added. Sight geometry is shared. */
   dispose() {
+    this.trail?.dispose();
+    this.trail = undefined;
     this.object.removeFromParent();
   }
 
@@ -351,6 +369,7 @@ export class CharacterRig {
     // AnimationMixer only writes a property when its sampled value changes. Restore the
     // animation-only pose first, or our IK / torso edits accumulate on held keyframes.
     for (const pose of this.animationPose) pose.bone.quaternion.copy(pose.quaternion);
+    if (!s.alive || s.emote) this.trail?.reset();
     if (!s.alive) {
       if (!this.dead) {
         this.dead = true;
@@ -385,10 +404,11 @@ export class CharacterRig {
       return;
     }
     const sinceShot = s.sinceShot ?? -1;
+    const blade = !!this.weapon && !!WEAPONS[this.weapon].melee;
     const fired = !!this.weapon && sinceShot >= 0 && sinceShot < KICK_WITHIN && sinceShot < this.lastSinceShot - 1e-4;
-    if (fired) this.kick.kick(this.weapon!);
+    if (fired && !blade) this.kick.kick(this.weapon!);
     const opens = this.weapon && this.weapon !== "pistol" ? cycleStrokes(this.weapon)?.[0] : undefined;
-    this.ejected = !!this.weapon && this.weapon !== "pistol" && (opens === undefined ? fired
+    this.ejected = !!this.weapon && this.weapon !== "pistol" && !blade && (opens === undefined ? fired
       : sinceShot >= opens && (this.lastSinceShot < opens || fired) && sinceShot < opens + KICK_WITHIN);
     this.lastSinceShot = sinceShot;
     this.kick.update(dt);
@@ -402,7 +422,7 @@ export class CharacterRig {
     // Long guns are shot bladed: the chest turns right so the support arm can reach the
     // handguard with a bent elbow, and the head turns back onto the aim. Moving with the gun
     // lowered, the shoulders square up to the run.
-    const stance = this.weapon && this.weapon !== "pistol" ? RIFLE_STANCE * (1 - Math.max(this.carry, this.follow)) : 0;
+    const stance = this.weapon && this.weapon !== "pistol" && this.weapon !== "knife" ? (this.weapon === "katana" ? RIFLE_STANCE * 0.32 : RIFLE_STANCE) * (1 - Math.max(this.carry, this.follow)) : 0;
     this.stance += (stance - this.stance) * Math.min(1, dt * 10);
     const legYaw = this.mode === "tpp" ? this.legYaw : 0;
     // Sprinting, the whole body turns to the run; otherwise the chest stays on the aim.
@@ -550,7 +570,9 @@ export class CharacterRig {
 
   private updateAimLayer(s: RigState) {
     // Pitch blends between the aim-down / neutral / aim-up poses.
-    const p = THREE.MathUtils.clamp(s.pitch / 1.1, -1, 1);
+    // First-person blade arms already inherit the full camera pitch.
+    const viewBlade = this.mode === "fpp" && this.weapon && WEAPONS[this.weapon].melee;
+    const p = viewBlade ? 0 : THREE.MathUtils.clamp(s.pitch / 1.1, -1, 1);
     const up = Math.max(0, p), down = Math.max(0, -p);
     this.aim.u.setEffectiveWeight(up);
     this.aim.d.setEffectiveWeight(down);
@@ -561,29 +583,32 @@ export class CharacterRig {
     const w = this.weapon;
     if (!w) return;
     const meta = WEAPON_META[w];
-    const pistol = w === "pistol";
-    const sight = this.sights.get(w)!;
+    // Held in one hand, as the revolver is: the knife too.
+    const pistol = w === "pistol" || w === "knife";
+    const sight = this.sights.get(w);
     const optic = s.optic ?? DEFAULT_OPTICS[w];
-    const reflex = optic === "red-dot";
-    sight.object.visible = reflex;
-    // Compact on the gun; only the aiming player needs the full window, as the sight comes up to the eye.
-    sight.object.scale.setScalar(this.mode === "fpp" ? THREE.MathUtils.lerp(SIGHT_ON_GUN, 1, THREE.MathUtils.smoothstep(s.ads, 0.3, 1)) : SIGHT_ON_GUN);
+    const reflex = optic === "red-dot" && !!sight;
+    if (sight) {
+      sight.object.visible = reflex;
+      // Compact on the gun; only the aiming player needs the full window, as the sight comes up to the eye.
+      sight.object.scale.setScalar(this.mode === "fpp" ? THREE.MathUtils.lerp(SIGHT_ON_GUN, 1, THREE.MathUtils.smoothstep(s.ads, 0.3, 1)) : SIGHT_ON_GUN);
+    }
     const irons = w === "ar" ? this.irons : null;
     if (irons) irons.object.visible = optic === "iron";
     const scope = this.parts.get(w)?.scope;
     const scoped = !!scope && OPTICS[optic].zoom > 1;
     if (scope) scope.visible = scoped;
-    const h = sampleHandling(w, s.reload, s.sinceShot ?? -1, s.sinceDraw ?? -1, this.handling);
+    const h = sampleHandling(w, s.reload, s.sinceShot ?? -1, s.sinceDraw ?? -1, this.handling, s);
     const [hx, hy, hz, hPitch, hYaw, hRoll] = h.gun;
     // A reload is held up in view even on the run: the sprint pose would carry it off the screen.
     const reloading = THREE.MathUtils.smoothstep(s.reload, 0, 0.1) * (1 - THREE.MathUtils.smoothstep(s.reload, 0.9, 1));
-    const sprint = s.sprint * (1 - s.ads) * (1 - reloading);
+    const sprint = s.sprint * (1 - s.ads) * (1 - reloading) * (WEAPONS[w].melee ? 0.28 : 1);
     const slide = (s.slide ?? 0) * (1 - s.ads) * (1 - reloading);
 
     if (this.mode === "fpp" && s.eye && s.view) {
       // View-space placement: hip at the lower right, ADS lines the sights up with the eye.
       // Eye just above the top of the receiver / rear sight.
-      const sightY = reflex ? sight.height : scoped ? AR_SCOPE_AXIS : irons ? irons.height : pistol ? meta.max[1] + REVOLVER_HOLD : w === "sniper" ? SNIPER_SCOPE_AXIS : meta.max[1] + 0.004;
+      const sightY = reflex && sight ? sight.height : scoped ? AR_SCOPE_AXIS : irons ? irons.height : pistol ? meta.max[1] + REVOLVER_HOLD : w === "sniper" ? SNIPER_SCOPE_AXIS : meta.max[1] + 0.004;
       const hip = pistol ? _v.set(0.13, -0.21, -0.4) : _v.set(0.15, -0.25, -0.3);
       // Keep the stock end just in front of the eye; the pistol is held out at arm's length, small enough
       // on screen not to hide a target.
@@ -603,6 +628,17 @@ export class CharacterRig {
       _q.copy(s.view).multiply(_q2.setFromEuler(_e));
       this.gunPivot.position.copy(s.eye).add(hip.applyQuaternion(s.view));
       this.gunPivot.quaternion.copy(_q);
+    } else if (WEAPONS[w].melee) {
+      const yaw = s.yaw + this.legYaw * this.follow;
+      const knife = w === "knife";
+      const chest = _v.setFromMatrixPosition(this.inst.bones.get("spine_03")!.matrixWorld);
+      this.gunPivot.position.copy(chest).add(_v2.set(
+        (knife ? 0.225 + hx : 0.085 + hx * 0.7), (knife ? 0.025 : 0.075) + hy,
+        (knife ? -0.23 + hz : -0.21 + hz * 0.52)).applyAxisAngle(UP, yaw));
+      this.gunPivot.quaternion.setFromEuler(_e.set(
+        s.pitch * 0.8 + hPitch - sprint * 0.22, yaw + hYaw + sprint * 0.24,
+        hRoll - (s.lean ?? 0) * LEAN_ANGLE, "YXZ"));
+      if (!knife) this.clearTorso(meta.max[2], yaw);
     } else {
       // Stock in the right shoulder, pointing along the aim (or, sprinting, along the run).
       const run = this.mode === "tpp" ? this.follow : sprint;
@@ -635,8 +671,17 @@ export class CharacterRig {
     }
     this.placeParts();
     this.gunPivot.updateMatrixWorld(true);
-    this.muzzle.set(...meta.muzzle).applyMatrix4(this.gunPivot.matrixWorld);
-    this.muzzleDir.set(0, 0, -1).applyQuaternion(this.gunPivot.quaternion);
+    const weaponWorld = this.guns.get(w)!.matrixWorld;
+    this.muzzle.set(...meta.muzzle).applyMatrix4(weaponWorld);
+    const age = s.sinceShot ?? -1;
+    if (w === "katana" && s.bladeTrail && age >= 0 && age < swingSeconds(w, !!s.heavy)) {
+      const phase = age / swingSeconds(w, !!s.heavy) - cutContact(w, s.swing ?? 0, !!s.heavy);
+      if (phase >= -0.17 && phase < 0.18) {
+        if (!this.trail) this.trail = new BladeTrail(this.object);
+        this.trail.update(this.gunPivot.position, this.muzzle, age, this.mode === "fpp" ? s : undefined);
+      } else this.trail?.reset();
+    } else this.trail?.reset();
+    this.muzzleDir.set(0, 0, -1).transformDirection(weaponWorld);
   }
 
   /**
@@ -689,6 +734,31 @@ export class CharacterRig {
     }
     if (parts.cylinder) parts.cylinder.rotation.z = -h.cylinder * Math.PI / 3;
     if (parts.hammer) parts.hammer.rotation.x = (1 - h.hammer) * COCK_ANGLE;
+    // Balisong handles turn about their pins, from open in the hand toward folded shut.
+    for (const name of ["safe", "bite"] as const) {
+      const part = parts[name], hinge = spec?.[name];
+      if (part && hinge) part.quaternion.setFromAxisAngle(_v.set(...hinge.axis), h[name] * (hinge.closed ?? 0));
+    }
+    if (w === "knife") {
+      const knife = this.guns.get(w)!;
+      const safe = spec!.safe!;
+      // Work in the held handle's rest frame. Folding that handle rotates
+      // the blade around its pin while the contact in the glove stays put.
+      const pin = _ta.set(...safe.pivot);
+      // Centreline of the safe handle below the baked index and thumb pads.
+      const contact = _tb.set(0, -0.01, -0.054);
+      const flight = h.flight;
+      const spin = _qa.setFromEuler(_e.set(h.spin[3] + flight * 2 * Math.PI, h.spin[4], h.spin[5], "YXZ"));
+      const unfold = _qb.setFromAxisAngle(_v.set(...safe.axis), -h.safe * safe.closed!);
+      knife.position.copy(pin).multiplyScalar(-1).applyQuaternion(unfold).add(pin)
+        .sub(contact).applyQuaternion(spin).add(contact);
+      knife.quaternion.copy(spin).multiply(unfold);
+      if (flight > 0 && flight < 1) {
+        // Offset in view/world vertical so the airborne arc stays upright as the wrist banks.
+        const height = 4 * flight * (1 - flight);
+        knife.position.add(_v.set(0, 0.23 * height, 0).applyQuaternion(_q.copy(this.gunPivot.quaternion).invert()));
+      }
+    }
     if (parts.shell) {
       parts.shell.visible = h.shellHeld;
       parts.shell.quaternion.identity();
@@ -710,11 +780,17 @@ export class CharacterRig {
     this.placeHand("r", this.grenadeHand(this.handTarget(h.right, grip.right, bodyLeft), this.state?.grenade), _pole, comfort);
     // The support elbow hangs down and a little out, so the forearm meets the handguard on a
     // diagonal and the wrist turns under it instead of continuing the forearm's line.
-    _pole.setFromMatrixPosition(b("upperarm_l").matrixWorld).addScaledVector(bodyLeft, w === "pistol" ? 0.06 : SUPPORT_ELBOW_OUT).addScaledVector(DOWN, 0.75);
+    _pole.setFromMatrixPosition(b("upperarm_l").matrixWorld).addScaledVector(bodyLeft, w === "pistol" || w === "knife" ? 0.06 : SUPPORT_ELBOW_OUT).addScaledVector(DOWN, 0.75);
     this.placeHand("l", this.grenadeHand(this.handTarget(h.left, grip.left, bodyLeft), this.state?.grenade?.left), _pole, comfort);
 
     // Fingers are written absolutely each frame, so held clips cannot accumulate them.
     this.poseFingers(this.fingers.r, h.right, grip.right);
+    if (h.release > 0) {
+      for (const name of GRENADE_CURLED) {
+        const angle = name.startsWith("index") ? -0.92 : -0.32;
+        this.inst.bones.get(name)?.quaternion.multiply(_q.setFromAxisAngle(_unitX, angle * h.release));
+      }
+    }
     // The trigger finger squeezes as each shot breaks, and lets off after it.
     if (this.kick.trigger > 1e-3 && h.right.a.pose === "grip" && (h.right.k === 0 || h.right.b.pose === "grip")) {
       this.inst.bones.get("index_02_r")?.quaternion.multiply(_q.setFromAxisAngle(_unitX, this.kick.trigger * TRIGGER_PULL));
@@ -766,7 +842,9 @@ export class CharacterRig {
     _m.multiply(pose.matrix);
     _m.decompose(pos, quat, _scale);
     if (key.belt) {
-      const fwd = _v.set(0, 0, -1).applyQuaternion(this.gunPivot.quaternion).setY(0).normalize();
+      const fwd = this.weapon === "knife" ? _v.set(0, 0, 1).applyQuaternion(this.body.quaternion)
+        : _v.set(0, 0, -1).applyQuaternion(this.gunPivot.quaternion);
+      fwd.setY(0).normalize();
       pos.setFromMatrixPosition(this.inst.bones.get("upperarm_l")!.matrixWorld).addScaledVector(DOWN, BELT_DROP).addScaledVector(bodyLeft, BELT_OUT).addScaledVector(fwd, BELT_AHEAD);
       quat.setFromRotationMatrix(_m2.lookAt(_v2.set(0, 0, 0), DOWN, fwd));
     }

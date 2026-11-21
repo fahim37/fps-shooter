@@ -2,7 +2,8 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { WeaponId } from "../../shared/weapons";
 
-const RECEIVER: Record<WeaponId, number> = { ar: 0.125, smg: 0.1105, shotgun: 0.057, sniper: 0.105, pistol: 0.108 };
+/** Blades carry no sight (the rig never makes one for them). */
+const RECEIVER: Record<WeaponId, number> = { ar: 0.125, smg: 0.1105, shotgun: 0.057, sniper: 0.105, pistol: 0.108, knife: 0, katana: 0 };
 /** Where the sight sits, when not the usual spot: ahead of the SMG's rear iron and the revolver's cocked hammer. */
 const MOUNT: Partial<Record<WeaponId, number>> = { pistol: -0.106, smg: -0.085 };
 const steel = new THREE.MeshStandardMaterial({ color: "#202527", roughness: 0.52, metalness: 0.75 });

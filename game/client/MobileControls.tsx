@@ -2,6 +2,7 @@
 
 import { memo, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from "react";
 import type { Game } from "./core/game";
+import { isMelee } from "../shared/weapons";
 import { hud, useHud } from "./core/hud";
 import { THREE_FINGER_CLAW, useMobileLayout, type MobileControlId, type MobileOrientation } from "./mobileLayout";
 import { TouchGraphicsButton } from "./GraphicsControl";
@@ -18,6 +19,7 @@ export const MobileControls = memo(function MobileControls({ game, setScreenMess
   const scoreboard = useHud((s) => s.scoreboard);
   const editing = useHud((s) => s.customizingControls);
   const grenades = useHud((s) => s.grenades);
+  const blade = useHud((s) => isMelee(s.weapon));
   const peek = useHud((s) => s.peek);
   const emoteMenu = useHud((s) => s.emoteMenu);
   const layout = useMobileLayout();
@@ -302,12 +304,13 @@ export const MobileControls = memo(function MobileControls({ game, setScreenMess
       {button("fire", "Fire / aim", styles.rightFire, "fire", undefined, undefined, true, "rightFire")}
       {button("peekLeft", "Peek left", styles.peek, undefined, () => input.press("PeekLeft"), peek === -1, true)}
       {button("peekRight", "Peek right", styles.peek, undefined, () => input.press("PeekRight"), peek === 1, true)}
-      {button("ads", "Aim", styles.ads, "ads", undefined, scoped, true)}
+      {blade ? button("ads", "Heavy attack", styles.ads, undefined, () => input.press("HeavyAttack"), undefined, true)
+        : button("ads", "Aim", styles.ads, "ads", undefined, scoped, true)}
       {button("jump", "Jump", styles.jump, "jump")}
       {button("crouch", "Crouch", styles.crouch, undefined, () => { const down = !crouching; if (down) stopSprintLock(); setCrouching(down); input.setAction("crouch", down); if (down) { setSprinting(false); input.setAction("sprint", false); } }, crouching)}
       <div className={styles.utilities}>
         {button("grenade", "Grenade", styles.utility, "grenade", undefined, undefined, true)}
-        {button("reload", "Reload", styles.utility, undefined, () => input.press("KeyR"))}
+        {button("reload", blade ? "Inspect" : "Reload", styles.utility, undefined, () => input.press(blade ? "KeyT" : "KeyR"))}
       </div>
     </>}
     <div className={styles.toolbar} data-more="">

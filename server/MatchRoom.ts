@@ -6,7 +6,7 @@ import {
   GRENADES_PER_LIFE, FALL_DAMAGE_MIN_SPEED, MAX_PLAYERS, MODE_INFO, scoreLimitFor, matchMinutes, WARMUP_MS, END_SCREEN_MS, EYE_HEIGHT,
   CROUCH_EYE_HEIGHT, SLIDE_EYE_HEIGHT, SPRINT_SPEED, DASH_SPEED, DASH_SECONDS, DASH_KILLS, DASH_MAX, DASH_REFILL, ROOM_SIZES, SCORE_LIMITS, type GameMode,
 } from "../game/shared/constants";
-import { WEAPONS, PRIMARIES, GRENADE, damageAt, fireIntervalMs, reloadMs, reloadNeed, reloadedRounds, type WeaponId } from "../game/shared/weapons";
+import { WEAPONS, PRIMARIES, MELEES, GRENADE, damageAt, fireIntervalMs, isBackstab, isMelee, reloadMs, reloadNeed, reloadedRounds, type MeleeId, type WeaponId } from "../game/shared/weapons";
 import { GRENADE_STEP_HZ, blastDistance, createGrenadeBody, grenadeVelocity, impactSpeed } from "../game/shared/grenade";
 import { PoseHistory } from "../game/shared/lagcomp";
 import { MOVING_SPEED, rayVsPose, slideYaw, type HitPart, type Pose } from "../game/shared/hitboxes";
@@ -21,6 +21,7 @@ import { MoveGuard, type MoveCast } from "./movecheck";
 import {
   F_CROUCH, F_GROUNDED, F_MASK, F_SLIDE, type JoinOptions, type PoseMsg, type FireMsg, type GrenadeMsg, type GrenadeHitEvent, type LoadoutMsg, type ShotEvent,
   type HitConfirm, type DamagedEvent, type KillEvent, type SpawnEvent, type RoomMeta, type AmmoEvent, type LoadoutEvent, type SpotEvent,
+  type MeleeMsg, type SwingEvent,
 } from "../game/shared/messages";
 import { createRoomWorld, RAPIER } from "./world";
 import { getMap, isMapId } from "../game/shared/map/maps";
@@ -49,6 +50,9 @@ export interface ServerPlayer {
   reloadNeed: number;
   reloadDone: number;
   lastFireAt: number;
+  lastSwingAt: number;
+  /** A heavy blow locks out both types, including after a loadout change. */
+  heavyUntil: number;
   shotSeq: number;
   grenades: number;
   /** When the grenade in hand had its pin pulled (its fuse is burning), or 0. */
@@ -114,6 +118,10 @@ const MAX_REPORTED_SPEED = DASH_SPEED * 1.1;
 const AIM_SLACK_DEG = 12;
 /** A third-person shot at something this close (m) can leave the view much further. */
 const CLOSE_SHOT = 4, CLOSE_AIM_DEG = 75;
+/** A blade's sweep is tested with this many rays across and this many rows up and down. */
+const MELEE_RAYS = 7, MELEE_ROWS = 3;
+/** How far (deg) a swing may leave from the view the swinger last reported: it goes where the crosshair is. */
+const MELEE_AIM_SLACK = 25;
 
 export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   state = new MatchState();
@@ -183,6 +191,10 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
         if (Number.isSafeInteger(m.shot) && m.shot! > 0) p.shotSeq = m.shot!;
         this.sendAmmo(p, m.weapon);
       }
+    });
+    this.onMessage("melee", (client, m: MeleeMsg) => {
+      const p = this.players.get(client.sessionId);
+      if (p && m) this.melee(p, m);
     });
     this.onMessage("reload", (client) => {
       const p = this.players.get(client.sessionId);
@@ -396,12 +408,17 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
    * A refusal rate above a few percent means CLAIM_SLACK is too tight for real latency.
    */
   private claimStats = { taken: 0, refused: 0, headTaken: 0, headRefused: 0 };
+  /** The same counts split by gun, to see whether one gun's claims are refused more than the rest. */
+  private claimsByGun: Partial<Record<WeaponId, { taken: number; refused: number; headTaken: number; headRefused: number }>> = {};
 
   private logClaims() {
     const s = this.claimStats;
     if (s.taken + s.refused === 0) return;
-    console.log(`[hits] room ${this.roomId}: ${s.taken} claimed hits taken, ${s.refused} refused (head ${s.headTaken} taken, ${s.headRefused} refused)`);
+    const guns = Object.entries(this.claimsByGun)
+      .map(([gun, g]) => `${gun} ${g.taken}/${g.refused} (head ${g.headTaken}/${g.headRefused})`).join(", ");
+    console.log(`[hits] room ${this.roomId}: ${s.taken} claimed hits taken, ${s.refused} refused (head ${s.headTaken} taken, ${s.headRefused} refused); taken/refused by gun: ${guns}`);
     this.claimStats = { taken: 0, refused: 0, headTaken: 0, headRefused: 0 };
+    this.claimsByGun = {};
     const m = this.moveStats;
     if (m.speed + m.wall + m.height + m.hover + m.aim > 0) {
       console.log(`[moves] room ${this.roomId}: poses put back for speed ${m.speed}, walls ${m.wall}, height ${m.height}, hovering ${m.hover}; ${m.aim} shots off the view`);
@@ -431,6 +448,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       reloadNeed: 0,
       reloadDone: 0,
       lastFireAt: 0,
+      lastSwingAt: 0, heavyUntil: 0,
       shotSeq: 0,
       grenades: GRENADES_PER_LIFE,
       cookingSince: 0,
@@ -658,7 +676,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     const crouch = (p.st.flags & F_CROUCH) ? 1 : 0;
     const allowed = clampLean(lean, p.st.x, p.st.y, p.st.z, p.st.yaw, crouch, (o, d, dist) => raycastWorld(RAPIER, this.world, o, d, dist)?.distance ?? null);
     p.st.lean = Math.round(allowed * 20) / 20;
-    if (m.weapon === p.st.primary || m.weapon === "pistol") {
+    if (m.weapon === p.st.primary || m.weapon === "pistol" || m.weapon === p.st.melee) {
       if (p.st.weapon !== m.weapon) this.cancelReload(p);
       p.st.weapon = m.weapon;
     }
@@ -700,23 +718,106 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
   // ---------------------------------------------------------------- combat
 
   changeLoadout(p: ServerPlayer, m: LoadoutMsg) {
-    if (!m || !PRIMARIES.includes(m.primary) || this.state.phase === "ended") return;
-    const changed = p.st.primary !== m.primary;
-    p.st.primary = m.primary;
-    if (changed && p.st.alive) {
-      this.cancelReload(p);
-      p.st.weapon = m.primary;
+    if (!m || this.state.phase === "ended") return;
+    const primary = m.primary !== undefined && PRIMARIES.includes(m.primary) ? m.primary : undefined;
+    const melee = m.melee !== undefined && MELEES.includes(m.melee) ? m.melee : undefined;
+    if (!primary && !melee) return;
+    if (melee && melee !== p.st.melee) {
+      // Holding the old blade, the new one comes straight to hand.
+      if (p.st.weapon === p.st.melee) p.st.weapon = melee;
+      p.st.melee = melee;
+    }
+    if (primary) {
+      const changed = p.st.primary !== primary;
+      p.st.primary = primary;
+      if (changed && p.st.alive) {
+        this.cancelReload(p);
+        p.st.weapon = primary;
+      }
     }
     // Keep each gun's ammunition for this life; swapping never refills a magazine.
-    const a = p.ammo[m.primary];
-    p.client?.send("loadout", { primary: m.primary, weapon: m.primary, ...a, shot: p.shotSeq } satisfies LoadoutEvent);
+    const gun = p.st.primary as WeaponId;
+    const a = p.ammo[gun];
+    p.client?.send("loadout", { primary: gun, melee: p.st.melee as MeleeId, weapon: gun, ...a, shot: p.shotSeq } satisfies LoadoutEvent);
+  }
+
+  /**
+   * A blade swung (see MeleeDef). Resolved at once, against the bodies as the swinger saw them: a
+   * fan of short rays across the aim, and the nearest body any of them meets (with no wall in
+   * between) is struck. From behind, it is a backstab.
+   */
+  melee(p: ServerPlayer, m: MeleeMsg) {
+    const t = now();
+    if (!isMelee(m.weapon) || m.weapon !== p.st.melee || !p.st.alive || this.state.phase === "ended" || this.state.phase === "waiting") return;
+    const def = WEAPONS[m.weapon], blade = def.melee!;
+    if (m.blow !== undefined && m.blow !== "heavy" && m.blow !== "light") return;
+    if (t < p.heavyUntil || t - p.lastSwingAt < fireIntervalMs(def) * 0.75) return;
+    const heavy = m.blow === "heavy";
+    if (!Array.isArray(m.origin) || !Array.isArray(m.dir) || !finite(...m.origin) || !finite(...m.dir)) return;
+    const eye = this.eyePos(p);
+    if (Math.hypot(m.origin[0] - eye[0], m.origin[1] - eye[1], m.origin[2] - eye[2]) > 2) return;
+    const len = Math.hypot(m.dir[0], m.dir[1], m.dir[2]);
+    if (len < 0.5) return;
+    const aim: V3 = [m.dir[0] / len, m.dir[1] / len, m.dir[2] / len];
+    const view = aimDir(p.st.yaw, p.st.pitch);
+    const emoting = p.st.emote !== "idle";
+    p.st.emote = "idle";
+    p.lastSwingAt = t;
+    if (heavy) p.heavyUntil = t + blade.heavy.intervalMs;
+    p.st.weapon = m.weapon;
+    p.st.shots = (p.st.shots + 1) & 0xff;
+    // Attacking reveals you: drop spawn protection.
+    p.st.protectedUntil = 0;
+    this.cancelReload(p);
+    // Off the reported view (beyond what a flick between poses explains), it swings at nothing.
+    const offView = !emoting && aim[0] * view[0] + aim[1] * view[1] + aim[2] * view[2] < Math.cos(MELEE_AIM_SLACK * Math.PI / 180);
+    if (offView) this.moveStats.aim++;
+
+    const viewTime = clamp(finite(m.viewTime) ? m.viewTime : t, t - MAX_REWIND_MS, t);
+    const poseOf = (o: ServerPlayer) => p.bot ? this.livePose(o) : o.history.sample(viewTime);
+    // The fan: across the arc, and up and down half of it, about the aim.
+    const yaw = Math.atan2(-aim[0], -aim[2]), pitch = Math.asin(clamp(aim[1], -1, 1));
+    let best: { target: ServerPlayer; part: HitPart; dist: number; rank: number; dir: V3; pose: Pose } | null = null;
+    for (let i = 0; i < MELEE_RAYS && !offView; i++) {
+      for (let j = 0; j < MELEE_ROWS; j++) {
+        const across = (i / (MELEE_RAYS - 1) - 0.5) * 2 * blade.arc, up = (j / (MELEE_ROWS - 1) - 0.5) * blade.arc;
+        const dir = aimDir(yaw + across * Math.PI / 180, clamp(pitch + up * Math.PI / 180, -1.5, 1.5));
+        const wall = raycastWorld(RAPIER, this.world, m.origin, dir, blade.range);
+        const reach = wall ? wall.distance : blade.range;
+        for (const o of this.players.values()) {
+          if (o === p || !o.st.alive || !this.canDamage(p, o)) continue;
+          const pose = poseOf(o);
+          if (!pose) continue;
+          const hit = rayVsPose(m.origin, dir, reach, pose);
+          if (!hit) continue;
+          // Nearer the crosshair counts a little nearer, so the body under it wins a close call.
+          const rank = hit.distance * (1 + (Math.abs(across) + Math.abs(up)) / 200);
+          if (!best || rank < best.rank) best = { target: o, part: hit.part, dist: hit.distance, rank, dir, pose };
+        }
+      }
+    }
+    const swing: SwingEvent = { id: p.id, weapon: m.weapon, blow: heavy ? "heavy" : "light",
+      swing: Number.isInteger(m.swing) && m.swing! >= 0 && m.swing! < 4 ? m.swing : undefined };
+    this.analytics?.shot(p, !!best);
+    if (!best) {
+      this.broadcast("swing", swing, { except: p.client });
+      return;
+    }
+    const backstab = isBackstab({ x: p.st.x, z: p.st.z, yaw: p.st.yaw }, { x: best.pose.x, z: best.pose.z, yaw: best.pose.yaw ?? 0 });
+    const dmg = backstab ? blade.backstab : (heavy ? blade.heavy.damage : def.damage) * (best.part === "head" ? def.headMult : best.part === "legs" ? def.limbMult : 1);
+    const point: V3 = [m.origin[0] + best.dir[0] * best.dist, m.origin[1] + best.dir[1] * best.dist, m.origin[2] + best.dir[2] * best.dist];
+    swing.hit = best.target.id;
+    swing.backstab = backstab;
+    this.broadcast("swing", swing, { except: p.client });
+    const killed = this.damage(best.target, dmg, p, m.weapon, best.part, m.origin);
+    p.client?.send("hit", { target: best.target.id, damage: Math.round(dmg), part: best.part, killed, backstab, point, dir: best.dir } satisfies HitConfirm);
   }
 
   fire(p: ServerPlayer, m: FireMsg) {
     const t = now();
     const def = WEAPONS[m.weapon];
     if (!def || !p.st.alive || this.state.phase === "ended" || this.state.phase === "waiting") return;
-    if (m.weapon !== p.st.primary && m.weapon !== "pistol") return;
+    if ((m.weapon !== p.st.primary && m.weapon !== "pistol") || def.melee) return;
     if (t - p.lastFireAt < fireIntervalMs(def) * 0.75) return;
     if (p.reloadingUntil && m.weapon === "pistol" && p.st.weapon === "pistol" && t < p.reloadingUntil - 150) {
       // A shot stops the revolver's reload with the rounds loaded so far, counted with the same
@@ -784,8 +885,11 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       const fits = !!pose && HIT_PARTS.includes(claim!.part) && claimFits(m.origin, dir, claim!.dist, claim!.part, pose, wall?.distance ?? null, def.range);
       if (claim) {
         const head = claim.part === "head";
-        if (fits) { this.claimStats.taken++; if (head) this.claimStats.headTaken++; }
-        else { this.claimStats.refused++; if (head) this.claimStats.headRefused++; }
+        const gun = this.claimsByGun[m.weapon] ??= { taken: 0, refused: 0, headTaken: 0, headRefused: 0 };
+        for (const c of [this.claimStats, gun]) {
+          if (fits) { c.taken++; if (head) c.headTaken++; }
+          else { c.refused++; if (head) c.headRefused++; }
+        }
       }
       if (fits) {
         bestT = Math.min(claim!.dist, maxDist); bestTarget = claimed!; bestPart = claim!.part;
@@ -905,7 +1009,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     target.client?.send("damaged", {
       from, damage: Math.round(amount), hp: target.st.hp,
       attacker: attacker && attacker !== target ? attacker.id : undefined,
-      kind: weapon === "fall" ? "fall" : weapon === "grenade" ? "explosion" : "bullet",
+      kind: weapon === "fall" ? "fall" : weapon === "grenade" ? "explosion" : isMelee(weapon) ? "melee" : "bullet",
     } satisfies DamagedEvent);
     target.bot?.onDamaged(attacker);
     if (hp > 0) return false;
@@ -1033,7 +1137,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
     p.expectSpawn = { x: sp.x, z: sp.z, until: t + 2500 };
     if (!p.bot) p.guard.reset([sp.x, sp.y, sp.z], t);
     if (p.bot) p.bot.onSpawn(sp);
-    p.client?.send("spawn", { x: sp.x, y: sp.y, z: sp.z, yaw: sp.yaw, primary: p.st.primary as WeaponId } satisfies SpawnEvent);
+    p.client?.send("spawn", { x: sp.x, y: sp.y, z: sp.z, yaw: sp.yaw, primary: p.st.primary as WeaponId, melee: p.st.melee as MeleeId } satisfies SpawnEvent);
   }
 
   /** Spawn point furthest from living enemies (team spawns in TDM). */

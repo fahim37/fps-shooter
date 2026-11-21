@@ -16,7 +16,8 @@ const CREASE = Math.cos(22 * Math.PI / 180);
 export type Look = { color: [number, number, number]; metal: number; rough: number };
 export interface Mesh { positions: Float32Array; indices: Uint32Array }
 /**
- * Final meshes by material. A prefix ("Mag_", "Charge_", "Bolt_", "Cyl_", "Hammer_") is how the client finds a moving part;
+ * Final meshes by material. A prefix ("Mag_", "Charge_", "Bolt_", "Cyl_", "Hammer_", and the balisong's "Safe_" and "Bite_"
+ * handles) is how the client finds a moving part;
  * "Scope_" marks an optic it shows only when chosen, left out of the gun's bounds.
  */
 export type GunPieces = Map<string, { look: Look; meshes: Mesh[] }>;
@@ -61,7 +62,7 @@ export async function readFbx(file: string) {
 function weldMoving(pieces: GunPieces) {
   const out: GunPieces = new Map();
   for (const [name, piece] of pieces) {
-    const key = name.replace(/^(Charge|Bolt|Cyl|Hammer)_/, "");
+    const key = name.replace(/^(Charge|Bolt|Cyl|Hammer|Safe|Bite)_/, "");
     const found = out.get(key);
     if (found) found.meshes.push(...piece.meshes);
     else out.set(key, { look: piece.look, meshes: [...piece.meshes] });

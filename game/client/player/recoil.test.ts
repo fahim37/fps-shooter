@@ -17,7 +17,7 @@ function run(recoil: Recoil, seconds: number, fps: number, each?: (t: number) =>
 }
 
 describe("recoil", () => {
-  it.each(Object.keys(RECOIL) as WeaponId[])("kicks the %s back about as far as its profile says, then settles", (weapon) => {
+  it.each((Object.keys(RECOIL) as WeaponId[]).filter((w) => !WEAPONS[w].melee))("kicks the %s back about as far as its profile says, then settles", (weapon) => {
     const recoil = new Recoil();
     recoil.kick(weapon, steady);
     const peak = run(recoil, 1.5, 240);

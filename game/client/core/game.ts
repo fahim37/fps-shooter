@@ -7,11 +7,11 @@ import { CharacterRig, type RigState } from "../player/CharacterRig";
 import { getMap } from "../../shared/map/maps";
 import { lineOfSight, raycastWorld, type Rapier, type World } from "../../shared/physics";
 import { DASH_MAX, INTERP_DELAY_MS, MAX_SHIELD, RESPAWN_MS, type GameMode } from "../../shared/constants";
-import { GRENADE, WEAPONS, type WeaponId } from "../../shared/weapons";
+import { GRENADE, WEAPONS, type MeleeId, type WeaponId } from "../../shared/weapons";
 import { GRENADE_BODY, grenadeFlight } from "../../shared/grenade";
 import { spreadRadius } from "../../shared/aim";
 import type { MatchState } from "../../shared/schema";
-import type { AmmoEvent, DamagedEvent, ExplosionEvent, GrenadeHitEvent, HitConfirm, KillEvent, LoadoutEvent, Pong, ShotEvent, SpawnEvent, SpotEvent } from "../../shared/messages";
+import type { AmmoEvent, DamagedEvent, ExplosionEvent, GrenadeHitEvent, HitConfirm, KillEvent, LoadoutEvent, Pong, ShotEvent, SpawnEvent, SpotEvent, SwingEvent } from "../../shared/messages";
 import { F_SLIDE } from "../../shared/messages";
 import { loadClientWorld } from "./physics";
 import { LocalPlayer, THROW_RELEASE } from "./local";
@@ -263,10 +263,13 @@ export class Game {
       room.onMessage<AmmoEvent>("ammo", (ev) => this.local?.reconcileAmmo(ev)),
       room.onMessage<LoadoutEvent>("loadout", (ev) => this.local?.applyLoadout(ev)),
       room.onMessage<ShotEvent>("shot", (ev) => this.remoteShot(ev)),
+      room.onMessage<SwingEvent>("swing", (ev) => this.remoteSwing(ev)),
       room.onMessage<SpotEvent>("spotted", (ev) => this.onSpotted(ev)),
       room.onMessage<{ ms: number }>("marked", (ev) => { hud().set({ markedUntil: performance.now() + ev.ms }); audio.marked(); }),
       room.onMessage<HitConfirm>("hit", (ev) => {
-        hud().set({ hitmarker: { at: performance.now(), head: ev.part === "head", kill: ev.killed, confirmed: true, damage: ev.damage } });
+        hud().set({ hitmarker: { at: performance.now(), blade: ev.backstab !== undefined, head: ev.part === "head", kill: ev.killed, confirmed: true, damage: ev.damage } });
+        if (ev.backstab !== undefined) audio.slash(ev.backstab);
+        if (ev.backstab) hud().set({ announce: { text: "BACKSTAB", at: performance.now() } });
         if (!ev.killed) audio.hitmarker(ev.part === "head");
         if (ev.point && ev.dir) this.confirmedBlood(ev.point, ev.dir, ev.part === "head");
       }),
@@ -292,6 +295,9 @@ export class Game {
 
   private spawn(ev: SpawnEvent) {
     if (!this.local) { this.pendingSpawn = ev; return; }
+    // The blade chosen last time comes along into every match.
+    const blade = useLoadout.getState().melee;
+    if (ev.melee && blade !== ev.melee) this.send("loadout", { melee: blade });
     this.pendingSpawn = null;
     this.initializedPlayer = true;
     this.awaitingSpawnState = true;
@@ -314,7 +320,7 @@ export class Game {
     if (!this.clock.synced && state.serverTime) this.clock.offset = state.serverTime - performance.now();
     const me = state.players.get(this.room.sessionId);
     if (me && this.local) {
-      if (!this.initializedPlayer && me.alive) this.spawn({ x: me.x, y: me.y, z: me.z, yaw: me.yaw, primary: me.primary as WeaponId });
+      if (!this.initializedPlayer && me.alive) this.spawn({ x: me.x, y: me.y, z: me.z, yaw: me.yaw, primary: me.primary as WeaponId, melee: me.melee as MeleeId });
       this.syncLife(me.alive);
       const key = `${me.team}`;
       if (key !== this.rigKey) {
@@ -425,6 +431,17 @@ export class Game {
     const start: V3 = [point[0] + dir[0] * 0.08, point[1] + dir[1] * 0.08, point[2] + dir[2] * 0.08];
     const surface = raycastWorld(this.R, this.world, start, dir, 3);
     if (surface) this.effects.bloodSplatter(new THREE.Vector3(...surface.point), new THREE.Vector3(...surface.normal), head);
+  }
+
+  /** Someone else swung a blade: their swing plays, and it is heard, with the hit if it landed. */
+  private remoteSwing(ev: SwingEvent) {
+    const remote = this.remotes.get(ev.id);
+    if (!remote) return;
+    remote.setWeapon(ev.weapon);
+    remote.onShot(ev.swing, ev.blow === "heavy");
+    const at = remote.posed && remote.rig ? remote.rig.muzzle : remote.pos;
+    audio.swing(ev.weapon, at, ev.swing, ev.blow === "heavy");
+    if (ev.hit) audio.slash(!!ev.backstab, at);
   }
 
   private remoteShot(ev: ShotEvent) {
@@ -777,10 +794,11 @@ export class Game {
     this.camera.updateMatrixWorld();
     _frustum.setFromProjectionMatrix(_viewProjection.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse));
     const preset = PRESETS[useSettings.getState().quality];
+    const bladeTrail = useSettings.getState().quality !== "low";
     const shadowReach = preset.shadows ? preset.shadowExtent + 4 : 0;
     for (const remote of this.remotes.values()) {
       _bounds.center.set(remote.pos.x, remote.pos.y + 1, remote.pos.z);
-      remote.animate(dt, _frustum.intersectsSphere(_bounds) || remote.pos.distanceTo(this.camera.position) < shadowReach);
+      remote.animate(dt, _frustum.intersectsSphere(_bounds) || remote.pos.distanceTo(this.camera.position) < shadowReach, bladeTrail);
     }
     this.shownTime = renderTime;
     this.updateSpots(now);
@@ -797,6 +815,7 @@ export class Game {
       ads: local.ads, quickScope: local.quickScope, optic: local.optic, reload: local.reloadProgress,
       bob: local.bob, sway: local.sway, tuck: local.tuck, throwing: Math.max(local.throwAnim, local.grenadeHold), lean: local.lean,
       sinceShot: local.sinceShot(now), sinceDraw: local.sinceDraw(now), emote: local.emote,
+      swing: local.swings, trick: local.trick, heavy: local.heavy, bladeTrail, sinceInspect: local.sinceInspect(now),
       grenade: this.grenadeArm(local, dt, now),
     };
     if (local.emote) s.yaw = local.emoteYaw;
@@ -855,7 +874,7 @@ export class Game {
         }
       }
       hud().set({
-        alive: local.alive, weapon: local.weapon, primary: local.primary, mag: ammo.mag, reserve: ammo.reserve,
+        alive: local.alive, weapon: local.weapon, primary: local.primary, melee: local.melee, mag: ammo.mag, reserve: ammo.reserve,
         grenades: local.grenades, grenadeAim: this.stableAim(local.grenadeAim(now), airburst), grenadeThreat: this.grenadeThreat(local, now), reloading: local.reloadBar, ads: local.ads, scoped: local.scoped,
         thirdPerson: local.thirdPerson, spreadDeg: local.spread, enemyInSight,
         crosshairRadius: Math.min(120, Math.max(3, spreadRadius(local.spread, fov, viewportHeight))),
