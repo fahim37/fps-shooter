@@ -18,8 +18,9 @@ import { readFbx, replaceGun, simplify, type GunPieces, type Look } from "./gun-
 const BALISONG = path.join(RAW, "balisong", "Balisong.fbx");
 const KATANA = path.join(RAW, "katana");
 
-/** Open length, tip to the end of the handles (m): about a fifth over life size, as the guns are. */
-const KNIFE_LENGTH = 0.3;
+/** The rig was fitted to the 30 cm model. Extend the blade and handle tails equally beyond the grip. */
+const KNIFE_GRIP_MODEL_LENGTH = 0.30;
+const KNIFE_LENGTH = 0.42;
 /** Tip to pommel (m). */
 const KATANA_LENGTH = 1.05;
 /** The right hand's centre behind the katana's guard (m), where its origin goes. */
@@ -119,7 +120,7 @@ async function balisong() {
   for (const p of all) for (let i = 0; i < p.length; i++) { lo[i % 3] = Math.min(lo[i % 3], p[i]); hi[i % 3] = Math.max(hi[i % 3], p[i]); }
   const hlo = [Infinity, Infinity, Infinity], hhi = [-Infinity, -Infinity, -Infinity];
   for (const h of hinges) for (let i = 0; i < h.open.length; i++) { hlo[i % 3] = Math.min(hlo[i % 3], h.open[i]); hhi[i % 3] = Math.max(hhi[i % 3], h.open[i]); }
-  const scale = KNIFE_LENGTH / (hi[1] - lo[1]);
+  const scale = KNIFE_GRIP_MODEL_LENGTH / (hi[1] - lo[1]);
   const centre = [0, 1, 2].map((k) => (hlo[k] + hhi[k]) / 2);
   const place = (p: Float32Array) => {
     const out = new Float32Array(p.length);
@@ -134,12 +135,24 @@ async function balisong() {
   // Blade: its own steel, with the pins and the tang's fittings darker (the source's second material).
   const parts: { look: string; part: Part }[] = [];
   const bladeAt = place(blade);
+  const extra = (KNIFE_LENGTH - KNIFE_GRIP_MODEL_LENGTH) / 2;
+  const tipZ = -(hi[1] - centre[1]) * scale;
+  const buttZ = -(lo[1] - centre[1]) * scale;
+  for (let i = 0; i < bladeAt.length; i += 3) {
+    const t = Math.max(0, Math.min(1, (bladeAt[i + 2] + 0.085) / (tipZ + 0.085)));
+    const belly = Math.sin(Math.PI * t) ** 2;
+    bladeAt[i + 1] = bladeAt[i + 1] * (1 + 0.55 * belly) - 0.007 * belly;
+    bladeAt[i + 2] -= extra * t;
+  }
   for (const [material, tris] of byMaterial(closed.blade)) {
     parts.push({ look: /grey/i.test(material) ? "blade" : "pins", part: { name: material, positions: bladeAt, tris } });
   }
   const names = ["Safe_", "Bite_"];
   hinges.forEach((h, i) => {
     const positions = place(h.open);
+    for (let k = 2; k < positions.length; k += 3) {
+      positions[k] += extra * Math.max(0, (positions[k] - 0.014) / (buttZ - 0.014));
+    }
     parts.push({ look: `${names[i]}handle`, part: { name: names[i], positions, tris: allTris(closed.handles[i]) } });
   });
 

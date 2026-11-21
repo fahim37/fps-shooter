@@ -3,6 +3,7 @@ import { loadGLTF } from "./loaders";
 import type { WeaponId } from "../../shared/weapons";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import meta from "../../shared/generated/weapons-meta.json";
+import { finishBlade, swordFittings } from "./meleeSkins";
 
 export interface WeaponMeta {
   length: number;
@@ -118,6 +119,8 @@ export function loadWeapons() {
         }
       });
       const id = child.name.replace(NEAR, "") as WeaponId;
+      const near = child.name.endsWith(NEAR);
+      if (id === "knife" || id === "katana") finishBlade(child, id === "katana", near);
       const names = new Set(Object.keys(PARTS[id] ?? {}));
       for (const [part, spec] of Object.entries(PARTS[id] ?? {})) {
         const node = extractPart(child, spec.extract, spec.pivot);
@@ -132,7 +135,9 @@ export function loadWeapons() {
         child.add(scope);
         names.add("scope");
       }
-      mergeFlatMeshes(child, names);
+      // The detailed knife retains its blade materials for the moving specular highlight.
+      if (id !== "knife" || !near) mergeFlatMeshes(child, names);
+      if (id === "katana") swordFittings(child, WEAPON_META.katana.guard!, near);
       map.set(child.name, child);
     }
     return map;

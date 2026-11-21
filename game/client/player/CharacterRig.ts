@@ -8,7 +8,7 @@ import { SLIDE_LEG_YAW } from "../../shared/hitboxes";
 import { DEFAULT_OPTICS, OPTICS, type OpticId } from "../../shared/optics";
 import { createIronSights, createReflexSight } from "./ReflexSight";
 import { gripPose, type GripPose, type HandPose } from "./grip";
-import { createHandling, cutContact, swingSeconds, cycleStrokes, sampleHandling, type HandBlend, type HandKey } from "./handling";
+import { createHandling, cutContact, swingSeconds, cycleStrokes, inspectSeconds, sampleHandling, type HandBlend, type HandKey } from "./handling";
 import type { QuickScope } from "./quickScope";
 import { BladeTrail } from "./BladeTrail";
 import { Recoil } from "./recoil";
@@ -106,6 +106,12 @@ const AIMED_KICK_BACK = 0.6;
 const GRENADE_CURLED = ["index", "middle", "ring", "pinky"].flatMap((f) => ["01", "02", "03"].map((k) => `${f}_${k}_r`));
 const _unitZ = new THREE.Vector3(0, 0, 1);
 const _unitX = new THREE.Vector3(1, 0, 0);
+// Left palm down, fingers pointing ahead and slightly toward the centre of the view.
+const KNIFE_FREE_WRIST = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(
+  new THREE.Vector3(0, -1, 0), new THREE.Vector3(0.5, 0, -Math.sqrt(0.75)),
+  new THREE.Vector3(Math.sqrt(0.75), 0, 0.5)));
+const FPP_HAND_SCALE = 0.89;
+const SHEATH_HOLD = new THREE.Matrix4().makeRotationY(Math.PI).setPosition(0, 0, -0.056);
 /** Crossfade (s) into and out of an emote. */
 const EMOTE_FADE = 0.25;
 /** FPP: view-space offset of the hidden body from where the head would put it. */
@@ -214,6 +220,7 @@ interface WeaponParts {
   /** The balisong's two handles. */
   safe?: THREE.Object3D;
   bite?: THREE.Object3D;
+  scabbard?: THREE.Object3D;
 }
 
 export class CharacterRig {
@@ -233,6 +240,7 @@ export class CharacterRig {
   private state: RigState | null = null;
   /** Finger bones in the grip's order; a body without one leaves a gap. */
   private fingers: { r: (THREE.Bone | undefined)[]; l: (THREE.Bone | undefined)[] } = { r: [], l: [] };
+  private openLeft: { bone: THREE.Bone; turn: THREE.Quaternion }[] = [];
   private handling = createHandling();
   /** The gun's kick from shot to shot. A shot is one whenever `sinceShot` starts over. */
   private kick = new Recoil();
@@ -282,6 +290,14 @@ export class CharacterRig {
     private near = false,
   ) {
     this.inst = instantiateCharacter(template, team);
+    // The balancing hand has its own relaxed pose. Use the bind rotations so each knuckle
+    // keeps its anatomical axes, with a little more flex toward the little finger.
+    for (const [finger, bend] of [["index", 0.17], ["middle", 0.24], ["ring", 0.34], ["pinky", 0.44], ["thumb", 0.2]] as const) {
+      for (const joint of ["01", "02", "03"]) {
+        const bone = this.inst.bones.get(`${finger}_${joint}_l`);
+        if (bone) this.openLeft.push({ bone, turn: bone.quaternion.clone().multiply(_q.setFromAxisAngle(_unitX, bend)) });
+      }
+    }
     this.animationPose = [...this.inst.bones.values()].filter((bone) => PROCEDURAL_BONES.includes(bone.name))
       .map((bone) => ({ bone, quaternion: bone.quaternion.clone() }));
     this.head = headRef(template);
@@ -313,6 +329,21 @@ export class CharacterRig {
         m.castShadow = false;
       }
     }
+    if (mode === "fpp") {
+      // Taper the padding about each joint's longitudinal axis. Skin weights blend the
+      // narrowing across the cuff and knuckles. Only the viewmodel owns these inverses.
+      const skeletons = new Set(this.inst.meshes.filter((m) => m.visible).map((m) => m.skeleton));
+      for (const skeleton of skeletons) {
+        skeleton.boneInverses = skeleton.boneInverses.map((inverse, i) => {
+          const name = skeleton.bones[i].name;
+          if (name.startsWith("lowerarm_")) return new THREE.Matrix4().makeScale(0.79, 1, 0.84).multiply(inverse);
+          if (name.startsWith("hand_")) return new THREE.Matrix4().makeScale(0.80, 1, 0.96).multiply(inverse);
+          if (/^(index|middle|ring|pinky|thumb)_/.test(name)) return new THREE.Matrix4().makeScale(0.88, 1, 0.87).multiply(inverse);
+          return inverse;
+        });
+      }
+      for (const side of ["l", "r"]) this.inst.bones.get(`hand_${side}`)?.scale.multiplyScalar(FPP_HAND_SCALE);
+    }
   }
 
   setWeapon(id: WeaponId) {
@@ -333,7 +364,7 @@ export class CharacterRig {
         g.add(this.irons.object);
       }
       const parts: WeaponParts = { mag: g.getObjectByName("mag"), pump: g.getObjectByName("pump"), bolt: g.getObjectByName("bolt"), cylinder: g.getObjectByName("cylinder"), hammer: g.getObjectByName("hammer"), scope: g.getObjectByName("scope"),
-        safe: g.getObjectByName("safe"), bite: g.getObjectByName("bite") };
+        safe: g.getObjectByName("safe"), bite: g.getObjectByName("bite"), scabbard: g.getObjectByName("scabbard") };
       const seat = SHELL_SEATS[id];
       if (seat) {
         parts.shell = createShell(id === "pistol");
@@ -669,7 +700,7 @@ export class CharacterRig {
       if (!pistol && run > 1e-3) this.portArms(run, yaw, meta.max[2]);
       if (!pistol) this.clearTorso(meta.max[2], yaw);
     }
-    this.placeParts();
+    this.placeParts(s);
     this.gunPivot.updateMatrixWorld(true);
     const weaponWorld = this.guns.get(w)!.matrixWorld;
     this.muzzle.set(...meta.muzzle).applyMatrix4(weaponWorld);
@@ -718,11 +749,29 @@ export class CharacterRig {
   }
 
   /** Seats the moving parts on the gun; held ones are moved with the hand after the IK. */
-  private placeParts() {
+  private placeParts(s: RigState) {
     const w = this.weapon!;
     const parts = this.parts.get(w)!;
     const spec = WEAPON_PARTS[w];
     const h = this.handling;
+    if (parts.scabbard) {
+      const sheath = parts.scabbard;
+      sheath.position.set(0, 0, WEAPON_META.katana.guard! - h.sheathPull);
+      sheath.quaternion.identity();
+      const age = s.sinceShot ?? -1, duration = swingSeconds(w, !!s.heavy);
+      if (age >= 0 && age < duration) {
+        // The right hand keeps the scabbard low at the hip while the left carries the blade.
+        const phase = age / duration;
+        const park = THREE.MathUtils.smoothstep(phase, 0, 0.17) * (1 - THREE.MathUtils.smoothstep(phase, 0.78, 1));
+        const view = this.mode === "fpp" && s.view ? s.view : _q2.setFromAxisAngle(UP, s.yaw);
+        const origin = this.mode === "fpp" && s.eye ? s.eye : _tb.setFromMatrixPosition(this.inst.bones.get("neck_01")!.matrixWorld);
+        const inverse = _qa.copy(this.gunPivot.quaternion).invert();
+        _ta.set(0.26, -0.31, -0.24).applyQuaternion(view).add(origin).sub(this.gunPivot.position).applyQuaternion(inverse);
+        sheath.position.lerp(_ta, park);
+        _qb.setFromEuler(_e.set(-0.46, -1.35, -2.5, "YXZ")).premultiply(view).premultiply(inverse);
+        sheath.quaternion.slerp(_qb, park);
+      }
+    }
     if (parts.mag && spec?.mag) {
       parts.mag.visible = h.magVisible;
       parts.mag.quaternion.identity();
@@ -775,12 +824,19 @@ export class CharacterRig {
     const h = this.handling;
     const bodyLeft = _bodyLeft.set(1, 0, 0).applyQuaternion(this.body.quaternion); // model +X is the character's left
     const comfort = w === "pistol" ? PISTOL_REACH : COMFORT_REACH;
+    const bladeView = this.mode === "fpp" && WEAPONS[w].melee && this.state?.view;
+    const elbowDrop = w === "katana" ? -0.48 : -0.22;
+    const elbowBack = w === "katana" ? 0.12 : 0.46;
 
-    _pole.setFromMatrixPosition(b("upperarm_r").matrixWorld).addScaledVector(bodyLeft, -0.18).addScaledVector(DOWN, 0.75);
+    _pole.setFromMatrixPosition(b("upperarm_r").matrixWorld);
+    if (bladeView) _pole.add(_v.set(0.42, elbowDrop, elbowBack).applyQuaternion(bladeView));
+    else _pole.addScaledVector(bodyLeft, -0.18).addScaledVector(DOWN, 0.75);
     this.placeHand("r", this.grenadeHand(this.handTarget(h.right, grip.right, bodyLeft), this.state?.grenade), _pole, comfort);
     // The support elbow hangs down and a little out, so the forearm meets the handguard on a
     // diagonal and the wrist turns under it instead of continuing the forearm's line.
-    _pole.setFromMatrixPosition(b("upperarm_l").matrixWorld).addScaledVector(bodyLeft, w === "pistol" || w === "knife" ? 0.06 : SUPPORT_ELBOW_OUT).addScaledVector(DOWN, 0.75);
+    _pole.setFromMatrixPosition(b("upperarm_l").matrixWorld);
+    if (bladeView) _pole.add(_v.set(-0.42, elbowDrop, elbowBack).applyQuaternion(bladeView));
+    else _pole.addScaledVector(bodyLeft, w === "pistol" || w === "knife" ? 0.06 : SUPPORT_ELBOW_OUT).addScaledVector(DOWN, 0.75);
     this.placeHand("l", this.grenadeHand(this.handTarget(h.left, grip.left, bodyLeft), this.state?.grenade?.left), _pole, comfort);
 
     // Fingers are written absolutely each frame, so held clips cannot accumulate them.
@@ -802,6 +858,9 @@ export class CharacterRig {
       for (const name of GRENADE_CURLED) this.inst.bones.get(name)?.quaternion.multiply(_q);
     }
     this.poseFingers(this.fingers.l, h.left, grip.left);
+    if (w === "knife") {
+      for (const pose of this.openLeft) pose.bone.quaternion.copy(pose.turn);
+    }
     b("hand_r").updateMatrixWorld(true);
     b("hand_l").updateMatrixWorld(true);
 
@@ -836,14 +895,28 @@ export class CharacterRig {
   private keyTransform<P extends string>(key: HandKey<P>, poses: Partial<Record<P, HandPose>>, bodyLeft: THREE.Vector3, pos: THREE.Vector3, quat: THREE.Quaternion) {
     const pose = poses[key.pose]!;
     _m.copy(this.gunPivot.matrixWorld);
+    if (this.weapon === "katana") {
+      const sheath = this.parts.get("katana")?.scabbard;
+      if (key.pose === "grip" && sheath) _m.multiply(sheath.matrix).multiply(SHEATH_HOLD);
+      if (key.pose === "support") _m.multiply(_m2.makeTranslation(0, -0.007, -0.142));
+    }
     const frame = this.frameObject(pose.frame);
     if (frame) _m.multiply(frame.matrix);
     if (key.pull || key.clear || key.drop) _m.multiply(_m2.makeTranslation(-(key.clear ?? 0), -(key.drop ?? 0), key.pull ?? 0));
     _m.multiply(pose.matrix);
     _m.decompose(pos, quat, _scale);
-    if (key.belt) {
-      const fwd = this.weapon === "knife" ? _v.set(0, 0, 1).applyQuaternion(this.body.quaternion)
-        : _v.set(0, 0, -1).applyQuaternion(this.gunPivot.quaternion);
+    if (key.belt && this.weapon === "knife" && this.state) {
+      const s = this.state;
+      const age = s.sinceInspect ?? -1;
+      const retreat = THREE.MathUtils.smoothstep(age, 0, 0.25) *
+        THREE.MathUtils.smoothstep(inspectSeconds("knife", s.trick) - age, 0, 0.23);
+      const view = this.mode === "fpp" && s.view ? s.view : _q2.setFromAxisAngle(UP, s.yaw);
+      const origin = this.mode === "fpp" && s.eye ? s.eye : _v.setFromMatrixPosition(this.inst.bones.get("neck_01")!.matrixWorld);
+      pos.set(-0.245 - retreat * 0.045 + (s.bob?.x ?? 0), -0.188 - retreat * 0.12 + (s.bob?.y ?? 0), -0.37)
+        .applyQuaternion(view).add(origin);
+      quat.copy(view).multiply(KNIFE_FREE_WRIST);
+    } else if (key.belt) {
+      const fwd = _v.set(0, 0, -1).applyQuaternion(this.gunPivot.quaternion);
       fwd.setY(0).normalize();
       pos.setFromMatrixPosition(this.inst.bones.get("upperarm_l")!.matrixWorld).addScaledVector(DOWN, BELT_DROP).addScaledVector(bodyLeft, BELT_OUT).addScaledVector(fwd, BELT_AHEAD);
       quat.setFromRotationMatrix(_m2.lookAt(_v2.set(0, 0, 0), DOWN, fwd));
@@ -882,6 +955,11 @@ export class CharacterRig {
     const hand = this.inst.bones.get(`hand_${side}`)!;
     _target.setFromMatrixPosition(target);
     _handQuat.setFromRotationMatrix(_m2.extractRotation(target));
+    if (this.mode === "fpp") {
+      // Scale about the palm contact, so the shorter glove still meets its baked grip.
+      _target.add(_v.set(side === "r" ? -0.04 : 0.04, 0.065, -0.004)
+        .multiplyScalar(1 - FPP_HAND_SCALE).applyQuaternion(_handQuat));
+    }
     const clavicle = this.inst.bones.get(`clavicle_${side}`);
     if (clavicle) this.reachShoulder(clavicle, upper, lower, hand, _target, comfort);
     solveTwoBone(upper, lower, hand, _target, pole, 1, true);

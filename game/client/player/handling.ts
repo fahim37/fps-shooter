@@ -46,6 +46,8 @@ export interface Handling {
   safe: number; bite: number;
   /** Knife rotation about its contact in the pinch, and flight progress (0..1). */
   spin: GunOffset; flight: number; release: number;
+  /** Distance from the sword guard to the scabbard mouth during the reveal (m). */
+  sheathPull: number;
 }
 
 type Keys<T> = [number, T][];
@@ -65,6 +67,7 @@ interface Clip {
   shell?: Keys<number>; shellHeld?: Keys<boolean>;
   safe?: Keys<number>; bite?: Keys<number>;
   spin?: Keys<GunOffset>; flight?: [number, number]; release?: Keys<number>;
+  sheathPull?: Keys<number>;
   cues?: [number, BladeCue][];
 }
 
@@ -236,8 +239,8 @@ interface Cycle { clip: Clip; seconds: number; strokes: readonly [number, number
 
 // The wrist follows the gun track. During an inspect the knife has a second
 // transform about its contact in the fingers, independent of the camera and arm.
-const KNIFE_POSE: GunOffset = [0.012, 0.018, 0.018, 0.52, 0.32, -0.32];
-const KATANA_POSE: GunOffset = [-0.015, 0.09, -0.11, 0.64, -0.075, -0.26];
+const KNIFE_POSE: GunOffset = [0.08, 0.035, -0.04, 0.29, 1.04, 0.19];
+const KATANA_POSE: GunOffset = [-0.085, 0.053, -0.105, -0.23, -1.24, -2.45];
 const PINCH: HandKey<RightPose> = { pose: "pinch" };
 const TURN = 2 * Math.PI;
 export type BladeCue = "clack" | "latch" | "air";
@@ -247,7 +250,7 @@ export type BladeCue = "clack" | "latch" | "air";
  * the camera and the tip up and left. Here the pin axis points away from the eye, so handle swings
  * and twirls about the fingers turn in the plane of the screen, where they read best.
  */
-const SHOW: GunOffset = [-0.12, 0.2, 0.15, 0.7, 1.7, -0.2];
+const SHOW: GunOffset = [0.045, 0.102, 0.056, 0.63, 1.23, -0.63];
 const sh = (...d: number[]) => nudge(SHOW, ...d);
 
 const KNIFE_DRAW: Clip = {
@@ -277,17 +280,16 @@ const lower = (seconds: number): Keys<GunOffset> => [[seconds - 0.24, SHOW], [se
  * turned to the light before it goes down. Each handle swing is a dip or flick of the wrist.
  */
 const SHOWCASE = timed(2.3, {
-  gun: [...raise,
-    [0.42, sh(0.006, -0.014, 0, -0.24, 0, 0.1)], [0.55, sh(-0.004, 0.016, 0, 0.2, 0, -0.06)],
-    [0.67, sh(0.004, -0.012, 0, -0.22, 0, 0.08)], [0.8, sh(0, 0.014, 0, 0.18)], [0.9, SHOW],
-    [1.2, sh(0.012, 0.012, 0, 0.06, 0.08)], [1.45, SHOW],
-    [1.68, sh(-0.01, 0.012, 0.012, 0.1, -0.12, -0.9)], [1.86, sh(-0.01, 0.016, 0.012, 0.14, -0.14, -0.75)], [2.06, SHOW],
+  gun: [[0, KNIFE_POSE], [0.17, sh(0.03, -0.055, -0.02, -0.48, 0, -0.38)],
+    [0.4, sh(-0.016, 0.024, 0.025, 0.24)], [0.67, sh(0.018, -0.018, 0, -0.22)],
+    [0.94, sh(-0.026, 0.04, 0.018, 0.32, 0.12)], [1.18, sh(0.018, -0.01, 0, -0.2)],
+    [1.47, sh(0.025, 0.01, 0, 0.46, -0.2, 0.32)], [1.83, sh(0.025, 0.016, 0, 0.5, -0.23, 0.41)],
     ...lower(2.3)],
-  right: pinchFor(2.3),
-  bite: [[0.3, 0], [0.45, 1], [0.58, 1], [0.69, 0], [0.98, 0], [1.06, 0.82], [1.38, 0.82], [1.46, 0]],
-  safe: [[0.45, 0], [0.55, 1], [0.69, 1], [0.8, 0]],
-  spin: [[0.96, REST], [1.45, [0, 0, 0, -TURN, 0, 0]]],
-  cues: [[0.45, "clack"], [0.55, "clack"], [0.69, "clack"], [0.8, "latch"], [1.46, "latch"]],
+  right: [[0, GRIP], [0.17, PINCH], [1.26, PINCH], [1.47, GRIP], [2.3, GRIP]],
+  bite: [[0, 0], [0.34, 0.91], [0.49, 0.84], [0.72, 0.08], [0.93, 0.68], [1.19, 0.53], [1.43, 0]],
+  safe: [[0.18, 0], [0.42, 0.88], [0.61, 0.74], [0.86, 0]],
+  spin: [[0.38, REST], [0.72, [0, 0, 0, -2.6, 0.12, 0.22]], [1.26, [0, 0, 0, -TURN, 0, 0]]],
+  cues: [[0.42, "clack"], [0.86, "clack"], [1.43, "latch"]],
 });
 
 /** Two reverse twirls round the index finger, the loose handle swinging out on each turn. */
@@ -354,10 +356,9 @@ function swordClip(gun: Keys<GunOffset>, contact?: number): Clip {
 // Each pair of hands moves as one. The blade carries past the contact beat,
 // settles in a distinct finishing silhouette, then comes back to guard.
 const KATANA_DRAW = swordClip([
-  [0, [-0.23, -0.055, -0.09, -0.13, 1.04, -0.48]],
-  [0.24, [-0.17, 0.036, -0.115, 0.06, 0.86, -0.59]],
-  [0.59, [-0.045, 0.119, -0.125, 0.56, 0.15, -0.35]],
-  [0.76, [-0.008, 0.108, -0.115, 0.70, -0.12, -0.26]], [1, KATANA_POSE],
+  [0, nudge(KATANA_POSE, 0.085, -0.13, 0.055, -0.24, -0.2, 0.35)],
+  [0.58, nudge(KATANA_POSE, -0.022, 0.045, -0.02, 0.15, 0.1, -0.14)],
+  [1, KATANA_POSE],
 ]);
 const KATANA_SLASH = swordClip([
   [0, KATANA_POSE], [0.18, [0.035, 0.15, -0.105, 0.99, -0.94, -0.72]],
@@ -397,16 +398,17 @@ const KATANA_HEAVY = swordClip([
   [0.91, [-0.07, 0.078, -0.10, 0.29, 0.49, 0.09]], [1, KATANA_POSE],
 ], 0.51);
 
-// A quiet presentation across the eye line. Keep the guard and the tip in
-// view while the flat slowly rolls through the light, then lower the hilt.
+// Lift the closed sword across the body, part the hands, roll the exposed
+// flat through the light, then slide the lacquered mouth back to the guard.
 const KATANA_INSPECT = swordClip([
-  [0, KATANA_POSE], [0.14, [-0.13, 0.16, -0.12, 0.73, -0.48, -1.06]],
-  [0.30, [-0.237, 0.19, -0.14, 0.45, -1.04, -2.69]],
-  [0.43, [-0.242, 0.197, -0.138, 0.43, -1.05, -2.78]],
-  [0.66, [-0.205, 0.207, -0.132, 0.28, -1.00, -2.30]],
-  [0.77, [-0.193, 0.202, -0.128, 0.27, -0.97, -2.22]],
-  [0.90, [-0.115, 0.145, -0.13, 0.52, -0.56, -1.19]], [1, KATANA_POSE],
+  [0, KATANA_POSE], [0.17, [-0.22, 0.124, -0.07, 0.025, -1.37, -2.6]],
+  [0.37, [-0.306, 0.138, -0.105, 0.035, -1.28, -2.75]],
+  [0.54, [-0.32, 0.148, -0.115, 0.065, -1.27, -2.92]],
+  [0.68, [-0.314, 0.155, -0.115, 0.10, -1.26, -2.41]],
+  [0.84, [-0.22, 0.129, -0.074, 0.035, -1.36, -2.56]], [1, KATANA_POSE],
 ]);
+KATANA_INSPECT.sheathPull = [[0, 0], [0.16, 0], [0.22, 0.042], [0.40, 0.355], [0.53, 0.44],
+  [0.68, 0.44], [0.82, 0.035], [0.86, 0]];
 
 interface Moves {
   reload: Clip;
@@ -476,7 +478,7 @@ export function createHandling(): Handling {
   return {
     gun: [...REST], left: { a: SUPPORT, b: SUPPORT, k: 0 }, right: { a: GRIP, b: GRIP, k: 0 },
     mag: 0, magHeld: false, magVisible: true, pump: 0, boltPull: 0, charge: 0, hammer: 0, cylinder: 0, shell: 0, shellHeld: false,
-    safe: 0, bite: 0, spin: [...REST], flight: 0, release: 0,
+    safe: 0, bite: 0, spin: [...REST], flight: 0, release: 0, sheathPull: 0,
   };
 }
 
@@ -494,6 +496,7 @@ export function sampleHandling(weapon: WeaponId, reload: number, sinceShot: numb
   out.right.a = out.right.b = GRIP; out.right.k = 0;
   out.mag = out.pump = out.boltPull = out.charge = out.hammer = out.cylinder = out.shell = out.safe = out.bite = out.flight = out.release = 0;
   out.spin.fill(0);
+  out.sheathPull = 0;
   out.magHeld = out.shellHeld = false;
   out.magVisible = true;
   const inspect = inspectMove(weapon, melee.trick ?? 0);
@@ -539,6 +542,7 @@ function apply(c: Clip, t: number, out: Handling) {
     out.flight = Math.max(0, Math.min(1, (t - start) / (end - start)));
   }
   if (c.release) out.release = sampleNum(c.release, t);
+  if (c.sheathPull) out.sheathPull = sampleNum(c.sheathPull, t);
   if (c.safe) out.safe = sampleNum(c.safe, t);
   if (c.bite) out.bite = sampleNum(c.bite, t);
 }
