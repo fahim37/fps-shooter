@@ -943,7 +943,7 @@ export class CharacterRig {
     if (this.weapon === "katana") {
       const sheath = this.parts.get("katana")?.scabbard;
       if (key.pose === "grip" && sheath) _m.multiply(sheath.matrix).multiply(SHEATH_HOLD);
-      if (key.pose === "support") _m.multiply(_m2.makeTranslation(0, -0.007, -0.142));
+      if (key.pose === "support") _m.multiply(_m2.makeTranslation(0, -0.007, -0.095));
     }
     const frame = this.frameObject(pose.frame);
     if (frame) _m.multiply(frame.matrix);

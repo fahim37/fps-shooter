@@ -462,15 +462,15 @@ const KATANA_INSPECT = swordTimed(7.1, [
   [1.55, LEVEL], [1.8, [-0.17, 0.14, -0.1, 0.12, SIDE, -2.1]], [2.0, [-0.12, 0.13, -0.11, 0.18, SIDE, -1.75]],
   // Dropped low, brought up hilt first, one turn round the hand, balanced, swung up and held overhead.
   [2.05, [-0.25, 0.01, -0.1, -0.9, SIDE, -0.6]], [2.12, [-0.2, 0.05, -0.12, -1.57, SIDE, 0]],
-  [2.2, [-0.08, 0.06, -0.1, -1.57, SIDE, 0]], [2.3, [-0.07, 0.05, -0.1, -1.57 - TURN, SIDE, 0]],
-  [2.4, [-0.07, 0.06, -0.1, -1.57 - TURN, SIDE, 0]], [2.5, [-0.05, 0.12, -0.12, 0.8 - TURN, SIDE, 0]],
+  [2.2, [-0.08, 0.015, -0.1, -1.57, SIDE, 0]], [2.3, [-0.07, 0.005, -0.1, -1.57 - TURN, SIDE, 0]],
+  [2.4, [-0.07, 0.015, -0.1, -1.57 - TURN, SIDE, 0]], [2.5, [-0.05, 0.12, -0.12, 0.8 - TURN, SIDE, 0]],
   [2.65, [-0.16, 0.28, -0.06, 1.4 - TURN, -1.4, 0]], [3.1, [-0.17, 0.29, -0.06, 1.45 - TURN, -1.4, 0.05]],
   // Whipped down through a whole turn to low on the left, the tip swaying.
   [3.3, [-0.24, -0.03, -0.13, 0.9 - 2 * TURN, SIDE, 0]], [3.6, [-0.23, -0.01, -0.13, 0.65 - 2 * TURN, SIDE, 0.1]],
   [3.8, [-0.22, -0.02, -0.13, 1.0 - 2 * TURN, SIDE, 0]], [4.12, [-0.2, -0.02, -0.13, 1.2 - 2 * TURN, SIDE, 0]],
   // Turned hilt up, spun a whole turn the other way, swung up and lowered across the bottom.
-  [4.25, [-0.2, 0.0, -0.13, -1.57 - 2 * TURN, SIDE, 0]], [4.5, [-0.08, 0.05, -0.1, -1.57 - TURN, SIDE, 0]],
-  [4.62, [-0.07, 0.06, -0.1, -1.57 - TURN, SIDE, 0]], [4.78, [-0.1, 0.16, -0.13, -TURN, SIDE, 0]],
+  [4.25, [-0.2, 0.0, -0.13, -1.57 - 2 * TURN, SIDE, 0]], [4.5, [-0.08, 0.005, -0.1, -1.57 - TURN, SIDE, 0]],
+  [4.62, [-0.07, 0.015, -0.1, -1.57 - TURN, SIDE, 0]], [4.78, [-0.1, 0.16, -0.13, -TURN, SIDE, 0]],
   [4.9, [-0.12, 0.2, -0.12, 0.8 - TURN, -1.4, 0]], [5.05, [-0.04, -0.03, -0.1, 0.05 - TURN, SIDE, 0]],
   [5.5, [-0.03, -0.025, -0.1, 0.08 - TURN, SIDE, 0]],
   // Raised to the finish and held, lowered to rest, and the grip settled.
