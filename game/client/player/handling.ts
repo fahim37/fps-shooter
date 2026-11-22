@@ -244,12 +244,13 @@ interface Cycle { clip: Clip; seconds: number; strokes: readonly [number, number
 // transform about its contact in the fingers, independent of the camera and arm.
 const KNIFE_POSE: GunOffset = [0.135, -0.04, 0.06, 0.36, 1.45, 0.19];
 /**
- * The katana at rest, as in the reference: point-back in the right fist low on the right, the hilt
- * rising up and left out of it and the blade trailing behind; the scabbard at the hip.
+ * The katana at rest, as in the reference: in the left fist just behind the guard, held low on the
+ * right with the hilt rising up and left out of the fist and the blade reaching forward, right and down.
+ * The right hand keeps the scabbard at the hip, out of view.
  */
-const KATANA_POSE: GunOffset = [0.05, 0.02, 0.02, -0.35, -2.3, 0.3];
-/** The right fist stays point-back through the guard and cuts. */
-const REVERSE: HandKey<RightPose> = { pose: "reverse" };
+const KATANA_POSE: GunOffset = [0.06, 0.06, -0.06, -0.35, -1.35, 1.0];
+/** Sheathed and held across the body in both hands: where the inspect and the equip draw from. */
+const SHEATHED: GunOffset = [-0.085, 0.053, -0.105, -0.23, -1.24, -2.45];
 const PINCH: HandKey<RightPose> = { pose: "pinch" };
 const TURN = 2 * Math.PI;
 export type BladeCue = "clack" | "latch" | "air";
@@ -340,14 +341,15 @@ function cut(rest: GunOffset, wind: GunOffset, strike: GunOffset, through: GunOf
   return { contact, gun: [[0, rest], [contact - 0.17, nudge(rest, ...wind)], [contact, nudge(rest, ...strike)],
     [contact + 0.18, nudge(rest, ...through)], [1, rest]] };
 }
-/** The first cut: pulled back off the right of the screen, then driven in toward the left of centre. */
-const KNIFE_THRUST = cut(KNIFE_POSE, [0.12, -0.08, 0.06, -0.15, -0.3, 0.2], [-0.14, 0.07, -0.18, -0.25, 0.2, 0], [-0.11, 0.05, -0.13, -0.2, 0.15, 0], 0.45);
+/** The first cut: pulled back off the right of the screen, then driven in low toward the centre, point first. */
+const KNIFE_THRUST = cut(KNIFE_POSE, [0.12, -0.08, 0.06, -0.15, -0.3, 0.2], [-0.1, 0.0, -0.18, -0.3, -0.45, 0], [-0.08, -0.01, -0.14, -0.28, -0.4, 0], 0.45);
 /** The second: the knife snaps upright low in the middle, then the arm sweeps it out to the left. */
-const KNIFE_SWEEP: Clip = { contact: 0.5, gun: [[0, KNIFE_POSE], [0.3, [-0.08, -0.06, 0.04, 1.1, 1.0, -0.2]],
-  [0.5, [-0.42, 0.05, -0.12, 0.1, 1.5, 0.2]], [0.68, [-0.37, 0.03, -0.1, 0.05, 1.45, 0.25]], [1, KNIFE_POSE]] };
+const KNIFE_SWEEP = timed(0.55, { contact: 0.24, gun: [[0, KNIFE_POSE], [0.12, [-0.08, -0.06, 0.04, 1.1, 1.0, -0.2]],
+  [0.24, [-0.48, 0.04, -0.12, 0.05, 1.55, 0.2]], [0.32, [-0.6, -0.02, -0.06, 0.0, 1.6, 0.25]],
+  [0.43, nudge(KNIFE_POSE, 0.02, -0.04)], [0.55, KNIFE_POSE]] });
 const KNIFE_BACKHAND = cut(KNIFE_POSE, [-0.09, -0.028, 0.025, -0.3, 0.52, 0.59], [0.045, 0.018, -0.09, 0.2, -0.78, -0.5], [0.09, 0.035, -0.04, 0.34, -1, -0.76]);
 /** The heavy's follow-through: the arm across the bottom of the view, the fist far left, the blade standing up out of it. */
-const FOLLOW: GunOffset = [-0.34, -0.09, 0.0, 1.0, 1.1, -0.1];
+const FOLLOW: GunOffset = [-0.24, -0.02, 0.06, 1.0, 1.1, -0.1];
 /**
  * The heavy: a short pull back, a whip up to the left, and the follow-through held across the body
  * before the hand swings back, the knife falls shut, flips open in an X and flicks into the hold.
@@ -358,12 +360,13 @@ const KNIFE_HEAVY = timed(2.1, {
   contact: 0.22,
   gun: [[0, KNIFE_POSE], [0.12, nudge(KNIFE_POSE, 0.1, -0.1, 0.06, -0.2, -0.35, 0.3)],
     [0.22, [-0.34, 0.16, -0.18, 0.6, 1.3, 0.2]], [0.36, FOLLOW], [0.62, nudge(FOLLOW, 0.01, 0.006)],
-    [1.25, nudge(FOLLOW, 0.006, -0.004)], [1.42, nudge(HANG, -0.02, -0.06, 0, -0.1, 0, 0.2)],
-    [1.58, up(0, -0.03, 0, 0, 0, 0.3)], [1.72, up(0.01, -0.02, 0, 0, 0, -0.3)], [1.84, nudge(PALM_DOWN, 0, 0.01)],
+    [1.13, nudge(FOLLOW, 0.006, -0.004)], [1.3, nudge(HANG, -0.02, -0.06, 0, -0.1, 0, 0.2)],
+    [1.48, nudge(HANG, -0.02, -0.055, 0, -0.1, 0, 0.2)],
+    [1.6, up(0, -0.03, 0, 0, 0, 0.3)], [1.72, up(0.01, -0.02, 0, 0, 0, -0.3)], [1.84, nudge(PALM_DOWN, 0, 0.01)],
     [1.96, nudge(KNIFE_POSE, -0.01, 0.02, 0, 0.15, 0.05, -0.3)], [2.1, KNIFE_POSE]],
-  right: [[0, GRIP], [1.3, GRIP], [1.4, PINCH], [1.88, PINCH], [2.0, GRIP]],
-  safe: [[1.3, 0], [1.42, 1], [1.56, 1], [1.66, 0.45], [1.76, 1], [1.9, 0]],
-  bite: [[1.32, 0], [1.44, 1], [1.58, 1], [1.68, 0.55], [1.78, 1], [1.94, 0]],
+  right: [[0, GRIP], [1.18, GRIP], [1.28, PINCH], [1.88, PINCH], [2.0, GRIP]],
+  safe: [[1.18, 0], [1.3, 1], [1.56, 1], [1.66, 0.45], [1.76, 1], [1.9, 0]],
+  bite: [[1.2, 0], [1.32, 1], [1.58, 1], [1.68, 0.55], [1.78, 1], [1.94, 0]],
 });
 /** Carry speed through the middle of an arc. At a reversal or a held pose,
  * that channel comes to rest. Limit the tangent to avoid overshooting the keys. */
@@ -380,61 +383,107 @@ function swordClip(gun: Keys<GunOffset>, contact?: number): Clip {
   return { gun, tangents, contact };
 }
 
-// Drive the swing with the hilt and let the length of the blade describe the arc.
-// The baked reverse grip stays fixed even at contact and on the way back to guard.
-function arc(wind: GunOffset, strike: GunOffset, through: GunOffset): Clip {
-  return swordClip([[0, KATANA_POSE], [0.18, wind], [0.38, strike], [0.58, through], [1, KATANA_POSE]], 0.38);
+/** On the way back from a cut the sword comes up hilt first out of the lower left, then drops to rest. */
+const KATANA_LIFT: GunOffset = [-0.08, 0.02, -0.06, 1.15, 0.2, 0.3];
+/**
+ * The reference cut, one hand throughout: a small lift to the right, one fast sweep from right to left
+ * across the view on the contact beat, the arm carried on out of view on the left and held there, then
+ * the sword brought back up hilt first and dropped to rest.
+ */
+function arc(wind: GunOffset, strike: GunOffset, through: GunOffset, hold: GunOffset): Clip {
+  return swordClip([[0, KATANA_POSE], [0.14, wind], [0.3, strike], [0.42, through], [0.62, hold], [0.84, KATANA_LIFT], [1, KATANA_POSE]], 0.3);
 }
-const KATANA_SLASH = arc([0.065, 0.006, 0.02, -0.48, -2.44, 0.36],
-  [-0.10, 0.075, -0.085, 0.16, -0.08, 0.08], [-0.16, 0.13, -0.065, 0.43, 0.90, -0.08]);
-const KATANA_SWEEP = arc([-0.08, 0.07, -0.045, 0.15, -0.56, 0.02],
-  [0.005, 0.065, -0.095, 0.04, -1.00, 0.21], [0.085, 0.045, -0.045, -0.04, -1.95, 0.46]);
-const KATANA_RISING = arc([-0.055, -0.035, -0.035, -0.54, -0.95, 0.44],
-  [-0.015, 0.08, -0.09, 0.30, -0.51, 0.16], [0.045, 0.135, -0.06, 0.70, -1.15, 0.10]);
-const KATANA_OVERHEAD = arc([0.035, 0.12, -0.03, 0.83, -1.52, 0.18],
-  [-0.075, 0.065, -0.09, -0.08, -0.10, 0.10], [-0.11, 0.012, -0.055, -0.50, 0.18, 0.23]);
+/** Flat across the middle. */
+const KATANA_SLASH = arc([0.07, 0.085, -0.05, 0.12, -1.5, 1.2], [-0.08, 0.15, -0.16, 0.02, 0.55, 1.3],
+  [-0.3, 0.1, -0.09, -0.05, 1.35, 1.3], [-0.36, -0.08, 0.0, -0.2, 1.5, 1.2]);
+/** Down and across, from high on the right to low on the left. */
+const KATANA_SWEEP = arc([0.06, 0.09, -0.05, 0.62, -1.4, 1.0], [-0.08, 0.12, -0.16, -0.15, 0.55, 1.1],
+  [-0.28, 0.01, -0.09, -0.45, 1.25, 1.1], [-0.34, -0.14, 0.0, -0.5, 1.4, 1.0]);
+/** Up and across, from low on the right to high on the left. */
+const KATANA_RISING = arc([0.1, 0.04, -0.05, -0.4, -1.4, 1.5], [-0.08, 0.15, -0.16, 0.2, 0.55, 1.5],
+  [-0.28, 0.2, -0.09, 0.4, 1.3, 1.5], [-0.36, -0.06, 0.0, -0.1, 1.5, 1.3]);
+/** The flat cut again, higher, near eye level. */
+const KATANA_OVERHEAD = arc([0.06, 0.1, -0.06, 0.3, -1.5, 1.2], [-0.07, 0.2, -0.17, 0.1, 0.55, 1.3],
+  [-0.29, 0.17, -0.1, 0.0, 1.35, 1.3], [-0.36, -0.06, 0.0, -0.2, 1.5, 1.2]);
+/**
+ * The heavy: raised high on the right with the tip up and back, held a beat, then one big diagonal cut
+ * down across the view to the lower left, held there, and brought back up to rest like the light cuts.
+ */
 const KATANA_HEAVY = swordClip([
-  [0, KATANA_POSE], [0.25, [0.035, 0.13, -0.03, 0.91, -1.31, 0.32]],
-  [0.37, [0.025, 0.145, -0.045, 0.98, -1.18, 0.30]],
-  [0.51, [-0.09, 0.065, -0.105, -0.08, -0.05, 0.05]],
-  [0.64, [-0.14, -0.015, -0.085, -0.57, 0.42, -0.08]],
-  [1, KATANA_POSE],
-], 0.51);
+  [0, KATANA_POSE], [0.2, [0.06, 0.09, -0.05, 1.15, -0.9, 1.3]], [0.36, [0.055, 0.085, -0.05, 1.22, -0.85, 1.3]],
+  [0.5, [-0.06, 0.06, -0.16, -0.1, 0.5, 1.2]], [0.6, [-0.26, -0.1, -0.08, -0.6, 1.1, 1.1]],
+  [0.76, [-0.32, -0.16, 0.0, -0.65, 1.3, 1.0]], [0.9, KATANA_LIFT], [1, KATANA_POSE],
+], 0.5);
 
-/** A sword clip keyed in seconds, with continuous velocity through its passing poses. */
-function swordTimed(seconds: number, gun: Keys<GunOffset>, parts: Pick<Clip, "sheathPull" | "sheathPark"> = {}) {
-  const scale = <T>(keys: Keys<T>) => keys.map(([time, value]): [number, T] => [time / seconds, value]);
-  return { seconds, clip: { ...swordClip(scale(gun)), sheathPull: parts.sheathPull && scale(parts.sheathPull),
-    sheathPark: parts.sheathPark && scale(parts.sheathPark) } };
+/** A sword clip keyed in seconds, scaled to 0..1 over `seconds`. */
+function swordTimed(seconds: number, gun: Keys<GunOffset>, c: Clip = {}): { clip: Clip; seconds: number } {
+  const k = <T>(keys?: Keys<T>) => keys?.map(([t, v]): [number, T] => [t / seconds, v]);
+  const clip = swordClip(k(gun)!);
+  return { seconds, clip: { ...clip, sheathPull: k(c.sheathPull), sheathPark: k(c.sheathPark), cues: k(c.cues), right: k(c.right), left: k(c.left) } };
 }
 
-// The draw rises from the waist. The scabbard settles at the hip as the sword clears it.
+// Sword poses with the scabbard gone to the hip and the blade in the left hand. Turned side on
+// (yaw -pi/2), pitch turns the sword in the plane of the screen and roll turns the edge to the eye.
+/**
+ * The finish: the arm up from the lower left, the guard high and the blade down across the view to the
+ * right. Kept near enough that the elbow, where the first-person sleeve ends, stays below the screen.
+ */
+const PRESENT: GunOffset = [-0.13, 0.17, -0.1, -0.7, -1.2, 0.3];
+const SIDE = -Math.PI / 2;
+/** Fully drawn and level across the view, the tip to the right. */
+const LEVEL: GunOffset = [-0.2, 0.125, -0.1, 0.03, -1.45, -2.9];
+
+/**
+ * The equip: up from below with the sword sheathed across the body, the left hand on the hilt and the
+ * right on the scabbard, the scabbard pulled off to the right in one stroke and taken to the hip, the
+ * sword raised to the finish and held, then lowered to rest. The tail past the equip time is looks only.
+ */
 const KATANA_DRAW = swordTimed(1.35, [
-  [0, [-0.10, -0.12, 0.03, -0.35, -1.38, 0.25]],
-  [0.24, [-0.12, -0.035, -0.025, -0.24, -1.23, 0.25]],
-  [0.65, [-0.16, 0.075, -0.07, 0.06, -0.90, 0.28]],
-  [0.88, [-0.135, 0.087, -0.07, 0.14, -0.95, 0.32]],
-  [1.35, KATANA_POSE],
+  [0, nudge(SHEATHED, 0.07, -0.14, 0.05, -0.24, -0.2, 0.35)], [0.22, nudge(SHEATHED, 0, -0.025)],
+  [0.42, [-0.2, 0.07, -0.09, 0.02, -1.35, -2.7]], [0.58, [-0.14, 0.08, -0.11, 0.05, -1.5, -0.8]],
+  [0.76, PRESENT], [1.04, nudge(PRESENT, 0.004, 0.006, 0, 0.03)], [1.2, KATANA_POSE], [1.35, KATANA_POSE],
 ], {
-  sheathPull: [[0, 0], [0.18, 0], [0.72, 0.78]],
-  sheathPark: [[0, 0], [0.36, 0], [0.80, 1]],
+  sheathPull: [[0, 0], [0.24, 0], [0.45, 0.78]],
+  sheathPark: [[0, 0], [0.44, 0], [0.6, 1]],
+  cues: [[0.45, "air"], [0.7, "air"], [1.18, "latch"]],
 });
 
-// Show the whole blade across the view, turn its flat into the light, lift the
-// point, then lower it to guard. The hand and blade travel together throughout.
-const PRESENT: GunOffset = [-0.22, 0.14, -0.085, 0.18, -1.02, 0.22];
+/**
+ * The inspect, timed to the reference footage: a slow two-handed draw across the body until the
+ * scabbard drops away, the blade rolled to show its edge, dropped low and brought up hilt first into
+ * a spin round the hand, swung up overhead, whipped down through a whole turn, spun the other way,
+ * lowered across the bottom, then raised to the finish and snapped back to rest. Spins
+ * carry on through whole turns, so later keys sit a turn or two on.
+ */
 const KATANA_INSPECT = swordTimed(7.1, [
-  [0, KATANA_POSE], [0.42, [-0.05, 0.065, -0.04, -0.12, -1.58, 0.30]],
-  [0.95, PRESENT], [1.40, nudge(PRESENT, -0.005, 0.004)],
-  [2.05, [-0.17, 0.15, -0.085, 0.28, -0.98, -0.32]],
-  [2.56, [-0.11, 0.10, -0.065, -0.10, -1.12, -0.18]],
-  [3.18, [-0.075, 0.14, -0.075, 0.67, -0.89, 0.18]],
-  [3.68, [-0.08, 0.15, -0.075, 0.69, -0.92, 0.20]],
-  [4.27, [-0.13, 0.075, -0.075, -0.16, -0.84, 0.48]],
-  [4.9, [-0.17, 0.085, -0.085, -0.09, -0.97, 0.52]],
-  [5.72, PRESENT], [6.17, nudge(PRESENT, 0.004, 0.002)],
-  [6.70, [-0.025, 0.05, -0.02, -0.21, -1.72, 0.32]], [7.1, KATANA_POSE],
-]);
+  [0, KATANA_POSE], [0.22, SHEATHED], [0.42, [-0.2, 0.124, -0.07, 0.025, -1.37, -2.6]],
+  [0.98, [-0.27, 0.138, -0.07, 0.035, -1.3, -2.75]], [1.37, [-0.27, 0.14, -0.07, 0.05, -1.3, -2.85]],
+  // Level, then the edge rolled up to the light.
+  [1.55, LEVEL], [1.8, [-0.17, 0.14, -0.1, 0.12, SIDE, -2.1]], [2.0, [-0.12, 0.13, -0.11, 0.18, SIDE, -1.75]],
+  // Dropped low, brought up hilt first, one turn round the hand, balanced, swung up and held overhead.
+  [2.05, [-0.25, 0.01, -0.1, -0.9, SIDE, -0.6]], [2.12, [-0.2, 0.05, -0.12, -1.57, SIDE, 0]],
+  [2.2, [-0.08, 0.06, -0.1, -1.57, SIDE, 0]], [2.3, [-0.07, 0.05, -0.1, -1.57 - TURN, SIDE, 0]],
+  [2.4, [-0.07, 0.06, -0.1, -1.57 - TURN, SIDE, 0]], [2.5, [-0.05, 0.12, -0.12, 0.8 - TURN, SIDE, 0]],
+  [2.65, [-0.16, 0.28, -0.06, 1.4 - TURN, -1.4, 0]], [3.1, [-0.17, 0.29, -0.06, 1.45 - TURN, -1.4, 0.05]],
+  // Whipped down through a whole turn to low on the left, the tip swaying.
+  [3.3, [-0.24, -0.03, -0.13, 0.9 - 2 * TURN, SIDE, 0]], [3.6, [-0.23, -0.01, -0.13, 0.65 - 2 * TURN, SIDE, 0.1]],
+  [3.8, [-0.22, -0.02, -0.13, 1.0 - 2 * TURN, SIDE, 0]], [4.12, [-0.2, -0.02, -0.13, 1.2 - 2 * TURN, SIDE, 0]],
+  // Turned hilt up, spun a whole turn the other way, swung up and lowered across the bottom.
+  [4.25, [-0.2, 0.0, -0.13, -1.57 - 2 * TURN, SIDE, 0]], [4.5, [-0.08, 0.05, -0.1, -1.57 - TURN, SIDE, 0]],
+  [4.62, [-0.07, 0.06, -0.1, -1.57 - TURN, SIDE, 0]], [4.78, [-0.1, 0.16, -0.13, -TURN, SIDE, 0]],
+  [4.9, [-0.12, 0.2, -0.12, 0.8 - TURN, -1.4, 0]], [5.05, [-0.04, -0.03, -0.1, 0.05 - TURN, SIDE, 0]],
+  [5.5, [-0.03, -0.025, -0.1, 0.08 - TURN, SIDE, 0]],
+  // Raised to the finish and held, lowered to rest, and the grip settled.
+  [5.97, nudge(PRESENT, 0, 0, 0, -TURN)], [6.4, nudge(PRESENT, 0.004, 0.006, 0, 0.03 - TURN)],
+  [6.55, nudge(KATANA_POSE, 0, 0, 0, -TURN)], [6.8, nudge(KATANA_POSE, 0.01, -0.01, 0, -0.04 - TURN, 0, 0.05)],
+  [7.1, nudge(KATANA_POSE, 0, 0, 0, -TURN)],
+], {
+  sheathPull: [[0, 0], [0.42, 0.03], [0.98, 0.4], [1.4, 0.78]],
+  sheathPark: [[0, 1], [0.2, 0], [1.3, 0], [1.6, 1]],
+  cues: [[1.42, "air"], [2.25, "air"], [2.52, "air"], [3.22, "air"], [4.36, "air"], [4.84, "air"], [5.8, "air"], [6.56, "latch"]],
+});
+
+
 
 interface Moves {
   reload: Clip;
@@ -445,7 +494,8 @@ interface Moves {
   parked?: boolean;
   /** A blade's held pose (absent: REST), its attacks in turn and how long each lasts (s). */
   pose?: GunOffset;
-  swings?: { clips: Clip[]; seconds: number };
+  /** Attacks in turn and how long each runs (s); `each` lets one run longer as looks, cut short by the next attack. */
+  swings?: { clips: Clip[]; seconds: number; each?: (number | undefined)[] };
   /** How long the heavy's clip runs (s), when it carries on past the heavy's interval as looks only. */
   heavySeconds?: number;
   /** Played over the equip time instead of only raising it into view. */
@@ -464,9 +514,9 @@ const CLIPS: Record<WeaponId, Moves> = {
   shotgun: { reload: SHOTGUN_RELOAD, cycle: { clip: SHOTGUN_PUMP, seconds: 0.36, strokes: [0.5, 0.75] } },
   sniper: { reload: SNIPER_RELOAD, cycle: { clip: SNIPER_BOLT, seconds: 0.64, strokes: [0.5, 0.64] } },
   pistol: { reload: REVOLVER_RELOAD, cycle: { clip: REVOLVER_COCK, seconds: 0.3, strokes: [0.3, 0.62] }, rest: BELT },
-  knife: { reload: NO_RELOAD, rest: BELT, pose: KNIFE_POSE, swings: { clips: [KNIFE_THRUST, KNIFE_SWEEP, KNIFE_BACKHAND], seconds: 0.38 },
+  knife: { reload: NO_RELOAD, rest: BELT, pose: KNIFE_POSE, swings: { clips: [KNIFE_THRUST, KNIFE_SWEEP.clip, KNIFE_BACKHAND], seconds: 0.38, each: [undefined, KNIFE_SWEEP.seconds] },
     heavy: KNIFE_HEAVY.clip, heavySeconds: KNIFE_HEAVY.seconds, draw: KNIFE_DRAW.clip, drawSeconds: KNIFE_DRAW.seconds, inspect: [FLOURISH] },
-  katana: { reload: NO_RELOAD, pose: KATANA_POSE, rest: BELT, hold: REVERSE, parked: true, swings: { clips: [KATANA_SLASH, KATANA_SWEEP, KATANA_RISING, KATANA_OVERHEAD], seconds: 0.62 },
+  katana: { reload: NO_RELOAD, pose: KATANA_POSE, parked: true, swings: { clips: [KATANA_SLASH, KATANA_SWEEP, KATANA_RISING, KATANA_OVERHEAD], seconds: 0.62 },
     draw: KATANA_DRAW.clip, drawSeconds: KATANA_DRAW.seconds, heavy: KATANA_HEAVY, inspect: [KATANA_INSPECT] },
 };
 
@@ -476,8 +526,10 @@ function swingClip(weapon: WeaponId, swing: number, heavy: boolean) {
 }
 
 /** How long a blow's clip runs (s). A heavy's may run past its interval as looks; the next blow cuts it short. */
-export function swingSeconds(weapon: WeaponId, heavy: boolean) {
-  return heavy ? CLIPS[weapon].heavySeconds ?? (WEAPONS[weapon].melee?.heavy.intervalMs ?? 0) / 1000 : CLIPS[weapon].swings?.seconds ?? 0;
+export function swingSeconds(weapon: WeaponId, heavy: boolean, swing = 0) {
+  const swings = CLIPS[weapon].swings;
+  if (heavy) return CLIPS[weapon].heavySeconds ?? (WEAPONS[weapon].melee?.heavy.intervalMs ?? 0) / 1000;
+  return swings ? swings.each?.[Math.max(0, swing) % swings.clips.length] ?? swings.seconds : 0;
 }
 
 export function cutContact(weapon: WeaponId, swing: number, heavy: boolean) {
@@ -552,7 +604,7 @@ export function sampleHandling(weapon: WeaponId, reload: number, sinceShot: numb
   out.magVisible = true;
   const inspect = inspectMove(weapon, melee.trick ?? 0);
   const heavy = melee.heavy ?? false;
-  const duration = swingSeconds(weapon, heavy);
+  const duration = swingSeconds(weapon, heavy, melee.swing ?? 0);
   const sinceInspect = melee.sinceInspect ?? -1;
   let busy = true;
   if (reload >= 0) apply(clips.reload, Math.min(1, reload), out);

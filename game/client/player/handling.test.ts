@@ -15,20 +15,18 @@ describe("weapon handling", () => {
     }
   });
 
-  it("keeps the katana in the same fist through every frame of its draw, inspect and attacks", () => {
-    const checkGrip = (shot: number, draw: number, inspect: number, swing = 0, heavy = false) => {
+  it("keeps the katana in the left fist and the scabbard in the right hand through every frame", () => {
+    const check = (shot: number, draw: number, inspect: number, swing = 0, heavy = false) => {
       const pose = sampleHandling("katana", -1, shot, draw, undefined, { sinceInspect: inspect, swing, heavy });
-      expect([pose.right.a.pose, pose.right.b.pose]).toEqual(["reverse", "reverse"]);
-      expect(pose.left.a.belt && pose.left.b.belt).toBe(true);
+      expect([pose.left.a.pose, pose.left.b.pose, pose.right.a.pose, pose.right.b.pose]).toEqual(["support", "support", "grip", "grip"]);
+      expect(pose.left.a.belt || pose.left.b.belt).toBeFalsy();
     };
     for (let frame = 0; frame <= Math.ceil(inspectSeconds("katana") * 60); frame++) {
       const t = frame / 60;
-      checkGrip(-1, -1, t);
-      if (t <= drawSeconds("katana")) checkGrip(-1, t, -1);
-      if (t <= swingSeconds("katana", true)) checkGrip(t, -1, -1, 0, true);
-      if (t <= swingSeconds("katana", false)) {
-        for (let swing = 0; swing < 4; swing++) checkGrip(t, -1, -1, swing);
-      }
+      check(-1, -1, t);
+      if (t <= drawSeconds("katana")) check(-1, t, -1);
+      if (t <= swingSeconds("katana", true)) check(t, -1, -1, 0, true);
+      for (let swing = 0; swing < 4; swing++) if (t <= swingSeconds("katana", false)) check(t, -1, -1, swing);
     }
   });
 

@@ -495,7 +495,7 @@ export class LocalPlayer {
     this.kickYaw *= rec;
     if (def.melee) {
       // Seconds from the cut; the roll lasts as long whatever the clip's length (a heavy's runs on as looks).
-      const fromCut = this.sinceShot(now) - swingSeconds(this.weapon, this.heavy) * cutContact(this.weapon, this.swings, this.heavy);
+      const fromCut = this.sinceShot(now) - swingSeconds(this.weapon, this.heavy, this.swings) * cutContact(this.weapon, this.swings, this.heavy);
       const span = swingSeconds(this.weapon, false);
       // The knife's thrust comes from the right, its sweep goes out left and its backhand back right;
       // the katana's backhand goes up to the left and its other cuts carry across to the right.
@@ -765,7 +765,6 @@ export class LocalPlayer {
       this.cadence.record(now, lightInterval, true);
     }
     this.heavy = heavy;
-    if (this.weapon === "katana") this.drawAt = -Infinity;
     this.lastShotAt = now;
     this.inspectAt = -Infinity;
     this.inspectQueued = false;

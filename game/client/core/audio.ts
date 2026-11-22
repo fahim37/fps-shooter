@@ -534,7 +534,7 @@ export class AudioEngine {
     if (!route) return;
     const [out] = route;
     const katana = weapon === "katana", vary = (heavy ? 0.76 : 0.9) + Math.random() * 0.2;
-    const t = ctx.currentTime + Math.max(0, cutContact(weapon, swing, heavy) - 0.17) * swingSeconds(weapon, heavy);
+    const t = ctx.currentTime + Math.max(0, cutContact(weapon, swing, heavy) - 0.17) * swingSeconds(weapon, heavy, swing);
     this.whoosh(out, t, katana ? 0.3 : 0.17, (katana ? 650 : 1300) * vary, (katana ? 2600 : 4400) * vary, katana ? 1.5 : 2.2, katana ? 0.55 : 0.4);
     if (katana) this.blip(out, "sine", 2300 * vary, t + 0.05, 0.018, 0.05, 0.25, 3000 * vary);
   }
