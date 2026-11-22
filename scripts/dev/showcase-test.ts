@@ -9,6 +9,9 @@ async function main() {
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(url);
+    // The lobby's flowing backdrop and drifting watermark show through the transparent stage: hide
+    // and freeze them so the comparisons below see only the stage's own frames.
+    await page.addStyleTag({ content: "canvas[data-backdrop] { visibility: hidden !important; } *, *::before, *::after { animation: none !important; transition: none !important; }" });
     await page.locator('[data-stage-status="ready"]').waitFor();
     const canvas = page.getByLabel(/^Animated character preview/);
     await canvas.scrollIntoViewIfNeeded();
@@ -50,13 +53,12 @@ async function main() {
     // A fresh context cannot borrow a successful asset request from the first preview.
     const offlineContext = await browser.newContext();
     const offline = await offlineContext.newPage();
-    await offline.route("**/models/char_*.glb", (route) => route.abort());
+    await offline.route("**/models/soldier_hq.glb", (route) => route.abort());
     await offline.goto(url);
     await offline.getByRole("button", { name: "Retry preview", exact: true }).waitFor();
     await offline.getByRole("tab", { name: "With friends" }).click();
-    await offline.getByRole("button", { name: /^1v1/ }).click();
-    assert.ok(await offline.getByRole("button", { name: "CREATE 1V1 ROOM" }).isEnabled(), "Preview failures do not block room creation");
-    await offline.unroute("**/models/char_*.glb");
+    assert.ok(await offline.getByRole("button", { name: /^CREATE ROOM/ }).isEnabled(), "Preview failures do not block room creation");
+    await offline.unroute("**/models/soldier_hq.glb");
     await offline.getByRole("button", { name: "Retry preview", exact: true }).click();
     await offline.locator('[data-stage-status="ready"]').waitFor();
     await offlineContext.close();

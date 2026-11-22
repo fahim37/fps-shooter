@@ -16,7 +16,7 @@ import { ConnectedRoom } from "./RoomLobby";
 import { LobbyTools, SettingsDialog } from "./SettingsDialog";
 import { QuickSettings } from "./SettingsPanel";
 import { CharacterShowcase } from "./CharacterShowcase";
-import type { ShowoffId } from "../shared/showcase";
+import type { BladeShowoffId, ShowoffId } from "../shared/showcase";
 import { MAPS, mapId } from "../shared/map/maps";
 import type { MapId } from "../shared/map/types";
 import { MapPicker } from "./MapPicker";
@@ -74,7 +74,7 @@ export default function Shooter() {
   const [map, setMapState] = useState<MapId>(savedMap);
   const setMap = (next: MapId) => { setMapState(next); try { window.localStorage.setItem(MAP_KEY, next); } catch { /* not persisted */ } };
   const [joinTeam, setJoinTeam] = useState<0 | 1 | 2>(0);
-  const [emote, setEmote] = useState<ShowoffId>("idle");
+  const [emote, setEmote] = useState<ShowoffId | BladeShowoffId>("idle");
   const [privateRoom, setPrivateRoom] = useState(true);
   const [bots, setBots] = useState(0);
   const [maxPlayers, setMaxPlayers] = useState(12);

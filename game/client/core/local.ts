@@ -3,7 +3,7 @@ import { Mover, newMoveState, type MoveState } from "../../shared/movement";
 import { raycastWorld, type Rapier, type World } from "../../shared/physics";
 import { aimDir, spreadDir, zoomSensitivity } from "../../shared/aim";
 import { WEAPONS, GRENADE, SCOPE_UP, currentSpread, fireIntervalMs, reloadClipAt, reloadMs, reloadNeed, reloadSkip, reloadedRounds, type MeleeId, type WeaponId } from "../../shared/weapons";
-import { bladeCues, cutContact, inspectSeconds, swingSeconds } from "../player/handling";
+import { bladeCues, cutContact, drawSeconds, inspectSeconds, swingSeconds } from "../player/handling";
 import { quickScope } from "../player/quickScope";
 import { grenadeVelocity } from "../../shared/grenade";
 import { EYE_HEIGHT, CROUCH_EYE_HEIGHT, SLIDE_EYE_HEIGHT, GRENADES_PER_LIFE, JUMP_BUFFER_MS, SPRINT_SPEED } from "../../shared/constants";
@@ -494,9 +494,13 @@ export class LocalPlayer {
     this.kickPitch *= rec;
     this.kickYaw *= rec;
     if (def.melee) {
-      const phase = this.sinceShot(now) / swingSeconds(this.weapon, this.heavy) - cutContact(this.weapon, this.swings, this.heavy);
-      const direction = this.heavy ? 0.4 : this.swings === 1 ? -1 : this.swings === 2 && this.weapon === "knife" ? 0.2 : 1;
-      const pulse = THREE.MathUtils.smoothstep(phase, -0.17, 0) * (1 - THREE.MathUtils.smoothstep(phase, 0, 0.35));
+      // Seconds from the cut; the roll lasts as long whatever the clip's length (a heavy's runs on as looks).
+      const fromCut = this.sinceShot(now) - swingSeconds(this.weapon, this.heavy) * cutContact(this.weapon, this.swings, this.heavy);
+      const span = swingSeconds(this.weapon, false);
+      // The knife's thrust comes from the right, its sweep goes out left and its backhand back right;
+      // the katana's backhand goes up to the left and its other cuts carry across to the right.
+      const direction = this.heavy ? 0.4 : (this.weapon === "knife" ? [0.2, 1, -1] : [1, -1, -1, -1])[this.swings] ?? 1;
+      const pulse = THREE.MathUtils.smoothstep(fromCut, -0.17 * span, 0) * (1 - THREE.MathUtils.smoothstep(fromCut, 0, 0.35 * span));
       this.shotRoll = SHOT_ROLL[this.weapon] * direction * pulse;
     } else this.shotRoll *= Math.exp(-dt * 14);
     this.recoil = Math.max(0, this.recoil - dt * 9);
@@ -859,11 +863,12 @@ export class LocalPlayer {
   sinceShot(now: number) { return (now - this.lastShotAt) / 1000; }
   sinceDraw(now: number) { return (now - this.drawAt) / 1000; }
   private playBladeCues(now: number) {
-    const drawing = now < this.switchEnd && this.drawAt > this.inspectAt;
+    // A blade's draw runs past the equip time until it attacks or inspects.
+    const drawing = now < this.drawAt + 1000 * drawSeconds(this.weapon) && this.drawAt > this.inspectAt && this.drawAt > this.lastShotAt;
     if (!drawing && !Number.isFinite(this.inspectAt)) return;
     const cues = bladeCues(this.weapon, this.trick, drawing);
     if (!cues) return;
-    const phase = drawing ? (now - this.drawAt) / this.def.equipMs
+    const phase = drawing ? (now - this.drawAt) / (1000 * drawSeconds(this.weapon))
       : (now - this.inspectAt) / (1000 * inspectSeconds(this.weapon, this.trick));
     while (this.cueIndex < cues.length && cues[this.cueIndex][0] <= phase) {
       const [at, cue] = cues[this.cueIndex++];

@@ -9,6 +9,24 @@ export const SHOWOFFS = [
 export type ShowoffId = typeof SHOWOFFS[number]["id"];
 export const SHOWOFF_COOLDOWN_MS = 750;
 
+/** Showoffs that take up a blade and inspect it on the lobby stage, run by the match's own rig. */
+export const BLADE_SHOWOFFS = [
+  { id: "knifeInspect", label: "Knife inspect", blade: "knife" },
+  { id: "katanaInspect", label: "Katana inspect", blade: "katana" },
+] as const;
+
+export type BladeShowoffId = typeof BLADE_SHOWOFFS[number]["id"];
+
+/** The blade a showoff takes up, or null for the clip showoffs. */
+export function bladeShowoff(value: unknown): typeof BLADE_SHOWOFFS[number]["blade"] | null {
+  return BLADE_SHOWOFFS.find((item) => item.id === value)?.blade ?? null;
+}
+
+/** What a showoff is called on the stage and its buttons. */
+export function showoffLabel(value: unknown) {
+  return [...SHOWOFFS, ...BLADE_SHOWOFFS].find((item) => item.id === value)?.label;
+}
+
 /** The big lettering behind the lineup, on two lines so it fits: "Sam's" / "room", "ShadowBison" / "68". */
 export function watermarkLines(text: string): string[] {
   const clean = text.trim();
@@ -23,7 +41,7 @@ export function isShowoff(value: unknown): value is ShowoffId {
 }
 
 export function canShowoff(phase: string, connected: boolean, value: unknown, lastAt: number, now: number) {
-  return phase === "waiting" && connected && isShowoff(value) && now - lastAt >= SHOWOFF_COOLDOWN_MS;
+  return phase === "waiting" && connected && (isShowoff(value) || !!bladeShowoff(value)) && now - lastAt >= SHOWOFF_COOLDOWN_MS;
 }
 
 /** Emotes a player can do during a match (T); moving or any combat action ends one. */

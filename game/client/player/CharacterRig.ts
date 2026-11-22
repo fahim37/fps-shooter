@@ -8,7 +8,7 @@ import { SLIDE_LEG_YAW } from "../../shared/hitboxes";
 import { DEFAULT_OPTICS, OPTICS, type OpticId } from "../../shared/optics";
 import { createIronSights, createReflexSight } from "./ReflexSight";
 import { gripPose, type GripPose, type HandPose } from "./grip";
-import { createHandling, cutContact, swingSeconds, cycleStrokes, inspectSeconds, sampleHandling, type HandBlend, type HandKey } from "./handling";
+import { copyHandling, createHandling, cutContact, swingSeconds, cycleStrokes, inspectSeconds, sampleHandling, type HandBlend, type HandKey, type Handling } from "./handling";
 import type { QuickScope } from "./quickScope";
 import { BladeTrail } from "./BladeTrail";
 import { Recoil } from "./recoil";
@@ -72,6 +72,8 @@ export interface HandOverride { weight: number; offset: THREE.Vector3; turn: THR
 const headCache = new WeakMap<CharacterTemplate, THREE.Vector3>();
 const LOCO: ClipName[] = ["idle", "walk", "jog", "sprint", "crouchIdle", "crouchWalk", "jumpLoop", "slideLoop"];
 const FPP_VISIBLE = /Arms/;
+/** Seconds a blade move that cuts into another takes to ease away from the pose on screen. */
+const CUT_BLEND = 0.12;
 const PROCEDURAL_BONES = ["spine_01", "spine_03", "neck_01", "clavicle_r", "upperarm_r", "lowerarm_r", "hand_r", "clavicle_l", "upperarm_l", "lowerarm_l", "hand_l"];
 const BOLT_TRAVEL = 0.065;
 /** How far a revolver's hammer rolls back from its fallen position (rad). */
@@ -242,6 +244,9 @@ export class CharacterRig {
   private fingers: { r: (THREE.Bone | undefined)[]; l: (THREE.Bone | undefined)[] } = { r: [], l: [] };
   private openLeft: { bone: THREE.Bone; turn: THREE.Quaternion }[] = [];
   private handling = createHandling();
+  /** The last pose shown and how far a cut into a new move has blended away from it (see `blendCuts`). */
+  private shown = createHandling();
+  private cut = { from: createHandling(), left: 0, timing: { shot: -1, inspect: -1, draw: -1, weapon: "" } };
   /** The gun's kick from shot to shot. A shot is one whenever `sinceShot` starts over. */
   private kick = new Recoil();
   private lastSinceShot = Infinity;
@@ -486,7 +491,7 @@ export class CharacterRig {
       rotateBoneWorld(this.inst.bones.get("spine_01")!, _q.setFromAxisAngle(_v, lean * LEAN_ANGLE * 0.75), true);
       rotateBoneWorld(this.inst.bones.get("spine_03")!, _q.setFromAxisAngle(_v, lean * LEAN_ANGLE * 0.25), true);
     }
-    this.placeGun(s);
+    this.placeGun(s, dt);
     this.state = s;
     this.solveArms();
   }
@@ -610,7 +615,7 @@ export class CharacterRig {
     this.aim.n.setEffectiveWeight(1 - up - down);
   }
 
-  private placeGun(s: RigState) {
+  private placeGun(s: RigState, dt: number) {
     const w = this.weapon;
     if (!w) return;
     const meta = WEAPON_META[w];
@@ -630,6 +635,7 @@ export class CharacterRig {
     const scoped = !!scope && OPTICS[optic].zoom > 1;
     if (scope) scope.visible = scoped;
     const h = sampleHandling(w, s.reload, s.sinceShot ?? -1, s.sinceDraw ?? -1, this.handling, s);
+    this.blendCuts(h, s, dt);
     const [hx, hy, hz, hPitch, hYaw, hRoll] = h.gun;
     // A reload is held up in view even on the run: the sprint pose would carry it off the screen.
     const reloading = THREE.MathUtils.smoothstep(s.reload, 0, 0.1) * (1 - THREE.MathUtils.smoothstep(s.reload, 0.9, 1));
@@ -748,6 +754,40 @@ export class CharacterRig {
     if (push > 0) this.gunPivot.position.add(_v2.set(fx * push, 0, fz * push));
   }
 
+  /**
+   * A move that cuts into another (an attack during an inspect or a flourish, a new inspect) starts
+   * from the pose on screen and eases into its own over CUT_BLEND seconds instead of jumping.
+   * Angles take the short way round, so a cut mid-spin does not unwind whole turns.
+   */
+  private blendCuts(h: Handling, s: RigState, dt: number) {
+    const t = this.cut.timing;
+    // Guns restart their clips from rest on every shot; only blades cut moves short.
+    if (!this.weapon || !WEAPONS[this.weapon].melee) { t.weapon = ""; this.cut.left = 0; return; }
+    const shot = s.sinceShot ?? -1, inspect = s.sinceInspect ?? -1, draw = s.sinceDraw ?? -1;
+    const restarted = (now: number, before: number) => now >= 0 && (before < 0 || now < before);
+    const sameWeapon = t.weapon === this.weapon;
+    if (sameWeapon && (restarted(shot, t.shot) || restarted(inspect, t.inspect) || restarted(draw, t.draw))) {
+      copyHandling(this.shown, this.cut.from);
+      this.cut.left = CUT_BLEND;
+    }
+    t.shot = shot; t.inspect = inspect; t.draw = draw; t.weapon = this.weapon ?? "";
+    if (this.cut.left > 0) {
+      this.cut.left = Math.max(0, this.cut.left - dt);
+      const k = 1 - THREE.MathUtils.smoothstep(this.cut.left, 0, CUT_BLEND);
+      const from = this.cut.from;
+      const turn = (a: number, b: number) => b + Math.atan2(Math.sin(a - b), Math.cos(a - b));
+      for (let i = 0; i < 6; i++) {
+        h.gun[i] += ((i < 3 ? from.gun[i] : turn(from.gun[i], h.gun[i])) - h.gun[i]) * (1 - k);
+        h.spin[i] += ((i < 3 ? from.spin[i] : turn(from.spin[i], h.spin[i])) - h.spin[i]) * (1 - k);
+      }
+      h.safe += (from.safe - h.safe) * (1 - k);
+      h.bite += (from.bite - h.bite) * (1 - k);
+      h.sheathPull += (from.sheathPull - h.sheathPull) * (1 - k);
+      h.sheathPark += (from.sheathPark - h.sheathPark) * (1 - k);
+    }
+    copyHandling(h, this.shown);
+  }
+
   /** Seats the moving parts on the gun; held ones are moved with the hand after the IK. */
   private placeParts(s: RigState) {
     const w = this.weapon!;
@@ -759,10 +799,11 @@ export class CharacterRig {
       sheath.position.set(0, 0, WEAPON_META.katana.guard! - h.sheathPull);
       sheath.quaternion.identity();
       const age = s.sinceShot ?? -1, duration = swingSeconds(w, !!s.heavy);
-      if (age >= 0 && age < duration) {
+      const swinging = age >= 0 && age < duration;
+      if (swinging || h.sheathPark > 0) {
         // The right hand keeps the scabbard low at the hip while the left carries the blade.
         const phase = age / duration;
-        const park = THREE.MathUtils.smoothstep(phase, 0, 0.17) * (1 - THREE.MathUtils.smoothstep(phase, 0.78, 1));
+        const park = swinging ? THREE.MathUtils.smoothstep(phase, 0, 0.17) * (1 - THREE.MathUtils.smoothstep(phase, 0.78, 1)) : h.sheathPark;
         const view = this.mode === "fpp" && s.view ? s.view : _q2.setFromAxisAngle(UP, s.yaw);
         const origin = this.mode === "fpp" && s.eye ? s.eye : _tb.setFromMatrixPosition(this.inst.bones.get("neck_01")!.matrixWorld);
         const inverse = _qa.copy(this.gunPivot.quaternion).invert();
@@ -905,14 +946,18 @@ export class CharacterRig {
     if (key.pull || key.clear || key.drop) _m.multiply(_m2.makeTranslation(-(key.clear ?? 0), -(key.drop ?? 0), key.pull ?? 0));
     _m.multiply(pose.matrix);
     _m.decompose(pos, quat, _scale);
-    if (key.belt && this.weapon === "knife" && this.state) {
+    // In first person the knife's free hand stays in view; seen from outside it hangs at the hip like the pistol's.
+    if (key.belt && this.weapon === "knife" && this.state && this.mode === "fpp") {
       const s = this.state;
       const age = s.sinceInspect ?? -1;
       const retreat = THREE.MathUtils.smoothstep(age, 0, 0.25) *
         THREE.MathUtils.smoothstep(inspectSeconds("knife", s.trick) - age, 0, 0.23);
+      // The heavy's follow-through ends where this hand hangs: it drops out of the way until the recovery.
+      const shot = s.heavy ? s.sinceShot ?? -1 : -1;
+      const clear = shot < 0 ? 0 : THREE.MathUtils.smoothstep(shot, 0.04, 0.22) * (1 - THREE.MathUtils.smoothstep(shot, 1.3, 1.5));
       const view = this.mode === "fpp" && s.view ? s.view : _q2.setFromAxisAngle(UP, s.yaw);
       const origin = this.mode === "fpp" && s.eye ? s.eye : _v.setFromMatrixPosition(this.inst.bones.get("neck_01")!.matrixWorld);
-      pos.set(-0.245 - retreat * 0.045 + (s.bob?.x ?? 0), -0.188 - retreat * 0.12 + (s.bob?.y ?? 0), -0.37)
+      pos.set(-0.245 - retreat * 0.045 - clear * 0.06 + (s.bob?.x ?? 0), -0.188 - retreat * 0.12 - clear * 0.3 + (s.bob?.y ?? 0), -0.37)
         .applyQuaternion(view).add(origin);
       quat.copy(view).multiply(KNIFE_FREE_WRIST);
     } else if (key.belt) {

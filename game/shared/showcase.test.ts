@@ -28,6 +28,12 @@ describe("lobby showoff authorization", () => {
     expect(canShowoff("waiting", true, "dance", 1000, 1749)).toBe(false);
     expect(canShowoff("waiting", true, "dance", 1000, 1750)).toBe(true);
   });
+  it("accepts the blade inspects in the waiting room only", () => {
+    expect(canShowoff("waiting", true, "knifeInspect", 0, 1000)).toBe(true);
+    expect(canShowoff("waiting", true, "katanaInspect", 0, 1000)).toBe(true);
+    expect(canShowoff("live", true, "knifeInspect", 0, 1000)).toBe(false);
+    expect(canShowoff("waiting", true, "swordInspect", 0, 1000)).toBe(false);
+  });
 });
 
 describe("in-match emote authorization", () => {

@@ -73,9 +73,11 @@ async function main() {
     assert.ok(await game(page, (g) => g.local!.sinceInspect(performance.now()) >= 0 && !g.local!.emoteMenu));
     await page.screenshot({ path: ".next/melee-inspect.png" });
 
-    // A second press is queued and plays once the first trick (the long showcase) is done.
+    // A second press is queued and plays once the first inspect (about five seconds) is done.
     await page.keyboard.press("KeyT");
     await sleep(2400);
+    assert.equal(await game(page, (g) => g.local!.trick), 0);
+    await sleep(2900);
     assert.equal(await game(page, (g) => g.local!.trick), 1);
 
     // The peer stands just ahead, its back turned: one stab from behind kills through the shield.
@@ -135,7 +137,7 @@ async function main() {
 
     if (errors.length) console.error("Browser errors:", errors);
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ passed: true, checks: ["slot 3 equips the knife", "T cycles knife tricks", "backstab kill credited to the knife", "katana chosen and remembered", "T inspects the katana in first person", "right-click heavy replicated", "wheel cycles to the primary"] }));
+    console.log(JSON.stringify({ passed: true, checks: ["slot 3 equips the knife", "T inspects the knife and queues a second inspect", "backstab kill credited to the knife", "katana chosen and remembered", "T inspects the katana in first person", "right-click heavy replicated", "wheel cycles to the primary"] }));
   } catch (error) {
     console.error("Browser errors:", errors);
     await page.screenshot({ path: ".next/melee-test-failure.png" }).catch(() => {});

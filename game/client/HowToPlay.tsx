@@ -21,7 +21,7 @@ const KEYBOARD: { title: string; rows: Row[] }[] = [
     [["Right click"], "Aim down sights / heavy blade attack"],
     [["R"], "Reload"],
     [["1", "2", "3"], "Primary / sidearm / blade", "Mouse wheel cycles all three"],
-    [["T"], "Inspect blade", "Repeated presses cycle knife tricks"],
+    [["T"], "Inspect blade", "Flips, spins and shows it off; try Knife inspect or Katana inspect in the lobby"],
     [["F"], "Dash", "A very fast burst the way you are moving (straight ahead if standing still) · look up to rise a little · two per life · every 2 kills refill 1 (2 held at most)"],
     [["Z"], "Mark enemy", "Look at an enemy and press: a mark follows them on screen for your team for a few seconds · they get a MARKED warning"],
     [["C", "G"], "Grenade", "Press to pull the pin (the fuse starts), hold to aim along the arc, release to throw · it blows up in your hand if held too long · right mouse lobs"],

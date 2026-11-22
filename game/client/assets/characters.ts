@@ -30,6 +30,7 @@ const LOBBY_MODEL = "/models/soldier_hq.glb";
 
 let template: Promise<CharacterTemplate> | null = null;
 let lobbyTemplate: Promise<CharacterTemplate> | null = null;
+let lobbyRigTemplate: Promise<CharacterTemplate> | null = null;
 
 /** Lobby requests only the body and four showoff clips, never combat/world assets. */
 export function loadLobbyCharacter() {
@@ -39,6 +40,23 @@ export function loadLobbyCharacter() {
     void promise.catch(() => { if (lobbyTemplate === promise) lobbyTemplate = null; });
   }
   return lobbyTemplate;
+}
+
+/**
+ * The lobby's detailed soldier with the match's clips added, so a blade can be held and worked on
+ * the lobby stage by the same rig as in a match. The body is shared with the lobby's own template.
+ */
+export function loadLobbyRigCharacter() {
+  if (!lobbyRigTemplate) {
+    const promise = lobbyRigTemplate = Promise.all([loadLobbyCharacter(), loadGLTF("/models/anims.glb")]).then(([lobby, anims]) => {
+      const match = retarget(lobby.scene, anims.animations, findBone(anims.scene, "pelvis")!.position.clone());
+      // As in a match, its own clips win over the lobby's of the same name.
+      const join = <T>(a: Map<ClipName, T>, b: Map<ClipName, T>) => new Map([...a, ...b]);
+      return { scene: lobby.scene, full: join(lobby.full, match.full), lower: join(lobby.lower, match.lower), upper: join(lobby.upper, match.upper) };
+    });
+    void promise.catch(() => { if (lobbyRigTemplate === promise) lobbyRigTemplate = null; });
+  }
+  return lobbyRigTemplate;
 }
 
 export function loadCharacter() {
@@ -62,6 +80,21 @@ function findBone(root: THREE.Object3D, name: string) {
 }
 
 function makeTemplate(scene: THREE.Group, clips: THREE.AnimationClip[], animPelvis: THREE.Vector3): CharacterTemplate {
+  const { full, lower, upper } = retarget(scene, clips, animPelvis);
+  mergeParts(scene);
+  scene.traverse((o) => {
+    const m = o as THREE.SkinnedMesh;
+    if (m.isSkinnedMesh) {
+      m.castShadow = true;
+      m.receiveShadow = true;
+      m.frustumCulled = false;
+    }
+  });
+  return { scene, full, lower, upper };
+}
+
+/** Clips fitted to this body, whole and split into the lower- and upper-body layers. */
+function retarget(scene: THREE.Object3D, clips: THREE.AnimationClip[], animPelvis: THREE.Vector3) {
   const pelvis = findBone(scene, "pelvis")!;
   // The clips were authored on the mannequin; scale pelvis translation to this body's hip height.
   const ratio = pelvis.position.length() / animPelvis.length();
@@ -81,16 +114,7 @@ function makeTemplate(scene: THREE.Group, clips: THREE.AnimationClip[], animPelv
     lower.set(name, filterClip(clip, (bone) => LOWER_BONES.has(bone)));
     upper.set(name, filterClip(clip, (bone) => !LOWER_BONES.has(bone)));
   }
-  mergeParts(scene);
-  scene.traverse((o) => {
-    const m = o as THREE.SkinnedMesh;
-    if (m.isSkinnedMesh) {
-      m.castShadow = true;
-      m.receiveShadow = true;
-      m.frustumCulled = false;
-    }
-  });
-  return { scene, full, lower, upper };
+  return { full, lower, upper };
 }
 
 function filterClip(clip: THREE.AnimationClip, keep: (bone: string) => boolean) {

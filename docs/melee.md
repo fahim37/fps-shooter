@@ -4,6 +4,8 @@ You are working in this repo (`fps-shooter`, a browser FPS built with Next.js, t
 
 Read `AGENTS.md` first: this Next.js version differs from what you know.
 
+> **Update, 2026-11-22.** The blades were redone beat for beat from reference footage the user supplied (studied at its full 60 fps). Knife: one fixed inspect of about five seconds (`FLOURISH`), a longer show-off equip (`KNIFE_DRAW`), a thrust and a sweep as the first two light cuts, and a heavy (`KNIFE_HEAVY`) whose held follow-through and recovery flips run past the heavy's interval as looks. Katana: a 7.1 s inspect and an equip with the scabbard parked at the hip (`sheathPark`), and a four-cut combo of big arcs (`arc`). A blade's draw and heavy may run past their gameplay times (`drawSeconds`, `heavySeconds`); the next attack or inspect cuts them short, and `CharacterRig.blendCuts` eases any such cut from the pose on screen. The old five-trick cycle on T is gone. In the lobby, **Knife inspect** and **Katana inspect** sit among the showoffs: the operator on the lineup takes the blade up and inspects it, seen by the whole room. `scripts/dev/clip-frames.ts` captures any clip frame by frame and `scripts/dev/lobby-showoff-test.ts` checks the lobby.
+
 ## What exists now
 
 **Controls**: `3` equips the blade (the loadout's BLADE section chooses which one; the choice is kept in localStorage). The mouse wheel cycles primary → sidearm → blade. Left mouse swings, and holding it keeps swinging at the blade's rate. `Y` plays the inspect. There is no aiming with a blade (right mouse does nothing yet). The player runs faster with a blade out (knife ×1.15, katana ×1.1), and swinging never drops a sprint.

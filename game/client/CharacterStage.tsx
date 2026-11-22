@@ -2,11 +2,20 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import * as THREE from "three";
-import { instantiateCharacter, loadLobbyCharacter, type CharacterInstance } from "./assets/characters";
-import { isShowoff, type ShowcasePlayer } from "../shared/showcase";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { instantiateCharacter, loadLobbyCharacter, loadLobbyRigCharacter, type CharacterInstance, type CharacterTemplate } from "./assets/characters";
+import { loadWeapons, type WeaponTemplates } from "./assets/weapons";
+import { CharacterRig } from "./player/CharacterRig";
+import { drawSeconds, inspectSeconds } from "./player/handling";
+import { bladeShowoff, isShowoff, type ShowcasePlayer } from "../shared/showcase";
+import type { MeleeId } from "../shared/weapons";
 import styles from "./CharacterShowcase.module.css";
 
-interface Actor { instance: CharacterInstance; mixer: THREE.AnimationMixer; action?: THREE.AnimationAction; emote: string; team: number }
+interface Actor {
+  instance: CharacterInstance; mixer: THREE.AnimationMixer; action?: THREE.AnimationAction; emote: string; team: number;
+  /** A blade showoff: the match's rig stands in for the clip-driven body, `since` seconds in. */
+  blade?: { rig: CharacterRig; weapon: MeleeId; since: number };
+}
 interface Member { id: string; team: number }
 interface Spot { id: string; team: number; x: number; y: number; z: number; row: 0 | 1 }
 /** How much a name tag may show: callsign and details, callsign only, or callsign on alternating lines. */
@@ -20,6 +29,8 @@ const RISER = 0.28;
 const HEADING = 40;
 const TAG_HEIGHT: Record<TagMode, number> = { full: 36, name: 16, stagger: 30 };
 const PAD_COLORS = ["#c8f751", "#66b8ff", "#ff827c"];
+/** A blade showoff takes the blade up, then inspects it over and over with a short rest between. */
+const BLADE_REST = 1.4;
 
 /**
  * Up to six stand in one row. Larger rooms zig-zag across a front row and a raised back row,
@@ -105,6 +116,24 @@ export default function CharacterStage({ players, paused, label }: {
     const riser = new THREE.Mesh(riserGeometry, riserMaterial);
     riser.visible = false; scene.add(riser);
 
+    // Blade showoffs load the match's rig and weapons the first time one is picked, and light the
+    // steel with a soft room to reflect only while one is on stage.
+    let bladeAssets: { template: CharacterTemplate; weapons: WeaponTemplates } | null = null;
+    let bladeLoading = false;
+    let environment: THREE.Texture | null = null;
+    const loadBlades = () => {
+      if (bladeAssets || bladeLoading) return;
+      bladeLoading = true;
+      void Promise.all([loadLobbyRigCharacter(), loadWeapons()]).then(([template, weapons]) => {
+        bladeAssets = { template, weapons }; dirty = true;
+      }, () => { bladeLoading = false; });
+    };
+    const releaseBlade = (actor: Actor) => {
+      if (!actor.blade) return;
+      actor.blade.rig.dispose();
+      actor.blade = undefined;
+      actor.instance.root.visible = true;
+    };
     const point = new THREE.Vector3();
     const project = (x: number, y: number, z: number) => point.set(x, y, z).project(camera);
     /** Fits the camera so the whole formation, plus its name tags, fits inside the viewport. */
@@ -236,7 +265,9 @@ export default function CharacterStage({ players, paused, label }: {
     canvas.addEventListener("pointerdown", down); canvas.addEventListener("pointermove", move);
     canvas.addEventListener("pointerup", up); canvas.addEventListener("pointercancel", up);
     canvas.addEventListener("dblclick", reset); canvas.addEventListener("keydown", turnKey);
-    const releaseActor = ({ instance, mixer }: Actor) => {
+    const releaseActor = (actor: Actor) => {
+      const { instance, mixer } = actor;
+      releaseBlade(actor);
       mixer.stopAllAction(); mixer.uncacheRoot(instance.root);
       instance.root.removeFromParent();
       for (const skeleton of new Set(instance.meshes.map((mesh) => mesh.skeleton))) skeleton.dispose();
@@ -305,9 +336,38 @@ export default function CharacterStage({ players, paused, label }: {
       const dt = previous ? Math.min((time - previous) / 1000, 0.1) : 0;
       previous = time;
       const still = latest.current.paused || motion.matches;
+      let blades = 0;
       for (const member of latest.current.players) {
         const actor = actors.get(member.id);
         if (!actor) continue;
+        const blade = bladeShowoff(member.emote);
+        if (blade !== (actor.blade?.weapon ?? null)) {
+          releaseBlade(actor);
+          if (blade) loadBlades();
+          if (blade && bladeAssets) {
+            const rig = new CharacterRig(bladeAssets.template, bladeAssets.weapons, member.team, "tpp", true);
+            rig.setWeapon(blade);
+            scene.add(rig.object);
+            actor.blade = { rig, weapon: blade, since: 0 };
+            actor.instance.root.visible = false;
+          }
+          dirty = true;
+        }
+        if (actor.blade) {
+          blades++;
+          const b = actor.blade, step = still ? 0 : dt;
+          b.since += step;
+          // Up comes the blade (its equip), then the inspect, again and again.
+          const start = drawSeconds(b.weapon) + 0.4, length = inspectSeconds(b.weapon);
+          const into = b.since < start ? -1 : (b.since - start) % (length + BLADE_REST);
+          const at = actor.instance.root.position, facing = Math.PI + actor.instance.root.rotation.y;
+          b.rig.update(step, {
+            x: at.x, y: at.y, z: at.z, yaw: facing, moveYaw: facing, pitch: 0, speed: 0, crouch: false, grounded: true, alive: true,
+            sprint: 0, ads: 0, reload: -1, sinceDraw: b.since, sinceShot: -1, sinceInspect: into < length ? into : -1, trick: 0,
+          });
+          dirty = true;
+          continue;
+        }
         const emote = isShowoff(member.emote) ? member.emote : "idle";
         if (actor.emote !== emote) {
           const next = actor.mixer.clipAction(actor.instance.template.full.get(emote)!);
@@ -320,6 +380,13 @@ export default function CharacterStage({ players, paused, label }: {
         }
         if (!still) { actor.mixer.update(dt); dirty = true; }
       }
+      if (blades && !environment) {
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+        pmrem.dispose();
+      }
+      scene.environment = blades ? environment : null;
+      scene.environmentIntensity = 0.35;
       if (dirty) { renderer.render(scene, camera); dirty = false; }
     };
     frame = requestAnimationFrame(tick);
@@ -333,6 +400,7 @@ export default function CharacterStage({ players, paused, label }: {
       canvas.removeEventListener("pointerup", up); canvas.removeEventListener("pointercancel", up);
       canvas.removeEventListener("dblclick", reset); canvas.removeEventListener("keydown", turnKey);
       actors.forEach(releaseActor);
+      environment?.dispose();
       for (const resource of [padGeometry, riserGeometry, riserMaterial, ...padMaterials]) resource.dispose();
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove();
     };
