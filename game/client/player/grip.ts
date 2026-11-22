@@ -11,7 +11,8 @@ import baked from "../../shared/generated/grips.json";
 /** What a hand pose is attached to: the gun itself, or a piece that moves while handling it. */
 export type HandFrame = "gun" | "mag" | "pump" | "bolt" | "shell";
 
-export type RightPose = "grip" | "pinch" | "bolt" | "cock" | "cocked";
+/** `reverse`: a blade held point-back, the thumb toward the pommel (the katana at rest). */
+export type RightPose = "grip" | "pinch" | "bolt" | "cock" | "cocked" | "reverse";
 export type LeftPose = "support" | "mag" | "charge" | "shell";
 export type HandPoseId = RightPose | LeftPose;
 

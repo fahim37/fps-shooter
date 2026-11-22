@@ -146,7 +146,19 @@ function MatchHud({ game, map, onLeave, setScreenMessage }: { setScreenMessage: 
         </div>}
       </>}
       {h.announce && now - h.announce.at < 3000 && <div className="announcement"><h2>{h.announce.text}</h2><p>{h.announce.sub}</p></div>}
-      {h.alive && !h.touch && <div className="hud-bottom"><div className="hud-hints">WASD MOVE · Q / E PEEK · R RELOAD · HOLD X GRENADE · 3 BLADE<br />V CAMERA · T INSPECT BLADE · N / M VOICE · TAB SCORES · H HELP · ESC PAUSE</div><div className="ammo"><small>{WEAPONS[h.weapon].name} · {h.thirdPerson ? "TPP" : "FPP"}</small><strong>{WEAPONS[h.weapon].melee ? <span>RMB HEAVY · T INSPECT</span> : <>{h.mag}<span> / {h.reserve}</span></>}</strong><small>{h.reloading >= 0 ? `RELOADING ${Math.round(h.reloading * 100)}%` : `${h.grenades} GRENADES`}</small></div></div>}
+      {h.alive && !h.touch && <div className="hud-bottom">
+        <div className="hud-hints">WASD MOVE · Q / E PEEK · R RELOAD · HOLD X GRENADE · 3 BLADE<br />V CAMERA · N / M VOICE · TAB SCORES · H HELP · ESC PAUSE</div>
+        <div className="ammo">
+          <small>{WEAPONS[h.weapon].name} · {h.thirdPerson ? "TPP" : "FPP"}</small>
+          {WEAPONS[h.weapon].melee
+            ? !paused && !scoreboard && !h.grenadeAim && !h.loadoutOpen && !h.emote && !h.help && <div className="blade-controls">
+              <span>Press <kbd>T</kbd> to inspect</span>
+              <small>RMB HEAVY</small>
+            </div>
+            : <strong>{h.mag}<span> / {h.reserve}</span></strong>}
+          <small>{h.reloading >= 0 ? `RELOADING ${Math.round(h.reloading * 100)}%` : `${h.grenades} GRENADES`}</small>
+        </div>
+      </div>}
       {h.ready && h.alive && !paused && !scoreboard && !h.loadoutOpen && !h.customizingControls && <HealthBar h={h} now={now} />}
       {!h.alive && h.ready && !scoreboard && !paused && !h.loadoutOpen && <DeathRecap h={h} now={now} />}
     </div>

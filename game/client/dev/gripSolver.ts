@@ -319,6 +319,16 @@ const GRIPS: Record<WeaponId, { right: Partial<Record<RightPose, HandGrip>> & { 
         thumb: [-0.5, 0.45, -1],
         press: 0.004,
       },
+      // At rest the katana is held point-back: the same fist just behind the guard, turned so the
+      // thumb and index lie toward the pommel and the blade leaves past the little finger.
+      reverse: {
+        part: { center: [-0.001, 0.002, 0.06], half: [0.0205, 0.023, 0.08], round: 0.012 },
+        palm: [0.034, 0.003, 0.035],
+        facing: [-1, 0, 0],
+        thumbSide: [0, 0.2, 1],
+        thumb: [-0.5, 0.45, 1],
+        press: 0.004,
+      },
     },
     left: {
       // The other fist, a hand's width back toward the pommel, from the left: thumb over to the right.

@@ -73,6 +73,31 @@ function FppRig({ weapon, optic, ads, pitch, reload, orbit, shot, draw, raise, f
   const rig = useMemo(() => {
     const r = new CharacterRig(template, weapons, 1, "fpp", true);
     r.setWeapon(weapon);
+    // &backfaces=1 paints the inside of the arms magenta, so an open sleeve end shows up in a
+    // screenshot (scripts/dev/sleeve-check.ts counts it).
+    if (typeof location !== "undefined" && new URLSearchParams(location.search).has("backfaces")) {
+      const inside = new THREE.MeshBasicMaterial({ color: 0xff00ff, side: THREE.BackSide });
+      const arms: THREE.SkinnedMesh[] = [];
+      r.object.traverse((o) => { const m = o as THREE.SkinnedMesh; if (m.isSkinnedMesh && m.visible) arms.push(m); });
+      for (const m of arms) {
+        // Only the sleeves: triangles whose vertices follow no hand or finger bone (the glove's own
+        // cuff opening is natural and reads as shadow).
+        const glove = new Set(m.skeleton.bones.map((bone, i) => (/^(hand|index|middle|ring|pinky|thumb)_/.test(bone.name) ? i : -1)).filter((i) => i >= 0));
+        const skinIndex = m.geometry.getAttribute("skinIndex"), skinWeight = m.geometry.getAttribute("skinWeight");
+        const onGlove = (v: number) => { for (let k = 0; k < 4; k++) if (skinWeight.getComponent(v, k) > 0.05 && glove.has(skinIndex.getComponent(v, k))) return true; return false; };
+        const index = m.geometry.getIndex()!, kept: number[] = [];
+        for (let i = 0; i < index.count; i += 3) {
+          const tri = [index.getX(i), index.getX(i + 1), index.getX(i + 2)];
+          if (!tri.some(onGlove)) kept.push(...tri);
+        }
+        const sleeves = m.geometry.clone();
+        sleeves.setIndex(kept);
+        const shell = new THREE.SkinnedMesh(sleeves, inside);
+        shell.bind(m.skeleton, m.bindMatrix);
+        shell.frustumCulled = false;
+        m.parent!.add(shell);
+      }
+    }
     return r;
   }, [template, weapons, weapon]);
   const { scene, camera } = useThree();

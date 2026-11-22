@@ -8,7 +8,7 @@ import { SLIDE_LEG_YAW } from "../../shared/hitboxes";
 import { DEFAULT_OPTICS, OPTICS, type OpticId } from "../../shared/optics";
 import { createIronSights, createReflexSight } from "./ReflexSight";
 import { gripPose, type GripPose, type HandPose } from "./grip";
-import { copyHandling, createHandling, cutContact, swingSeconds, cycleStrokes, inspectSeconds, sampleHandling, type HandBlend, type HandKey, type Handling } from "./handling";
+import { copyHandling, createHandling, cutContact, drawSeconds, swingSeconds, cycleStrokes, inspectSeconds, sampleHandling, type HandBlend, type HandKey, type Handling } from "./handling";
 import type { QuickScope } from "./quickScope";
 import { BladeTrail } from "./BladeTrail";
 import { Recoil } from "./recoil";
@@ -72,6 +72,9 @@ export interface HandOverride { weight: number; offset: THREE.Vector3; turn: THR
 const headCache = new WeakMap<CharacterTemplate, THREE.Vector3>();
 const LOCO: ClipName[] = ["idle", "walk", "jog", "sprint", "crouchIdle", "crouchWalk", "jumpLoop", "slideLoop"];
 const FPP_VISIBLE = /Arms/;
+/** The katana's scabbard worn at the left hip in third person: offset from the neck (body space) and turn. */
+const TPP_SHEATH_AT: [number, number, number] = [-0.17, -0.62, 0.04];
+const TPP_SHEATH_TURN: [number, number, number] = [-0.55, Math.PI, 0];
 /** Seconds a blade move that cuts into another takes to ease away from the pose on screen. */
 const CUT_BLEND = 0.12;
 const PROCEDURAL_BONES = ["spine_01", "spine_03", "neck_01", "clavicle_r", "upperarm_r", "lowerarm_r", "hand_r", "clavicle_l", "upperarm_l", "lowerarm_l", "hand_l"];
@@ -113,7 +116,6 @@ const KNIFE_FREE_WRIST = new THREE.Quaternion().setFromRotationMatrix(new THREE.
   new THREE.Vector3(0, -1, 0), new THREE.Vector3(0.5, 0, -Math.sqrt(0.75)),
   new THREE.Vector3(Math.sqrt(0.75), 0, 0.5)));
 const FPP_HAND_SCALE = 0.89;
-const SHEATH_HOLD = new THREE.Matrix4().makeRotationY(Math.PI).setPosition(0, 0, -0.056);
 /** Crossfade (s) into and out of an emote. */
 const EMOTE_FADE = 0.25;
 /** FPP: view-space offset of the hidden body from where the head would put it. */
@@ -246,7 +248,7 @@ export class CharacterRig {
   private handling = createHandling();
   /** The last pose shown and how far a cut into a new move has blended away from it (see `blendCuts`). */
   private shown = createHandling();
-  private cut = { from: createHandling(), left: 0, timing: { shot: -1, inspect: -1, draw: -1, weapon: "" } };
+  private cut = { from: createHandling(), left: 0, timing: { active: false, shot: -1, inspect: -1, draw: -1, weapon: "" } };
   /** The gun's kick from shot to shot. A shot is one whenever `sinceShot` starts over. */
   private kick = new Recoil();
   private lastSinceShot = Infinity;
@@ -766,10 +768,12 @@ export class CharacterRig {
     const shot = s.sinceShot ?? -1, inspect = s.sinceInspect ?? -1, draw = s.sinceDraw ?? -1;
     const restarted = (now: number, before: number) => now >= 0 && (before < 0 || now < before);
     const sameWeapon = t.weapon === this.weapon;
-    if (sameWeapon && (restarted(shot, t.shot) || restarted(inspect, t.inspect) || restarted(draw, t.draw))) {
+    if (sameWeapon && (t.active || this.weapon !== "katana") && (restarted(shot, t.shot) || restarted(inspect, t.inspect) || restarted(draw, t.draw))) {
       copyHandling(this.shown, this.cut.from);
       this.cut.left = CUT_BLEND;
     }
+    t.active = (shot >= 0 && shot < swingSeconds(this.weapon, !!s.heavy)) ||
+      (inspect >= 0 && inspect < inspectSeconds(this.weapon, s.trick)) || (draw >= 0 && draw < drawSeconds(this.weapon));
     t.shot = shot; t.inspect = inspect; t.draw = draw; t.weapon = this.weapon ?? "";
     if (this.cut.left > 0) {
       this.cut.left = Math.max(0, this.cut.left - dt);
@@ -798,18 +802,17 @@ export class CharacterRig {
       const sheath = parts.scabbard;
       sheath.position.set(0, 0, WEAPON_META.katana.guard! - h.sheathPull);
       sheath.quaternion.identity();
-      const age = s.sinceShot ?? -1, duration = swingSeconds(w, !!s.heavy);
-      const swinging = age >= 0 && age < duration;
-      if (swinging || h.sheathPark > 0) {
-        // The right hand keeps the scabbard low at the hip while the left carries the blade.
-        const phase = age / duration;
-        const park = swinging ? THREE.MathUtils.smoothstep(phase, 0, 0.17) * (1 - THREE.MathUtils.smoothstep(phase, 0.78, 1)) : h.sheathPark;
+      const park = h.sheathPark;
+      if (park > 0) {
         const view = this.mode === "fpp" && s.view ? s.view : _q2.setFromAxisAngle(UP, s.yaw);
         const origin = this.mode === "fpp" && s.eye ? s.eye : _tb.setFromMatrixPosition(this.inst.bones.get("neck_01")!.matrixWorld);
         const inverse = _qa.copy(this.gunPivot.quaternion).invert();
-        _ta.set(0.26, -0.31, -0.24).applyQuaternion(view).add(origin).sub(this.gunPivot.position).applyQuaternion(inverse);
+        // In first person it waits low on the right, out of view; seen from outside it is worn at the
+        // left hip, the tip down and back.
+        const fpp = this.mode === "fpp" && !!s.eye;
+        (fpp ? _ta.set(0.26, -0.31, -0.24) : _ta.set(...TPP_SHEATH_AT)).applyQuaternion(view).add(origin).sub(this.gunPivot.position).applyQuaternion(inverse);
         sheath.position.lerp(_ta, park);
-        _qb.setFromEuler(_e.set(-0.46, -1.35, -2.5, "YXZ")).premultiply(view).premultiply(inverse);
+        _qb.setFromEuler(fpp ? _e.set(-0.46, -1.35, -2.5, "YXZ") : _e.set(...TPP_SHEATH_TURN, "YXZ")).premultiply(view).premultiply(inverse);
         sheath.quaternion.slerp(_qb, park);
       }
     }
@@ -936,11 +939,6 @@ export class CharacterRig {
   private keyTransform<P extends string>(key: HandKey<P>, poses: Partial<Record<P, HandPose>>, bodyLeft: THREE.Vector3, pos: THREE.Vector3, quat: THREE.Quaternion) {
     const pose = poses[key.pose]!;
     _m.copy(this.gunPivot.matrixWorld);
-    if (this.weapon === "katana") {
-      const sheath = this.parts.get("katana")?.scabbard;
-      if (key.pose === "grip" && sheath) _m.multiply(sheath.matrix).multiply(SHEATH_HOLD);
-      if (key.pose === "support") _m.multiply(_m2.makeTranslation(0, -0.007, -0.142));
-    }
     const frame = this.frameObject(pose.frame);
     if (frame) _m.multiply(frame.matrix);
     if (key.pull || key.clear || key.drop) _m.multiply(_m2.makeTranslation(-(key.clear ?? 0), -(key.drop ?? 0), key.pull ?? 0));
@@ -961,7 +959,9 @@ export class CharacterRig {
         .applyQuaternion(view).add(origin);
       quat.copy(view).multiply(KNIFE_FREE_WRIST);
     } else if (key.belt) {
-      const fwd = _v.set(0, 0, -1).applyQuaternion(this.gunPivot.quaternion);
+      const fwd = this.weapon === "katana"
+        ? _v.set(0, 0, 1).applyQuaternion(this.body.quaternion)
+        : _v.set(0, 0, -1).applyQuaternion(this.gunPivot.quaternion);
       fwd.setY(0).normalize();
       pos.setFromMatrixPosition(this.inst.bones.get("upperarm_l")!.matrixWorld).addScaledVector(DOWN, BELT_DROP).addScaledVector(bodyLeft, BELT_OUT).addScaledVector(fwd, BELT_AHEAD);
       quat.setFromRotationMatrix(_m2.lookAt(_v2.set(0, 0, 0), DOWN, fwd));
@@ -1016,7 +1016,10 @@ export class CharacterRig {
     if (_twist.lengthSq() > 1e-10) {
       _twist.normalize();
       if (_twist.w < 0) _twist.set(-_twist.x, -_twist.y, -_twist.z, -_twist.w);
-      rotateBoneWorld(lower, _q.identity().slerp(_twist, FOREARM_ROLL), true);
+      // Near a half-turn either twist direction reaches the reverse grip. Fade the
+      // forearm's share there so a running shoulder cannot flip the sleeve between them.
+      const share = this.weapon === "katana" && side === "r" ? FOREARM_ROLL * _twist.w : FOREARM_ROLL;
+      rotateBoneWorld(lower, _q.identity().slerp(_twist, share), true);
     }
     setBoneWorldQuaternion(hand, _handQuat, true);
   }

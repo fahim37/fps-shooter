@@ -765,6 +765,7 @@ export class LocalPlayer {
       this.cadence.record(now, lightInterval, true);
     }
     this.heavy = heavy;
+    if (this.weapon === "katana") this.drawAt = -Infinity;
     this.lastShotAt = now;
     this.inspectAt = -Infinity;
     this.inspectQueued = false;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cycleSeconds, cycleStrokes, sampleHandling } from "./handling";
+import { cycleSeconds, cycleStrokes, drawSeconds, inspectSeconds, sampleHandling, swingSeconds } from "./handling";
 import { PRIMARIES, WEAPONS, currentSpread, fireIntervalMs, type WeaponId } from "../../shared/weapons";
 
 const ALL: WeaponId[] = [...PRIMARIES, "pistol"];
@@ -12,6 +12,23 @@ describe("weapon handling", () => {
       expect([h.left.a.pose, h.left.b.pose, h.right.a.pose, h.right.b.pose]).toEqual(["support", "support", "grip", "grip"]);
       expect({ mag: h.mag, pump: h.pump, pull: h.boltPull, held: h.magHeld, shell: h.shellHeld, visible: h.magVisible })
         .toEqual({ mag: 0, pump: 0, pull: 0, held: false, shell: false, visible: true });
+    }
+  });
+
+  it("keeps the katana in the same fist through every frame of its draw, inspect and attacks", () => {
+    const checkGrip = (shot: number, draw: number, inspect: number, swing = 0, heavy = false) => {
+      const pose = sampleHandling("katana", -1, shot, draw, undefined, { sinceInspect: inspect, swing, heavy });
+      expect([pose.right.a.pose, pose.right.b.pose]).toEqual(["reverse", "reverse"]);
+      expect(pose.left.a.belt && pose.left.b.belt).toBe(true);
+    };
+    for (let frame = 0; frame <= Math.ceil(inspectSeconds("katana") * 60); frame++) {
+      const t = frame / 60;
+      checkGrip(-1, -1, t);
+      if (t <= drawSeconds("katana")) checkGrip(-1, t, -1);
+      if (t <= swingSeconds("katana", true)) checkGrip(t, -1, -1, 0, true);
+      if (t <= swingSeconds("katana", false)) {
+        for (let swing = 0; swing < 4; swing++) checkGrip(t, -1, -1, swing);
+      }
     }
   });
 

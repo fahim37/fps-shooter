@@ -64,6 +64,9 @@ small { display: block; }
 .enemy-sighted { color: #ff4545; }
 .ads-vignette { position: absolute; inset: 0; box-shadow: inset 0 0 18vmin 5vmin #07100fcc; pointer-events: none; }
 .hud-hints { margin-bottom: 68px; }
+.blade-controls { display: grid; justify-items: end; gap: 3px; margin-block: 6px; }
+.blade-controls > span { display: inline-flex; align-items: center; gap: .45em; font-size: 15px; font-weight: 600; }
+.blade-controls kbd { padding: 1px 5px; border: 1px solid currentColor; border-radius: 3px; color: var(--accent); background: #172018; font: 700 12px monospace; }
 .settings-note { grid-column: 1 / -1; margin: 0; }
 
 @media (pointer: coarse) {

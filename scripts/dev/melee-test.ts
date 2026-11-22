@@ -64,6 +64,8 @@ async function main() {
     await until(() => me()[1].weapon === "knife");
     assert.equal(await game(page, (g) => g.local!.weapon), "knife");
     await page.locator(".ammo", { hasText: "Butterfly Knife" }).waitFor({ timeout: 3000 });
+    const inspectHint = page.getByText("Press T to inspect", { exact: true });
+    await inspectHint.waitFor();
     await sleep(500);
     await page.screenshot({ path: ".next/melee-knife.png" });
 
@@ -131,6 +133,7 @@ async function main() {
     await sleep(200);
     assert.equal(await game(page, (g) => g.local!.weapon), "ar");
 
+    await inspectHint.waitFor({ state: "hidden" });
     await page.keyboard.press("KeyT");
     await sleep(100);
     assert.equal(await game(page, (g) => g.local!.emoteMenu), false);
