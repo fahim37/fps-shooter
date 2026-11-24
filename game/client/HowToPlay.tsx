@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { MODE_INFO, SCORE_LIMITS } from "../shared/constants";
+import { MAPS, MAP_IDS } from "../shared/map/maps";
 import styles from "./HowToPlay.module.css";
 
 type Row = [keys: string[], action: string, note?: string];
@@ -24,7 +25,7 @@ const KEYBOARD: { title: string; rows: Row[] }[] = [
     [["T"], "Inspect blade", "Flips, spins and shows it off; try Knife inspect or Katana inspect in the lobby"],
     [["F"], "Dash", "A very fast burst the way you are moving (straight ahead if standing still) · look up to rise a little · two per life · every 2 kills refill 1 (2 held at most)"],
     [["Z"], "Mark enemy", "Look at an enemy and press: a mark follows them on screen for your team for a few seconds · they get a MARKED warning"],
-    [["C", "G"], "Grenade", "Press to pull the pin (the fuse starts), hold to aim along the arc, release to throw · it blows up in your hand if held too long · right mouse lobs"],
+    [["C", "G"], "Grenade", "Press to pull the pin (the fuse starts), hold to aim along the arc, release to throw · it blows up in your hand if held too long · right click puts it away and brings the gun back · left click puts it away and shoots"],
   ] },
   { title: "GAME", rows: [
     [["B"], "Loadout", "Weapon and sights for your next spawn"],
@@ -97,6 +98,8 @@ export function HowToPlay({ onClose, touch = false, locked = false }: { onClose:
         <div className={styles.group}>
           <h3>TIPS</h3>
           <ul className={styles.tips}>{(touch ? TIPS.slice(1) : TIPS).map((tip) => <li key={tip}>{tip}</li>)}</ul>
+          <h3>MAP CREDITS</h3>
+          <ul className={styles.tips}>{MAP_IDS.filter((id) => MAPS[id].credit).map((id) => <li key={id}>{MAPS[id].name}: {MAPS[id].credit}</li>)}</ul>
         </div>
       </div>
     </section>

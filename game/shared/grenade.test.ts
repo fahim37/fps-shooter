@@ -13,7 +13,7 @@ const ground = (from: V3, dir: V3, distance: number) => {
 
 describe("grenade throws", () => {
   it("leaves the hand at full or lob speed", () => {
-    expect(grenadeVelocity([1, 0, 0], 1, [0, 0, 0])).toEqual([GRENADE.throwSpeed, 2, 0]);
+    expect(grenadeVelocity([1, 0, 0], 1, [0, 0, 0])).toEqual([GRENADE.throwSpeed, 3, 0]);
     // Strength is clamped between a lob and a full throw.
     expect(grenadeVelocity([0, 0, -1], 5, [0, 0, 0])[2]).toBeCloseTo(-GRENADE.throwSpeed);
     expect(grenadeVelocity([0, 0, -1], 0.1, [0, 0, 0])[2]).toBeCloseTo(-GRENADE.throwSpeed * GRENADE.lobPower);

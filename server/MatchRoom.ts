@@ -7,7 +7,7 @@ import {
   CROUCH_EYE_HEIGHT, SLIDE_EYE_HEIGHT, SPRINT_SPEED, DASH_SPEED, DASH_SECONDS, DASH_KILLS, DASH_MAX, DASH_REFILL, ROOM_SIZES, SCORE_LIMITS, type GameMode,
 } from "../game/shared/constants";
 import { WEAPONS, PRIMARIES, MELEES, GRENADE, damageAt, fireIntervalMs, isBackstab, isMelee, reloadMs, reloadNeed, reloadedRounds, type MeleeId, type WeaponId } from "../game/shared/weapons";
-import { GRENADE_STEP_HZ, blastDistance, createGrenadeBody, grenadeVelocity, impactSpeed } from "../game/shared/grenade";
+import { GRENADE_STEP_HZ, LANDED_DAMPING, LANDED_MIN_IMPACT, blastDistance, createGrenadeBody, grenadeVelocity, impactSpeed } from "../game/shared/grenade";
 import { PoseHistory } from "../game/shared/lagcomp";
 import { MOVING_SPEED, rayVsPose, slideYaw, type HitPart, type Pose } from "../game/shared/hitboxes";
 import { claimFits } from "../game/shared/hitclaim";
@@ -84,6 +84,8 @@ interface LiveGrenade {
   vel: V3;
   /** No impact sound before this: a settling grenade would rattle every tick. */
   clinkAt: number;
+  /** It has struck something and drags to a stop near there (LANDED_DAMPING). */
+  landed?: boolean;
   id: string;
   owner: string;
   body: RAPIER_NS.RigidBody;
@@ -1195,6 +1197,7 @@ export class MatchRoom extends Room<{ state: MatchState; metadata: RoomMeta }> {
       const v = g.body.linvel(), vel: V3 = [v.x, v.y, v.z];
       const speed = impactSpeed(g.vel, vel, TICK_MS / 1000);
       g.vel = vel;
+      if (!g.landed && speed >= LANDED_MIN_IMPACT) { g.landed = true; g.body.setLinearDamping(LANDED_DAMPING); }
       if (speed >= CLINK_MIN_SPEED && t >= g.clinkAt) {
         g.clinkAt = t + CLINK_GAP_MS;
         this.broadcast("grenade:hit", { x: pos.x, y: pos.y, z: pos.z, speed } satisfies GrenadeHitEvent);

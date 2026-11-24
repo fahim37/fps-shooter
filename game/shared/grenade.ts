@@ -12,6 +12,13 @@ const RUN_CARRY = 0.4;
 const AIR_BONUS = 2;
 /** Share of the thrower's motion a dropped grenade keeps. */
 const DROP_CARRY = 0.9;
+/**
+ * Air drag (1/s) once a grenade has struck something, on the server's body and in the aiming arc:
+ * it stops close to where it lands instead of bouncing and rolling on.
+ */
+export const LANDED_DAMPING = 3;
+/** Impact (m/s, see impactSpeed) that counts as having landed. */
+export const LANDED_MIN_IMPACT = 1.5;
 /** Physics steps per second for grenades (Rapier's default step). */
 export const GRENADE_STEP_HZ = 60;
 
@@ -32,7 +39,7 @@ export function grenadeVelocity(dir: Vec3, power: number, vel: Vec3, airborne = 
   const strength = Math.min(1, Math.max(GRENADE.lobPower, power));
   const forward = Math.min(SPRINT_SPEED, Math.max(0, (vel[0] * dir[0] + vel[2] * dir[2]) / flat));
   const speed = (GRENADE.throwSpeed + forward * RUN_CARRY + (airborne ? AIR_BONUS : 0)) * strength;
-  return [dir[0] / len * speed, dir[1] / len * speed + 2, dir[2] / len * speed];
+  return [dir[0] / len * speed, dir[1] / len * speed + 3, dir[2] / len * speed];
 }
 
 /** How far from the blast at `at` the nearest of `points` it can reach is, or null if it reaches none. */
@@ -104,7 +111,8 @@ const ROLL_DAMPING = 0.55;
  */
 export function grenadeFlight(origin: Vec3, vel: Vec3, fuseSeconds: number, cast: SurfaceCast): GrenadeFlight {
   const dt = 1 / GRENADE_STEP_HZ, r = GRENADE_BODY.radius;
-  const airDrag = 1 / (1 + dt * GRENADE.linearDamping), rollDrag = 1 / (1 + dt * ROLL_DAMPING);
+  const airDrag = 1 / (1 + dt * GRENADE.linearDamping), landedDrag = 1 / (1 + dt * LANDED_DAMPING);
+  const rollDrag = 1 / (1 + dt * ROLL_DAMPING);
   const points: Vec3[] = [origin];
   let p = origin, v = vel, rolling = false;
   let impact = -1, impactNormal: Vec3 | null = null, normal: Vec3 | null = null;
@@ -127,7 +135,7 @@ export function grenadeFlight(origin: Vec3, vel: Vec3, fuseSeconds: number, cast
 
   const steps = Math.max(1, Math.round(fuseSeconds * GRENADE_STEP_HZ));
   for (let i = 0; i < steps; i++) {
-    const drag = rolling ? rollDrag : airDrag;
+    const air = impact < 0 ? airDrag : landedDrag, drag = rolling ? air * rollDrag : air;
     v = [v[0] * drag, (v[1] - GRAVITY * dt) * drag, v[2] * drag];
     // Rolling: the ground under the ball holds it up, until it rolls off an edge.
     if (rolling) {

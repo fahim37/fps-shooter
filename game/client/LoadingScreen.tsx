@@ -70,6 +70,5 @@ export function LoadingScreen({ map, code, loading, ready, conn, error, onLeave 
         <button type="button" className={styles.leave} onClick={onLeave}>{status === "failed" ? "Back to lobby" : "Return to lobby"}</button>
       </div>
     </div>
-    {info.credit && status === "loading" && <small className={styles.credit}>{info.credit}</small>}
   </div>;
 }

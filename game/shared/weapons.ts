@@ -134,13 +134,13 @@ export function isBackstab(attacker: { x: number; z: number; yaw: number }, targ
 }
 
 export const GRENADE = {
-  fuseMs: 4000,
+  fuseMs: 5000,
   throwSpeed: 28,
   /** An underhand lob (right mouse while aiming) leaves the hand at this fraction of a full throw. */
   lobPower: 0.5,
   radius: 8,
-  /** At the blast; lethal through a full shield out to about 3 m, around 45 damage at 6 m. */
-  damage: 220,
+  /** At the blast; lethal through a full shield out to about 3.5 m, around 55 damage at 6 m. */
+  damage: 250,
   /** Minimum damage at the edge of the radius, as a fraction. */
   edgeMult: 0.1,
   /** How sharply damage drops off from the blast to the edge (1 is linear). */

@@ -116,8 +116,11 @@ export class LocalPlayer {
   /** The arm is swinging: the grenade goes when the hand reaches the release point. */
   private releasing = false;
   private fuseAt = 0;
-  /** An underhand lob instead of a full throw (right mouse while aiming). */
+  /** An underhand lob instead of a full throw (no longer bound: right mouse puts the grenade away). */
   lob = false;
+  /** Mouse buttons held when the grenade came out: only a fresh click puts it away. */
+  private grenadeFireWas = false;
+  private grenadeAdsWas = false;
   /** Next fuse tick sound while a cooked grenade is held. */
   private tickAt = 0;
   /** 0..1, eases in while a grenade is in hand: the gun lowers and the grenade comes up. */
@@ -376,19 +379,27 @@ export class LocalPlayer {
     if (input.consume("KeyR") && !this.grenadeAt) this.startReload(now);
 
     // Grenade: pressing C (or G) pulls the pin and the fuse starts burning; hold to aim along the
-    // arc, release to throw. Right mouse switches to an underhand lob.
+    // arc, release to throw. A fresh right click puts it away (pin back in, gun up); a fresh left
+    // click does too and starts shooting straight away.
     const draw = input.consume("KeyC") || input.consume("KeyG");
     if (draw && this.grenades > 0 && !this.grenadeAt && !this.releasing) {
       this.endEmote(now);
       this.inspectAt = -Infinity;
       this.inspectQueued = false;
       this.grenadeAt = this.fuseAt = now;
+      this.grenadeFireWas = firing;
+      this.grenadeAdsWas = input.ads;
       this.tickAt = now + 500;
       this.game.send("grenade:cook", true);
       audio.grenadePin();
     }
     if (this.grenadeAt) {
-      this.lob = input.ads;
+      const click = firing && !this.grenadeFireWas, rightClick = input.ads && !this.grenadeAdsWas;
+      this.grenadeFireWas = firing;
+      this.grenadeAdsWas = input.ads;
+      if (click || rightClick) this.putAwayGrenade();
+    }
+    if (this.grenadeAt) {
       const held = input.held("KeyC") || input.held("KeyG") || input.held("TouchGrenade");
       const left = this.fuseAt ? GRENADE.fuseMs - (now - this.fuseAt) : Infinity;
       // Like PUBG, hold a cooked grenade too long and it goes off in your hand.
@@ -794,6 +805,13 @@ export class LocalPlayer {
     this.kickYaw += side * (1 - stays);
   }
 
+  /** The grenade in hand goes back in the pocket unthrown, its fuse stopped: the gun comes back up. */
+  private putAwayGrenade() {
+    this.grenadeAt = this.fuseAt = 0;
+    this.lob = false;
+    this.game.send("grenade:cook", false);
+  }
+
   /** Starts the throw of the grenade in hand, or with `drop` lets it fall (it has cooked off). */
   private throwGrenade(now: number, drop = false) {
     this.grenadeAt = 0;
@@ -818,7 +836,7 @@ export class LocalPlayer {
 
   /** Where a throw leaves the hand, which way and how hard: shared by the throw and its aiming arc. */
   grenadeThrow() {
-    const dir = aimDir(this.yaw, this.pitch + 0.12), power = this.lob ? GRENADE.lobPower : 1;
+    const dir = aimDir(this.yaw, this.pitch + 0.2), power = this.lob ? GRENADE.lobPower : 1;
     return {
       origin: this.handGrenade ?? [this.eye.x, this.eye.y - 0.1, this.eye.z] as V3,
       dir, power,

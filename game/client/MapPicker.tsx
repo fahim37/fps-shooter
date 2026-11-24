@@ -7,11 +7,9 @@ import styles from "./MapPicker.module.css";
 
 /**
  * Map cards: the picture with the map's name on it, nothing more. Read-only (for non-hosts) when
- * `onChange` is omitted. `compact` is a thumbnail row. A map that needs attribution (CC BY) gets
- * its credit line under the cards while it is picked.
+ * `onChange` is omitted. `compact` is a thumbnail row. Map credits (CC BY) are on the help screen.
  */
 export function MapPicker({ value, onChange, disabled, compact = false }: { value: MapId; onChange?: (map: MapId) => void; disabled?: boolean; compact?: boolean }) {
-  const credit = MAPS[value].credit;
   return <div className={`${styles.picker} map-picker`}>
     <div className={`${styles.grid} ${compact ? styles.compact : ""}`} role="radiogroup" aria-label="Map">
       {MAP_IDS.map((id) => {
@@ -26,6 +24,5 @@ export function MapPicker({ value, onChange, disabled, compact = false }: { valu
         </button>;
       })}
     </div>
-    {credit && !compact && <small className={styles.credit}>{MAPS[value].name} map: {credit}</small>}
   </div>;
 }

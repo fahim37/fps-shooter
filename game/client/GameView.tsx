@@ -141,8 +141,9 @@ function MatchHud({ game, map, onLeave, setScreenMessage }: { setScreenMessage: 
         {h.grenadeAim && <div className="grenade-aim" data-cooked={h.grenadeAim.fuse !== null || undefined}>
           <b>{h.grenadeAim.lob ? "UNDERHAND LOB" : "FRAG GRENADE"}{h.grenadeAim.airburst && <em> · AIRBURST</em>}</b>
           {h.grenadeAim.fuse === null
-            ? <small>{h.touch ? "RELEASE TO THROW · AIM FOR A LOB" : "RELEASE C TO THROW · HOLD RMB TO LOB"}</small>
-            : <small>FUSE {(h.grenadeAim.fuse / 1000).toFixed(1)} S · {h.touch ? "RELEASE TO THROW" : "RELEASE C · HOLD RMB TO LOB"}</small>}
+            ? <small>{h.touch ? "RELEASE TO THROW · FIRE TO PUT AWAY" : "RELEASE C TO THROW"}</small>
+            : <small>FUSE {(h.grenadeAim.fuse / 1000).toFixed(1)} S · {h.touch ? "RELEASE TO THROW" : "RELEASE C TO THROW"}</small>}
+          {!h.touch && <small className="grenade-cancel">RIGHT CLICK · PUT AWAY, GUN UP &nbsp;·&nbsp; LEFT CLICK · PUT AWAY &amp; SHOOT</small>}
         </div>}
       </>}
       {h.announce && now - h.announce.at < 3000 && <div className="announcement"><h2>{h.announce.text}</h2><p>{h.announce.sub}</p></div>}

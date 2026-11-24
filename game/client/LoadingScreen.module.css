@@ -95,14 +95,13 @@
 .leave { justify-self: start; margin-top: 8px; padding: 10px 16px; border: 1px solid #ffffff2b; background: #ffffff0a; color: #e3e9ef; font: 700 11px var(--display); letter-spacing: .14em; text-transform: uppercase; cursor: pointer; transition: border-color .15s, background .15s; animation: ls-up .5s .8s both; }
 .leave:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .screen[data-status=failed] .leave { border: 0; background: linear-gradient(135deg, var(--accent-hi), var(--accent)); color: #1a0703; }
-.credit { position: absolute; left: 50%; bottom: 22px; z-index: 3; translate: -50% 0; color: #6f7c88; font: 10px var(--font-geist-mono), monospace; letter-spacing: .06em; white-space: nowrap; }
 
 @media (max-width: 760px), (max-height: 520px) {
   .stage { grid-template-columns: auto minmax(0, 1fr); gap: 20px; }
   .radar { width: clamp(110px, 22vw, 170px); }
   .title { font-size: clamp(26px, 5vw, 40px); }
   .line { font-size: 12px; }
-  .chips, .credit { display: none; }
+  .chips { display: none; }
   .corner { width: 28px; height: 28px; }
 }
 @media (max-width: 520px) {

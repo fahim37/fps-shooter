@@ -11,7 +11,6 @@
 .selected .name { color: var(--accent); }
 /* The picked map carries a ticked lime corner. */
 .selected::after { content: ""; position: absolute; top: 0; right: 0; width: 28px; height: 28px; clip-path: polygon(0 0, 100% 0, 100% 100%); background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.6 6.3 5 8.7l4.4-5' fill='none' stroke='%230a1204' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") 15px 3px / 10px no-repeat; }
-.credit { display: block; margin-top: 5px; font-size: 8px; color: #848d95; letter-spacing: .02em; }
 
 /* Thumbnails for the room bar: the room's own rules set how many to a row. */
 .compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
