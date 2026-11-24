@@ -295,9 +295,8 @@ export class Game {
 
   private spawn(ev: SpawnEvent) {
     if (!this.local) { this.pendingSpawn = ev; return; }
-    // The blade chosen last time comes along into every match.
-    const blade = useLoadout.getState().melee;
-    if (ev.melee && blade !== ev.melee) this.send("loadout", { melee: blade });
+    // Every match starts with the butterfly knife; a blade picked in the lobby lasts for that match only.
+    useLoadout.getState().chooseMelee(ev.melee ?? "knife");
     this.pendingSpawn = null;
     this.initializedPlayer = true;
     this.awaitingSpawnState = true;
