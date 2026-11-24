@@ -135,7 +135,7 @@ export function isBackstab(attacker: { x: number; z: number; yaw: number }, targ
 
 export const GRENADE = {
   fuseMs: 4000,
-  throwSpeed: 21,
+  throwSpeed: 28,
   /** An underhand lob (right mouse while aiming) leaves the hand at this fraction of a full throw. */
   lobPower: 0.5,
   radius: 8,
@@ -146,7 +146,7 @@ export const GRENADE = {
   /** How sharply damage drops off from the blast to the edge (1 is linear). */
   falloffPower: 1.5,
   /** Air drag on the server's grenade body (see grenade.ts); the aiming arc integrates the same. */
-  linearDamping: 0.15,
+  linearDamping: 0.1,
 };
 
 export function damageAt(def: WeaponDef, distance: number): number {

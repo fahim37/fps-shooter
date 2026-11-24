@@ -61,7 +61,7 @@ export const REGEN_DELAY_MS = 5000;
 export const REGEN_PER_SEC = 20;
 export const RESPAWN_MS = 3500;
 export const SPAWN_PROTECTION_MS = 4000;
-export const GRENADES_PER_LIFE = 2;
+export const GRENADES_PER_LIFE = 3;
 export const FALL_DAMAGE_MIN_SPEED = 13;
 
 export const MAX_PLAYERS = 20;

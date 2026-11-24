@@ -8,8 +8,8 @@ type Vec3 = [number, number, number];
 /** The server's grenade body. The map's colliders keep Rapier's defaults (friction 0.5, no bounce). */
 export const GRENADE_BODY = { radius: 0.07, restitution: 0.38, friction: 0.7, angularDamping: 1.5, density: 3 };
 /** Share of the thrower's speed along the aim added to a full throw, and what being off the ground adds (m/s). */
-const RUN_CARRY = 0.25;
-const AIR_BONUS = 1.2;
+const RUN_CARRY = 0.4;
+const AIR_BONUS = 2;
 /** Share of the thrower's motion a dropped grenade keeps. */
 const DROP_CARRY = 0.9;
 /** Physics steps per second for grenades (Rapier's default step). */

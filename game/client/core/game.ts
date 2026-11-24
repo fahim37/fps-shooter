@@ -120,7 +120,7 @@ function throwPose(keys: number[][], progress: number) {
 }
 const _unitZ = new THREE.Vector3(0, 0, 1);
 /** Dots drawn along a grenade's aiming arc, one every ARC_DOT meters past the hand. */
-const ARC_DOTS = 90;
+const ARC_DOTS = 150;
 const ARC_DOT = 0.45;
 
 /** Outfit tints (TEAM_COLORS): allies and you are blue, opponents red, whatever your team. */
